@@ -13,3 +13,4 @@ include_directories(
 )
 
 add_subdirectory(test)
+add_subdirectory(tools)
