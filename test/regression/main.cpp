@@ -1,14 +1,30 @@
+#include <mutex>
 #include <vector>
+#include <assert.h>
+#include <storage.h>
+#include <policies.h>
+#include <iostream>
 
-static std::vector< int> m = { 0, 1, 2, 3, 4, 5 };
+
+using Storage = jb::Storage< policies::DefaultPolicies >;
+
 
 auto foo()
 {
-    return std::make_tuple(true, m[2]);
+    static std::mutex guard;
+    static std::vector< int > data;
+    return std::forward_as_tuple(guard, data);
 }
+
 
 int main()
 {
-    auto[status, result] = foo();
+    auto[open_ret, handle] = Storage::OpenVirtualVolume();
+
+    std::cout << typeid(handle).name() << std::endl;
+
+    auto[ret1] = Storage::CloseAll();
+    auto[ret2] = Storage::Close(handle);
+    
     return 0;
 }

@@ -13,7 +13,7 @@ namespace jb
 
         template< typename T > friend class Storage;
 
-        class VirtualVolumeImpl;
+        class Impl;
         
         using ValueT = typename Policies::ValueT;
         using KeyRefT = typename Policies::KeyPolicy::KeyRefT;
@@ -21,7 +21,7 @@ namespace jb
 
         /** Non-owning reference to implementation
         */
-        std::weak_ptr< VirtualVolumeImpl > impl_;
+        std::weak_ptr< Impl > impl_;
 
 
         /** Instantiating constructor
@@ -31,7 +31,7 @@ namespace jb
         @param [in] impl - implementation instance to be referred
         @throw nothing
         */
-        VirtualVolume(const std::shared_ptr< VirtualVolumeImpl > & impl) noexcept : impl_(impl) {}
+        VirtualVolume(const std::shared_ptr< Impl > & impl) noexcept : impl_(impl) {}
 
 
     public:
@@ -52,7 +52,7 @@ namespace jb
         @param [in] src - instance to be copied
         @throw nothing
         */
-        VirtualVolume([[maybe_unused]] const VirtualVolume & src) noexcept = default;
+        VirtualVolume(const VirtualVolume & src) = default;
 
 
         /** Moving constructor
@@ -62,16 +62,7 @@ namespace jb
         @param [in] src - instance to move from
         @throw nothing
         */
-        VirtualVolume([[maybe_unused]] VirtualVolume && src) noexcept = default;
-        
-
-        /** Copying operator
-
-        @param [in] src - instance to be copied
-        @return lvalue of the instance
-        @throw nothing
-        */
-        VirtualVolume & operator == ([[maybe_unused]] const VirtualVolume & src) noexcept = default;
+        VirtualVolume & operator = (const VirtualVolume & src) noexcept = default;
 
 
         /** Moving operator
@@ -80,7 +71,7 @@ namespace jb
         @return lvalue of the instance
         @throw nothing
         */
-        VirtualVolume & operator == ([[maybe_unused]] VirtualVolume && src) noexcept = default;
+        VirtualVolume & operator = (VirtualVolume && src) noexcept = default;
 
 
         /** Checks if an instance is valid i.e. it represents existing volume
@@ -92,49 +83,14 @@ namespace jb
 
         friend auto operator == (const VirtualVolume & l, const VirtualVolume & r) noexcept { return l.load() == r.load(); }
         friend auto operator != (const VirtualVolume & l, const VirtualVolume & r) noexcept { return l.load() != r.load(); }
-
-        auto Insert(KeyRefT path, KeyRefT key, ValueT && value, bool overwrite = false ) const noexcept
-        {
-            if (auto impl = impl_.lock())
-            {
-                return impl->Insert(path, key, value);
-            }
-            else
-            {
-                return std::make_tuple(Storage<Policies>::InvalidVirtualVolume);
-            }
-        }
-
-        auto Get(KeyRefT path) const noexcept
-        {
-            if (std::shared_ptr< VirtualVolumeImpl > impl = impl_.lock(); impl)
-            {
-                return impl->Get(path);
-            }
-            else
-            {
-                return std::make_tuple(Storage::InvalidVirtualVolume, Value());
-            }
-        }
-
-        auto Get(KeyRefT path) const noexcept
-        {
-            if (std::shared_ptr< VirtualVolumeImpl > impl = impl_.lock(); impl)
-            {
-                return impl->Insert(path, key, value);
-            }
-            else
-            {
-                return std::make_tuple(Storage<Policies>::InvalidVirtualVolume, Value());
-            }
-        }
     };
 
 
     template < typename Policies >
-    class VirtualVolumeImpl
+    class VirtualVolume< Policies >::Impl
     {
-
+    public:
+        Impl() noexcept = default;
     };
 }
 
