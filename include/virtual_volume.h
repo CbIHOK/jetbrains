@@ -91,6 +91,7 @@ namespace jb
     {
     public:
         Impl() noexcept = default;
+        Impl(Impl&&) noexcept = delete;
     };
 }
 
