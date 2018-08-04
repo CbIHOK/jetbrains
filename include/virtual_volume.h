@@ -8,7 +8,7 @@
 namespace jb
 {
     template < typename Policies >
-    class VirtualVolume
+    class Storage< Policies >::VirtualVolume
     {
 
         template< typename T > friend class Storage;
@@ -84,16 +84,8 @@ namespace jb
         friend auto operator == (const VirtualVolume & l, const VirtualVolume & r) noexcept { return l.load() == r.load(); }
         friend auto operator != (const VirtualVolume & l, const VirtualVolume & r) noexcept { return l.load() != r.load(); }
     };
-
-
-    template < typename Policies >
-    class VirtualVolume< Policies >::Impl
-    {
-    public:
-        Impl() noexcept = default;
-        Impl(Impl&&) noexcept = delete;
-    };
 }
 
+#include "virtual_volume_impl.h"
 
 #endif

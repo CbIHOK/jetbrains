@@ -8,13 +8,12 @@
 #include <functional>
 
 
-namespace policies
+namespace jb
 {
     struct DefaultPolicies
     {
         using KeyCharT = char;
         using ValueT = std::variant< uint32_t, uint64_t, float, double, std::string >;
-        static constexpr KeyCharT KeySeparator = '/';
 
 
         template < typename CharT = KeyCharT >
@@ -24,10 +23,18 @@ namespace policies
             using KeyRefT     = std::basic_string_view< CharT >;
             using KeyHashF    = std::hash< KeyRefT >;
             using KeyHashT    = decltype(std::declval< KeyHashF >()(std::declval< KeyRefT >()));
-            using KeyHashRefT = KeyHashT;
+            using KeyHashRefT = KeyHashT&&;
+            
+            static constexpr KeyCharT Alphabet[] = "[a-zA-Z0-9_-]";
+            static constexpr KeyCharT Separator = '/';
         };
         using KeyPolicy = KeyPolicyT<>;
 
+
+        struct VirtualVolumePolicy
+        {
+            static constexpr size_t MountPointLimit = (1 << 10);
+        };
 
         struct BTreePolicy
         {

@@ -4,27 +4,19 @@
 #include <storage.h>
 #include <policies.h>
 #include <iostream>
-
-
-using Storage = jb::Storage< policies::DefaultPolicies >;
-
-
-auto foo()
-{
-    static std::mutex guard;
-    static std::vector< int > data;
-    return std::forward_as_tuple(guard, data);
-}
+#include <btree.h>
+#include <key.h>
+#include <filesystem>
 
 
 int main()
 {
-    auto[open_ret, handle] = Storage::OpenVirtualVolume();
+    using Storage = jb::Storage< jb::DefaultPolicies >;
+    using Key = jb::details::Key< jb::DefaultPolicies >;
 
-    std::cout << typeid(handle).name() << std::endl;
+    Key k{ "////foo/boo////goo//1" };
+    bool v = k;
+    auto[key, subkey] = k.break_apart();
 
-    auto[ret1] = Storage::CloseAll();
-    auto[ret2] = Storage::Close(handle);
-    
     return 0;
 }

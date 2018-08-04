@@ -12,9 +12,6 @@
 #include <boost/mpl/vector.hpp>
 #include <boost/mpl/contains.hpp>
 
-#include "virtual_volume.h"
-#include "physical_volume.h"
-
 
 namespace jb
 {
@@ -36,7 +33,8 @@ namespace jb
 
         /** Virtual volume type
         */
-        using VirtualVolume = VirtualVolume< Policies >;
+        class VirtualVolume;
+
 
     private:
 
@@ -52,9 +50,8 @@ namespace jb
             static std::mutex guard;
 
             // definitely opening/closing operations ain't time critical, thus I don't care about
-            // structure choice. Also taking into account uniqueness of kept values makes 
-            // unordered_set<> quite enough to me. If we introduced some limitation on volume
-            // numbers, we could easily adopt unordered_set<> to use cache friendly static allocator
+            // structure choice. Also uniqueness of kept values makes unordered_set<> quite enough
+            // to me
             static std::unordered_set< std::shared_ptr< ImplT > > holder;
 
             return std::forward_as_tuple(guard, holder);
@@ -85,7 +82,7 @@ namespace jb
             {
                 return std::tuple(RetCode::InsufficientMemory, VolumeT());
             }
-            catch (const std::exception &)
+            catch (...)
             {
             }
 
@@ -183,7 +180,7 @@ namespace jb
                     }
                 }
             }
-            catch (const std::exception &)
+            catch (...)
             {
             }
 
@@ -221,7 +218,7 @@ namespace jb
                 
                 return std::make_tuple(RetCode::Ok);
             }
-            catch (std::exception &)
+            catch (...)
             {
             }
 
@@ -229,6 +226,10 @@ namespace jb
         }
     };
 }
+
+
+#include "virtual_volume.h"
+#include "physical_volume.h"
 
 
 #endif
