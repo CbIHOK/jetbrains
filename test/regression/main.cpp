@@ -5,18 +5,18 @@
 #include <policies.h>
 #include <iostream>
 #include <btree.h>
-#include <key.h>
 #include <filesystem>
 
 
 int main()
 {
-    using Storage = jb::Storage< jb::DefaultPolicies >;
-    using Key = jb::details::Key< jb::DefaultPolicies >;
+    using namespace jb;
 
-    Key k{ "////foo/boo////goo//1" };
-    bool v = k;
-    auto[key, subkey] = k.break_apart();
+    using Storage = Storage< DefaultPolicies >;
+
+    auto[r, volume ]= Storage::OpenVirtualVolume();
+    auto[r1, m] = volume.Mount( Storage::PhysicalVolume(), "/foo/boo/", "/111/222" );
+    volume.Close();
 
     return 0;
 }

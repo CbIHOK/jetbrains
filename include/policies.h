@@ -12,24 +12,21 @@ namespace jb
 {
     struct DefaultPolicies
     {
-        using KeyCharT = char;
-        using ValueT = std::variant< uint32_t, uint64_t, float, double, std::string >;
+        using KeyCharT   = char;
+        using KeyValueT  = std::basic_string< KeyCharT >;
+        using ValueT     = std::variant< uint32_t, uint64_t, float, double, std::string >;
+        using TimestampT = std::filesystem::file_time_type;
 
 
         template < typename CharT = KeyCharT >
         struct  KeyPolicyT
         {
-            using KeyValueT   = std::basic_string< CharT >;
             using KeyRefT     = std::basic_string_view< CharT >;
             using KeyHashF    = std::hash< KeyRefT >;
             using KeyHashT    = decltype(std::declval< KeyHashF >()(std::declval< KeyRefT >()));
             using KeyHashRefT = KeyHashT&&;
-            
-            static constexpr KeyCharT Alphabet[] = "[a-zA-Z0-9_-]";
-            static constexpr KeyCharT Separator = '/';
         };
         using KeyPolicy = KeyPolicyT<>;
-
 
         struct VirtualVolumePolicy
         {
@@ -40,7 +37,6 @@ namespace jb
         {
             static constexpr size_t Power = 8;
         };
-
 
         struct StoragePolicy
         {

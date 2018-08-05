@@ -4,9 +4,15 @@
 
 namespace jb
 {
-    class PhysicalVolume
+    template < typename Policies >
+    class Storage< Policies >::PhysicalVolume
     {
+    public:
 
+        friend bool operator == (const PhysicalVolume & l, const PhysicalVolume & r) noexcept
+        {
+            return true;
+        }
     };
 }
 

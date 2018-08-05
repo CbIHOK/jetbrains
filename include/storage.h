@@ -19,28 +19,10 @@ namespace jb
     class Storage
     {
 
-    public:
+        friend class VirtualVolume;
 
-        /** Enumerates all possible return codes
+        /** Helper, provides related singletons
         */
-        enum class RetCode
-        {
-            Ok,                     ///< Operation succedded
-            UnknownError,           ///< Something wrong happened
-            InsufficientMemory,     ///< Operation failed due to low memory
-            InvalidHandle,          ///< Given handle does not address valid object
-        };
-
-        /** Virtual volume type
-        */
-        class VirtualVolume;
-
-
-    private:
-
-        //
-        // Provides related singletons
-        //
         template < typename VolumeT > 
         static auto singletons() noexcept
         {
@@ -74,28 +56,107 @@ namespace jb
                     std::scoped_lock l(guard);
                     if (auto i = collection.insert(impl); i.second)
                     {
-                        return std::tuple(RetCode::Ok, VolumeT(impl));
+                        return std::make_tuple(RetCode::Ok, VolumeT(impl));
                     }
                 }
             }
             catch (const std::bad_alloc &)
             {
-                return std::tuple(RetCode::InsufficientMemory, VolumeT());
+                return std::make_tuple(RetCode::InsufficientMemory, VolumeT());
             }
             catch (...)
             {
             }
 
-            return std::tuple(RetCode::UnknownError, VolumeT());
+            return std::make_tuple(RetCode::UnknownError, VolumeT());
+        }
+
+
+        /* Helper, closes given handler
+
+        Invalidates given volume handler, destroys associated Virtual Volume object, and release
+        allocated resources. If there are operations locking the volume, the function postpones
+        the actions until all locking operations get completed. Unlocked volume is destroyed
+        immediately.
+
+        @tparam T - volume type, auto deducing implied
+        @param [in] volume - volume to be closed
+
+        @return std::tuple< ret_code >
+        ret_code == RetCode::Ok => operation succedded
+        ret_code == RetCode::InvalidVolumeHandle => passed handle does not refer a volume
+        ret_code == RetCode::UnknownError => something went really wrong
+
+        @throw nothing
+        */
+        template< typename T >
+        static auto close(T * volume) noexcept
+        {
+            assert(volume);
+
+            using ValidVolumeTypes = boost::mpl::vector< VirtualVolume >;
+            using VolumeT = std::decay< T >::type;
+
+            static_assert(boost::mpl::contains< ValidVolumeTypes, VolumeT >::type::value, "Invalid volume type");
+
+            try
+            {
+                auto[guard, collection] = singletons< VolumeT >();
+                {
+                    std::scoped_lock lock(guard);
+
+                    auto impl = std::move(volume->impl_).lock();
+
+                    if (!impl)
+                    {
+                        return std::make_tuple(RetCode::InvalidHandle);
+                    }
+                    else if (auto i = collection.find(impl); i != collection.end())
+                    {
+                        collection.erase(i);
+                        return std::make_tuple(RetCode::Ok);
+                    }
+                    else
+                    {
+                        return std::make_tuple(RetCode::InvalidHandle);
+                    }
+                }
+            }
+            catch (...)
+            {
+            }
+
+            return std::make_tuple(RetCode::UnknownError);
         }
 
 
     public:
 
-        /** Creates new virtual volumes
+        /** Enumerates all possible return codes
+        */
+        enum class RetCode
+        {
+            Ok,                     ///< Operation succedded
+            UnknownError,           ///< Something wrong happened
+            InsufficientMemory,     ///< Operation failed due to low memory
+            InvalidHandle,          ///< Given handle does not address valid object
+            MountPointLimitReached, ///< Virtual Volume already has maximum number of Mounts Points
+            AlreadyExists,          ///< Such Mount Point already exist
+            InvalidKey,
+        };
+
+
+        /** Virtual volume type
+        */
+        class VirtualVolume;
+        class PhysicalVolume;
+        class MountPoint;
+
+
+        /** Creates new Virtual Volumes
 
         @return std::tuple< ret_code, handle >, if operation succedded, handle keeps valid handle
-        of virtual volume, possible return codes are
+        of Virtual Volume, possible return codes are
             ret_code == RetCode::Ok => operation succedded
             ret_code == RetCode::InsufficientMemory => operation failed due to low memory
             ret_code == RetCode::UnknownError => something went really wrong
@@ -131,66 +192,9 @@ namespace jb
         }
 
 
-        /** Closes given volume
-
-        Invalidates given volume handler, destroys associated virtual volume object, and release
-        allocated resources. If there are operations locking the volume, the function postpones
-        the actions until all locking operations get completed. Unlocked volume is destroyed
-        immediately.
-
-        @tparam T - volume type, auto deducing implied
-        @param [in] volume - volume to be closed
-        
-        @return std::tuple< ret_code >
-            ret_code == RetCode::Ok => operation succedded
-            ret_code == RetCode::InvalidVolumeHandle => passed handle does not refer a volume
-            ret_code == RetCode::UnknownError => something went really wrong
-
-        @throw nothing
-        @todo consider variadic form
-        */
-        template< typename T >
-        static auto Close(T && volume) noexcept
-        {
-            using ValidVolumeTypes = boost::mpl::vector< VirtualVolume >;
-            using VolumeT = std::decay< T >::type;
-
-            static_assert(boost::mpl::contains< ValidVolumeTypes, VolumeT >::type::value, "Invalid volume type");
-            
-            try
-            {
-                auto[guard, collection] = singletons< VolumeT >();
-                {
-                    std::scoped_lock lock(guard);
-
-                    auto impl = volume.impl_.lock();
-
-                    if ( ! impl )
-                    {
-                        return std::make_tuple(RetCode::InvalidHandle);
-                    }
-                    else if ( auto i = collection.find(impl); i != collection.end() )
-                    {
-                        collection.erase(i);
-                        return std::make_tuple(RetCode::Ok);
-                    }
-                    else
-                    {
-                        return std::make_tuple(RetCode::InvalidHandle);
-                    }
-                }
-            }
-            catch (...)
-            {
-            }
-
-            return std::make_tuple(RetCode::UnknownError);
-        }
-
-
         /** Closes all opened volumes
 
-        Invalidates all opened volume handlers, destroys all virtual volume objects, and release
+        Invalidates all opened volume handlers, destroys all Virtual Volume objects, and release
         allocated resources. If there are operations locking a volume, the function postpones
         destruction until all locking operations get completed. Unlocked volumes are destroyed
         immediately.
@@ -230,6 +234,7 @@ namespace jb
 
 #include "virtual_volume.h"
 #include "physical_volume.h"
+#include "mount_point.h"
 
 
 #endif
