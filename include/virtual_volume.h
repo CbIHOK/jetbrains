@@ -11,11 +11,12 @@ namespace jb
 
     Implements monostate pattern, allows many instances to share the same Virtual Tome
     */
-    template < typename Policies >
-    class Storage< Policies >::VirtualVolume
+    template < typename Policies, typename Pad >
+    class Storage< Policies, Pad >::VirtualVolume
     {
 
         friend class Storage;
+        friend typename Pad;
 
 
         //

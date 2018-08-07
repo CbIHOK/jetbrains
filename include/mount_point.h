@@ -5,8 +5,8 @@
 
 namespace jb
 {
-    template < typename Policies >
-    class Storage< Policies >::MountPoint
+    template < typename Policies, typename Pad >
+    class Storage< Policies, Pad >::MountPoint
     {
         friend class Storage::VirtualVolume::Impl;
 

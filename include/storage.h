@@ -15,11 +15,15 @@
 
 namespace jb
 {
-    template < typename Policies >
+    struct DefaultPad {};
+
+    template < typename Policies, typename Pad = DefaultPad >
     class Storage
     {
-
+        friend typename Pad;
         friend class VirtualVolume;
+
+        template <typename T> struct hash {};
 
         /** Helper, provides related singletons
         */

@@ -16,9 +16,11 @@
 namespace jb
 {
 
-    template < typename Policies >
-    class Storage< Policies >::VirtualVolume::Impl
+    template < typename Policies, typename Pad >
+    class Storage< Policies, Pad >::VirtualVolume::Impl
     {
+        friend typename Pad;
+
         //
         // Few aliases
         //

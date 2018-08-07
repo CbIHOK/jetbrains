@@ -3,8 +3,8 @@
 
 namespace jb
 {
-    template < typename Policies >
-    class Storage< Policies >::MountPoint::Impl
+    template < typename Policies, typename Pad >
+    class Storage< Policies, Pad >::MountPoint::Impl
     {
     public:
         Impl() {}

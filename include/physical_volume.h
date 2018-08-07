@@ -4,8 +4,8 @@
 
 namespace jb
 {
-    template < typename Policies >
-    class Storage< Policies >::PhysicalVolume
+    template < typename Policies, typename Pad >
+    class Storage< Policies, Pad >::PhysicalVolume
     {
     public:
 
