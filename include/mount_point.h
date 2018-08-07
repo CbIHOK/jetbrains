@@ -9,6 +9,7 @@ namespace jb
     class Storage< Policies, Pad >::MountPoint
     {
         friend class Storage::VirtualVolume::Impl;
+        friend class Storage::PhysicalVolume;
 
         class Impl;
 

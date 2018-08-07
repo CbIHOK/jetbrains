@@ -171,13 +171,13 @@ namespace jb
 
         auto Mount(PhysicalVolume physical_volume, KeyRefT physical_path, KeyRefT logical_path) noexcept
         {
-            if (auto impl = impl_.lock())
+            if (auto impl = impl_.lock(); impl)
             {
                 return impl->Mount(physical_volume, physical_path, logical_path);
             }
             else
             {
-                return std::make_tuple(Storage::RetCode::InvalidHandle, MountPoint() );
+                return std::pair( RetCode::InvalidHandle, MountPoint() );
             }
         }
     };

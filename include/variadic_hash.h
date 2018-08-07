@@ -7,8 +7,6 @@ namespace jb
 {
     namespace misc
     {
-
-
         template < typename T >
         size_t variadic_hash( const T & v ) noexcept
         {

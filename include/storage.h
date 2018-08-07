@@ -17,13 +17,13 @@ namespace jb
 {
     struct DefaultPad {};
 
+    template <typename Policies, typename Pad, typename T> struct hash {};
+
     template < typename Policies, typename Pad = DefaultPad >
     class Storage
     {
         friend typename Pad;
         friend class VirtualVolume;
-
-        template <typename T> struct hash {};
 
         /** Helper, provides related singletons
         */
@@ -52,27 +52,31 @@ namespace jb
         {
             using ImplT = typename VolumeT::Impl;
 
+            // noexcept guarantee unlike tuple
+            std::pair< RetCode, VolumeT > result{ RetCode::UnknownError, std::move(VolumeT()) };
+
             try
             {
-                auto impl = std::make_shared< ImplT >(args...);
+                auto impl = std::make_shared< ImplT >( std::forward(args)... );
                 auto[guard, collection] = singletons< VolumeT >();
                 {
                     std::scoped_lock l(guard);
                     if (auto i = collection.insert(impl); i.second)
                     {
-                        return std::make_tuple(RetCode::Ok, VolumeT(impl));
+                        result.first = RetCode::Ok;
+                        result.second = std::move(VolumeT(impl));
                     }
                 }
             }
             catch (const std::bad_alloc &)
             {
-                return std::make_tuple(RetCode::InsufficientMemory, VolumeT());
+                result.first = RetCode::InsufficientMemory;
             }
             catch (...)
             {
             }
 
-            return std::make_tuple(RetCode::UnknownError, VolumeT());
+            return result;
         }
 
 
@@ -98,7 +102,7 @@ namespace jb
         {
             assert(volume);
 
-            using ValidVolumeTypes = boost::mpl::vector< VirtualVolume >;
+            using ValidVolumeTypes = boost::mpl::vector< VirtualVolume, PhysicalVolume >;
             using VolumeT = std::decay< T >::type;
 
             static_assert(boost::mpl::contains< ValidVolumeTypes, VolumeT >::type::value, "Invalid volume type");
@@ -109,20 +113,20 @@ namespace jb
                 {
                     std::scoped_lock lock(guard);
 
-                    auto impl = std::move(volume->impl_).lock();
+                    auto impl = volume->impl_.lock();
 
                     if (!impl)
                     {
-                        return std::make_tuple(RetCode::InvalidHandle);
+                        return RetCode::InvalidHandle;
                     }
                     else if (auto i = collection.find(impl); i != collection.end())
                     {
                         collection.erase(i);
-                        return std::make_tuple(RetCode::Ok);
+                        return RetCode::Ok;
                     }
                     else
                     {
-                        return std::make_tuple(RetCode::InvalidHandle);
+                        return RetCode::InvalidHandle;
                     }
                 }
             }
@@ -130,7 +134,7 @@ namespace jb
             {
             }
 
-            return std::make_tuple(RetCode::UnknownError);
+            return RetCode::UnknownError;
         }
 
 
@@ -146,7 +150,8 @@ namespace jb
             InvalidHandle,          ///< Given handle does not address valid object
             MountPointLimitReached, ///< Virtual Volume already has maximum number of Mounts Points
             AlreadyExists,          ///< Such Mount Point already exist
-            InvalidKey,
+            InvalidLogicalKey,
+            InvalidPhysicalKey,
         };
 
 
@@ -213,7 +218,7 @@ namespace jb
         {
             try
             {
-                std::apply( [] (auto handles_of_type) {
+                auto close_all = [] (auto handles_of_type) {
 
                     auto[guard, collection] = handles_of_type;
 
@@ -222,15 +227,18 @@ namespace jb
                         collection.clear();
                     }
 
-                }, std::forward_as_tuple(singletons<VirtualVolume>()));
+                };
                 
-                return std::make_tuple(RetCode::Ok);
+                close_all(singletons<VirtualVolume>());
+                close_all(singletons<PhysicalVolume>());
+
+                return RetCode::Ok;
             }
             catch (...)
             {
             }
 
-            return std::make_tuple(RetCode::UnknownError);
+            return RetCode::UnknownError;
         }
     };
 }
