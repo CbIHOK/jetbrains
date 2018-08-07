@@ -230,14 +230,14 @@ namespace jb
                 auto[logical_path_valid, normalized_logical_path] = normalize_as_path(logical_path);
                 if (!logical_path_valid)
                 {
-                    return std::pair{ RetCode::InvalidLogicalKey, Mount() };
+                    return std::pair{ RetCode::InvalidLogicalKey, MountPoint() };
                 }
 
                 // validate physical path
                 auto[physical_path_valid, normalized_physical_path] = normalize_as_path(physical_path);
                 if (!physical_path_valid)
                 {
-                    return std::pair{ RetCode::InvalidPhysicalKey, Mount() };
+                    return std::pair{ RetCode::InvalidPhysicalKey, MountPoint() };
                 }
 
                 // start mounting
@@ -246,32 +246,33 @@ namespace jb
                 // if maximum number of mount reached?
                 if (uids_.size() >= MountPointLimit)
                 {
-                    return std::pair{ RetCode::MountPointLimitReached, Mount() };
+                    return std::pair{ RetCode::MountPointLimitReached, MountPoint() };
                 }
 
                 // if equivalent mount exists?
-                auto uid = misc::variadic_hash( normalized_logical_path/*, volume*/); // TODO: implement hash<pv>
+                auto uid = misc::variadic_hash(normalized_logical_path/*, volume*/); // TODO: implement hash<pv>
                 if (uids_.find(uid) != uids_.end())
                 {
-                    return std::pair{ RetCode::AlreadyExists, Mount() };
+                    return std::pair{ RetCode::AlreadyExists, MountPoint() };
                 }
 
                 // check that iterators won't be invalidated on insertion
-                if ( ! check_rehash() )
+                if (!check_rehash())
                 {
                     assert(false); // that's unexpected
-                    return std::pair{ RetCode::UnknownError, Mount() };
+                    return std::pair{ RetCode::UnknownError, MountPoint() };
                 }
 
                 // request mount from physical volume
-                if ( auto [ ret, mount ] = volume->get_mount( physical_path ); !mount )
+                auto[ret, mount] = volume.get_mount(normalized_physical_path);
+                if (!mount)
                 {
-                    return std::pair{ ret, Mount() };
+                    return std::pair{ ret, MountPoint() };
                 }
 
                 // TODO consider using custom allocattion
-                auto backtrace = std::make_shared< MountPointBacktrace >( 
-                    uids_.end(), mounts_.end(), paths_.end()
+                auto backtrace = std::make_shared< MountPointBacktrace >(
+                    std::move( MountPointBacktrace{ uids_.end(), mounts_.end(), paths_.end() } ) 
                 );
 
                 try
@@ -290,7 +291,7 @@ namespace jb
                     rollback( mounts_, backtrace->mount_ );
                     rollback( paths_, backtrace->path_ );
 
-                    return std::pair{ RetCode::UnknownError, Mount() };
+                    return std::pair{ RetCode::UnknownError, MountPoint() };
                 }
 
                 return std::pair{ RetCode::Ok, std::move( MountPoint( mount ) ) };
@@ -299,13 +300,9 @@ namespace jb
             {
             }
 
-            return std::pair{ RetCode::UnknownError, Mount() };
+            return std::pair{ RetCode::UnknownError, MountPoint() };
         }
     };
 }
-
-
-#include "mount_point.h"
-
 
 #endif

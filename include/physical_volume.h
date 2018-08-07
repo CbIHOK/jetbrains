@@ -2,6 +2,9 @@
 #define __JB__PHYSICAL_VOLUME__H__
 
 
+#include <memory>
+
+
 namespace jb
 {
     template < typename Policies, typename Pad >
@@ -12,11 +15,13 @@ namespace jb
         using KeyRefT = typename Policies::KeyPolicy::KeyRefT;
         using KeyHashT = typename Policies::KeyPolicy::KeyHashT;
         using KeyHashF = typename Policies::KeyPolicy::KeyHashF;
+
         static constexpr size_t MountPointLimit = Policies::VirtualVolumePolicy::MountPointLimit;
         
         using MountPoint = typename Storage::MountPoint;
         using MountPointImpl = typename Storage::MountPoint::Impl;
         using MountPointImplP = std::shared_ptr< MountPointImpl >;
+        using RetCode = Storage::RetCode;
 
     public:
 
@@ -25,9 +30,9 @@ namespace jb
             return true;
         }
 
-        std::shared_ptr< MountPointImpl > get_mount( KeyRefT path )
+        auto get_mount( KeyRefT path )
         {
-            return std::shared_ptr< MountPointImpl >();
+            return std::pair{ RetCode::Ok, std::shared_ptr< MountPointImpl >() };
         }
     };
 }
