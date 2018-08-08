@@ -5,14 +5,24 @@
 
 namespace jb
 {
+
+    template < typename Policies, typename Pad > class VirtualVolume;
+    template < typename Policies, typename Pad > class PhysicalVolume;
+
+
     template < typename Policies, typename Pad >
-    class Storage< Policies, Pad >::MountPoint
+    class MountPoint
     {
-        friend class Storage::VirtualVolume::Impl;
-        friend class Storage::PhysicalVolume;
+        using VirtualVolume      = ::jb::VirtualVolume< Policies, Pad >;
+        using PhysicalVolume     = ::jb::PhysicalVolume< Policies, Pad >;
+        using VirtualVolumeImpl  = typename VirtualVolume::Impl;
+        using PhysicalVolumeImpl = typename PhysicalVolume::Impl;
+        
+        friend typename VirtualVolume;
+        friend typename VirtualVolumeImpl;
+        friend typename PhysicalVolumeImpl;
 
         class Impl;
-
         std::weak_ptr< Impl > impl_;
 
         MountPoint(const std::shared_ptr< Impl > impl) noexcept : impl_(impl) {}

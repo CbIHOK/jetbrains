@@ -7,16 +7,27 @@
 
 namespace jb
 {
-    /** Virtual Volume Handler
+    template < typename Policies, typename Pad > class Storage;
+    template < typename Policies, typename Pad > class PhysicalVolume;
+    template < typename Policies, typename Pad > class MountPoint;
 
-    Implements monostate pattern, allows many instances to share the same Virtual Tome
+
+    /** Virtual Volume
+
+    Implements monostate pattern, allows many instances to share the same Virtual Volume
     */
     template < typename Policies, typename Pad >
-    class Storage< Policies, Pad >::VirtualVolume
+    class VirtualVolume
     {
+        using Storage        = ::jb::Storage< Policies, Pad >;
+        using PhysicalVolume = ::jb::PhysicalVolume< Policies, Pad >;
+        using MountPoint     = ::jb::MountPoint< Policies, Pad >;
 
-        friend class Storage;
+
         friend typename Pad;
+        friend class Storage;
+        friend class PhysicalVolume;
+        friend class MountPoint;
 
 
         //
@@ -40,7 +51,7 @@ namespace jb
         @param [in] impl - implementation instance to be referred
         @throw nothing
         */
-        VirtualVolume(const std::shared_ptr< Impl > & impl) noexcept : impl_(impl) {}
+        VirtualVolume( const std::shared_ptr< Impl > & impl ) noexcept : impl_( impl ) {}
 
 
     public:
@@ -51,7 +62,7 @@ namespace jb
 
         @throw nothing
         */
-        VirtualVolume() noexcept = default;
+        VirtualVolume( ) noexcept = default;
 
 
         /** Copy constructor
@@ -61,7 +72,7 @@ namespace jb
         @param [in] o - origin
         @throw nothing
         */
-        VirtualVolume(const VirtualVolume & o) noexcept = default;
+        VirtualVolume( const VirtualVolume & o ) noexcept = default;
 
 
         /** Copying assignment
@@ -72,7 +83,7 @@ namespace jb
         @return lvalue of the instance
         @throw nothing
         */
-        VirtualVolume & operator = (const VirtualVolume & o) noexcept = default;
+        VirtualVolume & operator = ( const VirtualVolume & o ) noexcept = default;
 
 
         /** Moving constructor
@@ -83,7 +94,7 @@ namespace jb
         @return lvalue of created instance
         @throw nothing
         */
-        VirtualVolume(VirtualVolume && o) noexcept = default;
+        VirtualVolume( VirtualVolume && o ) noexcept = default;
 
 
         /** Moving assignment
@@ -94,7 +105,7 @@ namespace jb
         @return lvalue of the instance
         @throw nothing
         */
-        VirtualVolume & operator = (VirtualVolume && o) noexcept = default;
+        VirtualVolume & operator = ( VirtualVolume && o ) noexcept = default;
 
 
         /** Checks if an instance is valid i.e. it represents existing volume
@@ -112,8 +123,15 @@ namespace jb
         @return true if the arguments meet condition
         @throw nothing
         */
-        friend auto operator == (const VirtualVolume & l, const VirtualVolume & r) noexcept { return l.load() == r.load(); }
-        friend auto operator != (const VirtualVolume & l, const VirtualVolume & r) noexcept { return l.load() != r.load(); }
+        friend auto operator == (const VirtualVolume & l, const VirtualVolume & r) noexcept
+        {
+            return l.impl_.lock( ) == r.impl_.lock( );
+        }
+
+        friend auto operator != (const VirtualVolume & l, const VirtualVolume & r) noexcept
+        {
+            return l.impl_.lock( ) != r.impl_.lock( );
+        }
 
 
         /** Detaches associated Virtual Volume and close it
@@ -127,9 +145,9 @@ namespace jb
 
         @throw nothing
         */
-        auto Close() noexcept
+        auto Close() const noexcept
         {
-            return Storage::close( std::move(*this) );
+            return Storage::close( *this );
         }
 
 
@@ -169,7 +187,7 @@ namespace jb
             }
         }
 
-        auto Mount(PhysicalVolume physical_volume, KeyRefT physical_path, KeyRefT logical_path) noexcept
+        auto Mount( const PhysicalVolume & physical_volume, KeyRefT physical_path, KeyRefT logical_path) noexcept
         {
             if (auto impl = impl_.lock(); impl)
             {
@@ -184,5 +202,6 @@ namespace jb
 }
 
 #include "virtual_volume_impl.h"
+
 
 #endif

@@ -15,42 +15,45 @@
 
 namespace jb
 {
+
     struct DefaultPad {};
+
+
+    template < typename T > struct Hash { static constexpr bool enabled = false; };
+
+
+    template < typename Policies, typename Pad > class VirtualVolume;
+    template < typename Policies, typename Pad > class PhysicalVolume;
+    template < typename Policies, typename Pad > class MountPoint;
+
+
+    /** Enumerates all possible return codes
+    */
+    enum class RetCode
+    {
+        Ok,                     ///< Operation succedded
+        UnknownError,           ///< Something wrong happened
+        InsufficientMemory,     ///< Operation failed due to low memory
+        InvalidHandle,          ///< Given handle does not address valid object
+        MountPointLimitReached, ///< Virtual Volume already has maximum number of Mounts Points
+        AlreadyExists,          ///< Such Mount Point already exist
+        InvalidLogicalKey,
+        InvalidPhysicalKey,
+    };
+
 
     /**
     */
     template < typename Policies, typename Pad = DefaultPad >
     class Storage
     {
+        using VirtualVolume  = ::jb::VirtualVolume< Policies, Pad >;
+        using PhysicalVolume = ::jb::PhysicalVolume< Policies, Pad >;
+        using MountPoint     = ::jb::MountPoint< Policies, Pad >;
+
         friend typename Pad;
 
-    public:
-
-        /** Enumerates all possible return codes
-        */
-        enum class RetCode
-        {
-            Ok,                     ///< Operation succedded
-            UnknownError,           ///< Something wrong happened
-            InsufficientMemory,     ///< Operation failed due to low memory
-            InvalidHandle,          ///< Given handle does not address valid object
-            MountPointLimitReached, ///< Virtual Volume already has maximum number of Mounts Points
-            AlreadyExists,          ///< Such Mount Point already exist
-            InvalidLogicalKey,
-            InvalidPhysicalKey,
-        };
-
-
-        /** Virtual volume type
-        */
-        class VirtualVolume;
-        class PhysicalVolume;
-        class MountPoint;
-
-
-    private:
-
-       
+     
         template < typename VolumeT >
         struct SingletonPolicy
         {
@@ -181,7 +184,7 @@ namespace jb
 
         template < typename VolumeT >
         [[nodiscard]]
-        static auto close( VolumeT && volume )
+        static auto close( const VolumeT & volume )
         {
             using namespace std;
 

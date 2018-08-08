@@ -4,8 +4,11 @@
 
 namespace jb
 {
+    template < typename Policies, typename Pad > class MountPoint;
+
+
     template < typename Policies, typename Pad >
-    class Storage< Policies, Pad >::MountPoint::Impl
+    class MountPoint< Policies, Pad >::Impl
     {
         friend typename Pad;
 

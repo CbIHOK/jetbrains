@@ -18,12 +18,21 @@
 namespace jb
 {
 
+    template < typename Policies, typename Pad > class PhysicalVolume;
+    template < typename Policies, typename Pad > class MountPoint;
+
+
     template < typename Policies, typename Pad >
-    class Storage< Policies, Pad >::VirtualVolume::Impl
+    class VirtualVolume< Policies, Pad >::Impl
     {
 
+        using MountPoint = ::jb::MountPoint< Policies, Pad >;
+        using MountPointImpl = typename MountPoint::Impl;
+        using MountPointImplP = std::shared_ptr< MountPointImpl >;
+
+
         friend typename Pad;
-        friend class VirtualVolume;
+        friend class MountPoint;
 
         //
         // Few aliases
@@ -33,10 +42,8 @@ namespace jb
         using KeyRefT  = typename Policies::KeyPolicy::KeyRefT;
         using KeyHashT = typename Policies::KeyPolicy::KeyHashT;
         using KeyHashF = typename Policies::KeyPolicy::KeyHashF;
+
         static constexpr size_t MountPointLimit = Policies::VirtualVolumePolicy::MountPointLimit;
-        using MountPoint = typename Storage::MountPoint;
-        using MountPointImpl = typename Storage::MountPoint::Impl;
-        using MountPointImplP = std::shared_ptr< MountPointImpl >;
 
 
         //
