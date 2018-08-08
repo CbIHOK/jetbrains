@@ -129,7 +129,7 @@ namespace jb
         */
         auto Close() noexcept
         {
-            Storage::close(this);
+            return Storage::close( std::move(*this) );
         }
 
 

@@ -12,9 +12,6 @@
 #include <filesystem>
 #include <limits>
 
-#include <boost/mpl/vector.hpp>
-#include <boost/mpl/contains.hpp>
-
 
 namespace jb
 {
@@ -53,55 +50,173 @@ namespace jb
 
     private:
 
-        template <typename T> struct SingletonPolicy {};
+       
+        template < typename VolumeT >
+        struct SingletonPolicy
+        {
+            static constexpr auto enabled = false;
+        };
+
 
         template <>
         struct SingletonPolicy< VirtualVolume >
         {
+            static constexpr auto enabled = true;
+
             static constexpr size_t Limit = Policies::VirtualVolumePolicy::VolumeLimit;
-            using Impl = typename VirtualVolume::Impl;
-            using ImplP = std::shared_ptr< Impl >;
+
+            using ImplT = typename VirtualVolume::Impl;
+            using ImplP = typename std::shared_ptr< ImplT >;
             using CollectionT = std::unordered_set< ImplP >;
             using MutexT = std::mutex;
+
+            template< typename ...Arg >
+            static constexpr auto CreatorF( Arg&&... args )
+            {
+                return std::make_shared< ImplT >( std::forward( args )... );
+            }
+
+            static constexpr auto InserterF = [] ( CollectionT && collection, const ImplP & item )
+            {
+                return collection.insert( item ).second;
+            };
+
+            static constexpr auto DeleterF = [] ( CollectionT && collection, const ImplP & item )
+            {
+                if ( auto it = collection.find( item ); it != collection.end( ) )
+                {
+                    collection.erase( it );
+                    return true;
+                }
+
+                return false;
+            };
         };
-        
+
+
         template <> 
         struct SingletonPolicy< PhysicalVolume >
         {
+            static constexpr auto enabled = true;
+
             static constexpr size_t Limit = Policies::PhysicalVolumePolicy::VolumeLimit;
-            using Impl = typename PhysicalVolume::Impl;
-            using ImplP = std::shared_ptr< Impl >;
+
+            using ImplT = typename PhysicalVolume::Impl;
+            using ImplP = typename std::shared_ptr< ImplT >;
             using CollectionT = std::unordered_map< ImplP, size_t >;
             using MutexT = std::shared_mutex;
+
+            template< typename ...Arg >
+            static constexpr auto CreatorF( Arg&&... args )
+            {
+                return std::make_shared< ImplT >( std::forward( args )... );
+            }
+
+            static constexpr auto InserterF = []( CollectionT && collection, const ImplP & item )
+            {
+                return collection.insert( { item, std::numeric_limits< size_t >::max() } ).second;
+            };
+
+            static constexpr auto DeleterF = [] ( CollectionT && collection, const ImplP & item )
+            {
+                if ( auto it = collection.find( item ); it != collection.end() )
+                {
+                    collection.erase( it );
+                    return true;
+                }
+
+                return false;
+            };
         };
 
-        template < typename T >
+
+        template < typename VolumeT >
+        [ [ nodiscard ] ]
         static auto singletons()
         {
-            using Policy = SingletonPolicy< T >;
+            using SingletonPolicy = SingletonPolicy< VolumeT >;
+            static_assert( SingletonPolicy::enabled, "Unsupported volume type");
+
             // c++x guaranties thread safe initialization of the static variables
-            static typename Policy::MutexT mutex;
-            static typename Policy::CollectionT holder( Policy::Limit );
+            static typename SingletonPolicy::MutexT mutex;
+            static typename SingletonPolicy::CollectionT holder( SingletonPolicy::Limit );
+
             return std::forward_as_tuple( mutex, holder );
         }
 
 
-        template < typename T >
-        static auto update_physical_volume_priorities( T && update_lambda )
+        template < typename VolumeT, typename ...Args >
+        [ [ nodiscard ] ]
+        static auto open( Args&&... args) noexcept
         {
-            using Impl = PhysicalVolume::Impl;
-            using ImplP = std::shared_lock< Impl >;
-
-            auto volume = pv.lock();
-
-            if ( !volume )
+            try
             {
-                return RetCode::InvalidHandle;
+                using SingletonPolicy = SingletonPolicy< VolumeT >;
+                static_assert( SingletonPolicy::enabled, "Unsupported volume type" );
+
+                // get singletons
+                auto[ guard, collection ] = singletons< VolumeT >();
+                std::scoped_lock lock( guard );
+
+                // create new item and add it into collection
+                auto item = SingletonPolicy::CreatorF( std::forward(args)... );
+                
+                if ( SingletonPolicy::InserterF( std::move(collection), item ) )
+                {
+                    return std::pair{ RetCode::Ok, VolumeT( item ) };
+                }
+            }
+            catch (const std::bad_alloc &)
+            {
+                return std::pair{ RetCode::InsufficientMemory, VolumeT() };
+            }
+            catch (...)
+            {
+            }
+            
+            return std::pair{ RetCode::UnknownError, VolumeT() };
+        }
+
+        template < typename VolumeT >
+        [ [ nodiscard ] ]
+        static auto close( VolumeT && volume )
+        {
+            try
+            {
+                using SingletonPolicy = SingletonPolicy< VolumeT >;
+                static_assert( SingletonPolicy::enabled, "Unsupported volume type" );
+
+                auto[ guard, collection ] = singletons< VolumeT >( );
+                std::scoped_lock lock( guard );
+
+                auto impl = std::move( volume.impl_ );
+                auto item = impl.lock( );
+
+                if ( !item )
+                {
+                    return RetCode::InvalidHandle;
+                }
+                else if ( SingletonPolicy::DeleterF( std::move(collection), item ) )
+                {
+                    return RetCode::Ok;
+                }
+                else
+                {
+                    return RetCode::InvalidHandle;
+                }
+            }
+            catch ( ... )
+            {
             }
 
-            auto[ guard, collection ] = physical_volume_singletons();
+            return RetCode::UnknownError;
+        }
 
-            std::unique_lock<std::shared_mutex> lock( guard );
+        template < typename T >
+        static auto update_physical_volume_priorities( T && labmda )
+        {
+            auto[ guard, collection ] = singletons< PhysicalVolume >();
+            std::unique_lock< std::shared_mutex > lock( guard );
 
             if ( auto i = collection.find( volume ); i != collection.end() )
             {
@@ -114,64 +229,15 @@ namespace jb
             }
         }
 
-        static auto physical_volume_prioritize_on_bottom( PhysicalVolume pv ) {}
-        static auto physical_volume_prioritize_before( PhysicalVolume pv, PhysicalVolume before ) {}
-        static auto physical_volume_prioritize_after( PhysicalVolume pv, PhysicalVolume after ) {}
-
-        /* Helper, closes given handler
-
-        Invalidates given volume handler, destroys associated Virtual Volume object, and release
-        allocated resources. If there are operations locking the volume, the function postpones
-        the actions until all locking operations get completed. Unlocked volume is destroyed
-        immediately.
-
-        @tparam T - volume type, auto deducing implied
-        @param [in] volume - volume to be closed
-
-        @return std::tuple< ret_code >
-        ret_code == RetCode::Ok => operation succedded
-        ret_code == RetCode::InvalidVolumeHandle => passed handle does not refer a volume
-        ret_code == RetCode::UnknownError => something went really wrong
-
-        @throw nothing
-        */
-        template< typename T >
-        static auto close(T * volume) noexcept
+        static auto physical_volume_prioritize_on_bottom( PhysicalVolume && volume )
         {
-            assert(volume);
-
-            using ValidVolumeTypes = boost::mpl::vector< VirtualVolume, PhysicalVolume >;
-            static_assert(boost::mpl::contains< ValidVolumeTypes, T >::type::value, "Invalid volume type");
-
-            try
-            {
-                auto[guard, collection] = singletons< T >();
-                {
-                    std::scoped_lock lock( guard );
-
-                    auto impl = volume->impl_.lock();
-
-                    if (!impl)
-                    {
-                        return RetCode::InvalidHandle;
-                    }
-                    else if (auto i = collection.find(impl); i != collection.end())
-                    {
-                        collection.erase(i);
-                        return RetCode::Ok;
-                    }
-                    else
-                    {
-                        return RetCode::InvalidHandle;
-                    }
-                }
-            }
-            catch (...)
-            {
-            }
-
-            return RetCode::UnknownError;
+            auto[ guard, collection ] = singletons< PhysicalVolume >( );
+            std::unique_lock< std::shared_mutex > lock( guard );
         }
+
+        static auto physical_volume_prioritize_on_bottom( PhysicalVolume * pv ) {}
+        static auto physical_volume_prioritize_before( PhysicalVolume * pv, PhysicalVolume * before ) {}
+        static auto physical_volume_prioritize_after( PhysicalVolume * pv, PhysicalVolume * after ) {}
 
 
     public:
@@ -189,28 +255,7 @@ namespace jb
         [[nodiscard]]
         static auto OpenVirtualVolume() noexcept
         {
-            try
-            {
-                auto[ guard, collection ] = singletons< VirtualVolume >();
-
-                std::scoped_lock lock( guard );
-
-                auto impl = std::make_shared< VirtualVolume::Impl>();
-
-                if ( auto[ i, success ] = collection.insert( impl ); success )
-                {
-                    return std::pair{ RetCode::Ok, VirtualVolume( *i ) };
-                }
-            }
-            catch ( const std::bad_alloc & )
-            {
-                return std::pair{ RetCode::InsufficientMemory, VirtualVolume() };
-            }
-            catch(...)
-            {
-            }
-
-            return std::pair{ RetCode::UnknownError, VirtualVolume() };
+            return open< VirtualVolume >( );
         }
 
 
@@ -235,30 +280,22 @@ namespace jb
             try
             {
                 auto[ guard, collection ] = singletons< PhysicalVolume >();
-
                 std::scoped_lock lock( guard );
 
-                using Impl = PhysicalVolume::Impl;
+                auto[ ret, handle ] = open< PhysicalVolume >( );
 
-                auto[ it, success ] = collection.insert( { 
-                    std::make_shared< Impl>(), 
-                    std::numeric_limits<size_t>::max() 
-                } );
-                
-                if (success )
+                if ( RetCode::Ok == ret )
                 {
-                    return std::pair{ RetCode::Ok, VirtualVolume( it->first ) };
+                    physical_volume_prioritize_on_bottom( handle );
                 }
-            }
-            catch ( const std::bad_alloc & )
-            {
-                return std::pair{ RetCode::InsufficientMemory, VirtualVolume() };
+
+                return std::pair{ ret, handle };
             }
             catch ( ... )
             {
             }
 
-            return std::pair{ RetCode::UnknownError, VirtualVolume() };
+            return std::pair{ RetCode::UnknownError, PhysicalVolume() };
         }
     };
 }
