@@ -16,17 +16,6 @@
 namespace jb
 {
 
-    struct DefaultPad {};
-
-
-    template < typename T > struct Hash { static constexpr bool enabled = false; };
-
-
-    template < typename Policies, typename Pad > class VirtualVolume;
-    template < typename Policies, typename Pad > class PhysicalVolume;
-    template < typename Policies, typename Pad > class MountPoint;
-
-
     /** Enumerates all possible return codes
     */
     enum class RetCode
@@ -42,6 +31,19 @@ namespace jb
     };
 
 
+    struct DefaultPad {};
+
+    template < typename Policies, typename Pad, typename T > struct Hash
+    { 
+        static constexpr bool enabled = false;
+
+        size_t operator() ( const T & ) const noexcept { return 0; }
+    };
+
+    template < typename Policies, typename Pad > class VirtualVolume;
+    template < typename Policies, typename Pad > class PhysicalVolume;
+    template < typename Policies, typename Pad > class MountPoint;
+
     /**
     */
     template < typename Policies, typename Pad = DefaultPad >
@@ -52,7 +54,7 @@ namespace jb
 
         using VirtualVolume  = ::jb::VirtualVolume< Policies, Pad >;
         using PhysicalVolume = ::jb::PhysicalVolume< Policies, Pad >;
-        using MountPoint     = ::jb::MountPoint< Policies, Pad >;
+
 
     private:
 
@@ -189,6 +191,7 @@ namespace jb
             return pair{ RetCode::UnknownError, VolumeT() };
         }
 
+
         template < typename VolumeT >
         [[nodiscard]]
         static auto close( const VolumeT & volume )
@@ -225,6 +228,7 @@ namespace jb
 
             return RetCode::UnknownError;
         }
+
 
         [[ nodiscard ]]
         static auto prioritize_on_top( const PhysicalVolume & volume ) noexcept
@@ -264,6 +268,7 @@ namespace jb
 
             return RetCode::UnknownError;
         }
+
 
         [[ nodiscard ]]
         static auto prioritize_on_bottom( const PhysicalVolume & volume ) noexcept
@@ -419,6 +424,7 @@ namespace jb
 
             return RetCode::UnknownError;
         }
+
 
     public:
 

@@ -259,7 +259,7 @@ namespace jb
                 }
 
                 // if equivalent mount exists?
-                auto uid = misc::variadic_hash(normalized_logical_path/*, volume*/); // TODO: implement hash<pv>
+                auto uid = misc::variadic_hash< Policies, Pad >( normalized_logical_path, volume );
                 if (uids_.find(uid) != uids_.end())
                 {
                     return std::pair{ RetCode::AlreadyExists, MountPoint() };

@@ -1,59 +1,52 @@
 #ifndef __JB__VARIADIC_HASH__H__
 #define __JB__VARIADIC_HASH__H__
 
-#include <type_traits>
 #include <functional>
+#include <type_traits>
 
 namespace jb
 {
     namespace misc
     {
-        template <typename T>
-        struct hash_fn_selector
+        template < typename T >
+        struct detect_std_hash
         {
-            static constexpr bool has_std_hash = std::is_same< size_t, decltype(std::hash< T >()(*(T*)0)) >::value;
-            //
-            typedef char no[1];
-            typedef char yes[2];
-            typedef char stdh[3];
+            using HashT = std::hash< T >;
 
-            template <typename U, U u> struct reallyHas;
-            template <typename C> static yes& test(reallyHas<size_t (C::*)(), &C::hash>*) {}
-            template <typename C> static yes& test(reallyHas<size_t (C::*)() const, &C::hash>*) {}
-            template <typename C> static stdh& test(decltype(std::hash<C>()(C()))) {}
-            template <typename> static no& test(...) {}
+            template < typename U > 
+            static constexpr decltype( std::declval< std::hash< U > >()( U() ), bool() ) test( T* )
+            {
+                return true;
+            }
 
-            using ht = decltype(test<T>(0));
+            template < typename > static constexpr bool test( ... ) { return false; }
 
-            static constexpr bool has_own_hash = sizeof(test<T>(0)) == sizeof(yes);
+            static constexpr bool value = test< T >( nullptr );
         };
 
 
-        template < typename T >
+
+        template < typename Policies, typename Pad, typename T >
         size_t variadic_hash( const T & v ) noexcept
         {
-            bool h = hash_fn_selector< T >::has_own_hash;
-            size_t sz = sizeof(hash_fn_selector< T>::ht);
-
-            if (hash_fn_selector<T>::has_own_hash)
+            if constexpr ( Hash< Policies, Pad, T >::enabled )
             {
-                //return v.hash();
+                return Hash< Policies, Pad, T >()( v );
             }
-            else if (hash_fn_selector<T>::has_std_hash)
+            else if constexpr ( detect_std_hash< T >::value )
             {
-                return std::hash< T >()(v);
+                return std::hash< T >()( v );
             }
             else
             {
-                static_assert(hash_fn_selector<T>::has_own_hash || hash_fn_selector<T>::has_std_hash, "No hashing operation defined for T");
-                return  0;
+                static_assert( false, "No hashing operation defined" );
             }
         }
 
-        template < typename T, typename... Args >
+        template < typename Policies, typename Pad, typename T, typename... Args >
         size_t variadic_hash(const T & v, const Args &... args) noexcept
         {
-            size_t seed = variadic_hash(args...);
+            size_t seed = variadic_hash< Policies, Pad >(args...);
             return std::hash<T>()(v) + 0x9e3779b9 + (seed << 6) + (seed >> 2);
         }
     }
