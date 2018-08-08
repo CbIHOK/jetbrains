@@ -10,6 +10,7 @@ namespace jb
     template < typename Policies, typename Pad >
     class Storage< Policies, Pad >::PhysicalVolume
     {
+
         using KeyCharT = typename Policies::KeyCharT;
         using KeyValueT = typename Policies::KeyValueT;
         using KeyRefT = typename Policies::KeyPolicy::KeyRefT;
@@ -24,6 +25,8 @@ namespace jb
         using RetCode = Storage::RetCode;
 
     public:
+
+        class Impl;
 
         friend bool operator == (const PhysicalVolume & l, const PhysicalVolume & r) noexcept
         {

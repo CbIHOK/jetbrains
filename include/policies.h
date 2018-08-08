@@ -30,17 +30,15 @@ namespace jb
 
         struct VirtualVolumePolicy
         {
+            static constexpr size_t VolumeLimit = 64;
             static constexpr size_t MountPointLimit = (1 << 10);
         };
 
-        struct BTreePolicy
+        struct PhysicalVolumePolicy
         {
-            static constexpr size_t Power = 8;
-        };
-
-        struct StoragePolicy
-        {
-            using IndexT = size_t;
+            static constexpr size_t VolumeLimit = 64;
+            static constexpr size_t MountPointLimit = (1 << 10);
+            static constexpr size_t BTreePower = 1024;
         };
     };
 }

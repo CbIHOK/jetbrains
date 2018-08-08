@@ -4,10 +4,13 @@
 
 #include <memory>
 #include <mutex>
+#include <shared_mutex>
 #include <unordered_set>
-#include <tuple>
+#include <unordered_map>
+#include <utility>
 #include <type_traits>
 #include <filesystem>
+#include <limits>
 
 #include <boost/mpl/vector.hpp>
 #include <boost/mpl/contains.hpp>
@@ -17,68 +20,103 @@ namespace jb
 {
     struct DefaultPad {};
 
-    template <typename Policies, typename Pad, typename T> struct hash {};
-
+    /**
+    */
     template < typename Policies, typename Pad = DefaultPad >
     class Storage
     {
         friend typename Pad;
-        friend class VirtualVolume;
 
-        /** Helper, provides related singletons
+    public:
+
+        /** Enumerates all possible return codes
         */
-        template < typename VolumeT > 
-        static auto singletons() noexcept
+        enum class RetCode
         {
-            using ImplT = typename VolumeT::Impl;
+            Ok,                     ///< Operation succedded
+            UnknownError,           ///< Something wrong happened
+            InsufficientMemory,     ///< Operation failed due to low memory
+            InvalidHandle,          ///< Given handle does not address valid object
+            MountPointLimitReached, ///< Virtual Volume already has maximum number of Mounts Points
+            AlreadyExists,          ///< Such Mount Point already exist
+            InvalidLogicalKey,
+            InvalidPhysicalKey,
+        };
 
+
+        /** Virtual volume type
+        */
+        class VirtualVolume;
+        class PhysicalVolume;
+        class MountPoint;
+
+
+    private:
+
+        template <typename T> struct SingletonPolicy {};
+
+        template <>
+        struct SingletonPolicy< VirtualVolume >
+        {
+            static constexpr size_t Limit = Policies::VirtualVolumePolicy::VolumeLimit;
+            using Impl = typename VirtualVolume::Impl;
+            using ImplP = std::shared_ptr< Impl >;
+            using CollectionT = std::unordered_set< ImplP >;
+            using MutexT = std::mutex;
+        };
+        
+        template <> 
+        struct SingletonPolicy< PhysicalVolume >
+        {
+            static constexpr size_t Limit = Policies::PhysicalVolumePolicy::VolumeLimit;
+            using Impl = typename PhysicalVolume::Impl;
+            using ImplP = std::shared_ptr< Impl >;
+            using CollectionT = std::unordered_map< ImplP, size_t >;
+            using MutexT = std::shared_mutex;
+        };
+
+        template < typename T >
+        static auto singletons()
+        {
+            using Policy = SingletonPolicy< T >;
             // c++x guaranties thread safe initialization of the static variables
-            static std::mutex guard;
-
-            // definitely opening/closing operations ain't time critical, thus I don't care about
-            // structure choice. Also uniqueness of kept values makes unordered_set<> quite enough
-            // to me
-            static std::unordered_set< std::shared_ptr< ImplT > > holder;
-
-            return std::forward_as_tuple(guard, holder);
+            static typename Policy::MutexT mutex;
+            static typename Policy::CollectionT holder( Policy::Limit );
+            return std::forward_as_tuple( mutex, holder );
         }
 
 
-        //
-        // Just a helper
-        //
-        template < typename VolumeT, typename ... Args >
-        static auto open(Args&& ... args) noexcept
+        template < typename T >
+        static auto update_physical_volume_priorities( T && update_lambda )
         {
-            using ImplT = typename VolumeT::Impl;
+            using Impl = PhysicalVolume::Impl;
+            using ImplP = std::shared_lock< Impl >;
 
-            // noexcept guarantee unlike tuple
-            std::pair< RetCode, VolumeT > result{ RetCode::UnknownError, std::move(VolumeT()) };
+            auto volume = pv.lock();
 
-            try
+            if ( !volume )
             {
-                auto impl = std::make_shared< ImplT >( std::forward(args)... );
-                auto[guard, collection] = singletons< VolumeT >();
-                {
-                    std::scoped_lock l(guard);
-                    if (auto i = collection.insert(impl); i.second)
-                    {
-                        result.first = RetCode::Ok;
-                        result.second = std::move(VolumeT(impl));
-                    }
-                }
-            }
-            catch (const std::bad_alloc &)
-            {
-                result.first = RetCode::InsufficientMemory;
-            }
-            catch (...)
-            {
+                return RetCode::InvalidHandle;
             }
 
-            return result;
+            auto[ guard, collection ] = physical_volume_singletons();
+
+            std::unique_lock<std::shared_mutex> lock( guard );
+
+            if ( auto i = collection.find( volume ); i != collection.end() )
+            {
+                auto priority = i->second;
+                for ( auto && v : collection ) update_lambda( v );
+            }
+            else
+            {
+                return RetCode::UnknownError;
+            }
         }
 
+        static auto physical_volume_prioritize_on_bottom( PhysicalVolume pv ) {}
+        static auto physical_volume_prioritize_before( PhysicalVolume pv, PhysicalVolume before ) {}
+        static auto physical_volume_prioritize_after( PhysicalVolume pv, PhysicalVolume after ) {}
 
         /* Helper, closes given handler
 
@@ -103,15 +141,13 @@ namespace jb
             assert(volume);
 
             using ValidVolumeTypes = boost::mpl::vector< VirtualVolume, PhysicalVolume >;
-            using VolumeT = std::decay< T >::type;
-
-            static_assert(boost::mpl::contains< ValidVolumeTypes, VolumeT >::type::value, "Invalid volume type");
+            static_assert(boost::mpl::contains< ValidVolumeTypes, T >::type::value, "Invalid volume type");
 
             try
             {
-                auto[guard, collection] = singletons< VolumeT >();
+                auto[guard, collection] = singletons< T >();
                 {
-                    std::scoped_lock lock(guard);
+                    std::scoped_lock lock( guard );
 
                     auto impl = volume->impl_.lock();
 
@@ -140,28 +176,6 @@ namespace jb
 
     public:
 
-        /** Enumerates all possible return codes
-        */
-        enum class RetCode
-        {
-            Ok,                     ///< Operation succedded
-            UnknownError,           ///< Something wrong happened
-            InsufficientMemory,     ///< Operation failed due to low memory
-            InvalidHandle,          ///< Given handle does not address valid object
-            MountPointLimitReached, ///< Virtual Volume already has maximum number of Mounts Points
-            AlreadyExists,          ///< Such Mount Point already exist
-            InvalidLogicalKey,
-            InvalidPhysicalKey,
-        };
-
-
-        /** Virtual volume type
-        */
-        class VirtualVolume;
-        class PhysicalVolume;
-        class MountPoint;
-
-
         /** Creates new Virtual Volumes
 
         @return std::tuple< ret_code, handle >, if operation succedded, handle keeps valid handle
@@ -175,7 +189,28 @@ namespace jb
         [[nodiscard]]
         static auto OpenVirtualVolume() noexcept
         {
-            return open< VirtualVolume >();
+            try
+            {
+                auto[ guard, collection ] = singletons< VirtualVolume >();
+
+                std::scoped_lock lock( guard );
+
+                auto impl = std::make_shared< VirtualVolume::Impl>();
+
+                if ( auto[ i, success ] = collection.insert( impl ); success )
+                {
+                    return std::pair{ RetCode::Ok, VirtualVolume( *i ) };
+                }
+            }
+            catch ( const std::bad_alloc & )
+            {
+                return std::pair{ RetCode::InsufficientMemory, VirtualVolume() };
+            }
+            catch(...)
+            {
+            }
+
+            return std::pair{ RetCode::UnknownError, VirtualVolume() };
         }
 
 
@@ -195,50 +230,35 @@ namespace jb
         @todo implement
         */
         [[nodiscard]]
-        static auto OpenPhysicalVolume(std::filesystem::path && path ) noexcept
-        {
-            return open< PhysicalVolume >(path);
-        }
-
-
-        /** Closes all opened volumes
-
-        Invalidates all opened volume handlers, destroys all Virtual Volume objects, and release
-        allocated resources. If there are operations locking a volume, the function postpones
-        destruction until all locking operations get completed. Unlocked volumes are destroyed
-        immediately.
-
-        @return std::tuple< ret_code >
-            ret_code == RetCode::Ok => operation succedded
-            ret_code == RetCode::UnknownError => something went really wrong
-
-        @throw nothing
-        */
-        static auto CloseAll() noexcept
+        static auto OpenPhysicalVolume( std::filesystem::path && path ) noexcept
         {
             try
             {
-                auto close_all = [] (auto handles_of_type) {
+                auto[ guard, collection ] = singletons< PhysicalVolume >();
 
-                    auto[guard, collection] = handles_of_type;
+                std::scoped_lock lock( guard );
 
-                    {
-                        std::scoped_lock lock(guard);
-                        collection.clear();
-                    }
+                using Impl = PhysicalVolume::Impl;
 
-                };
+                auto[ it, success ] = collection.insert( { 
+                    std::make_shared< Impl>(), 
+                    std::numeric_limits<size_t>::max() 
+                } );
                 
-                close_all(singletons<VirtualVolume>());
-                close_all(singletons<PhysicalVolume>());
-
-                return RetCode::Ok;
+                if (success )
+                {
+                    return std::pair{ RetCode::Ok, VirtualVolume( it->first ) };
+                }
             }
-            catch (...)
+            catch ( const std::bad_alloc & )
+            {
+                return std::pair{ RetCode::InsufficientMemory, VirtualVolume() };
+            }
+            catch ( ... )
             {
             }
 
-            return RetCode::UnknownError;
+            return std::pair{ RetCode::UnknownError, VirtualVolume() };
         }
     };
 }
