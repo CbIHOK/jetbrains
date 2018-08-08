@@ -7,9 +7,7 @@
 
 namespace jb
 {
-    template < typename Policies, typename Pad > class Storage;
-    template < typename Policies, typename Pad > class PhysicalVolume;
-    template < typename Policies, typename Pad > class MountPoint;
+    template < typename Policies, typename Pad > class VirtualVolumeImpl;
 
 
     /** Virtual Volume
@@ -20,14 +18,13 @@ namespace jb
     class VirtualVolume
     {
         using Storage        = ::jb::Storage< Policies, Pad >;
+        using Impl           = ::jb::VirtualVolumeImpl< Policies, Pad >;
         using PhysicalVolume = ::jb::PhysicalVolume< Policies, Pad >;
         using MountPoint     = ::jb::MountPoint< Policies, Pad >;
 
 
         friend typename Pad;
         friend class Storage;
-        friend class PhysicalVolume;
-        friend class MountPoint;
 
 
         //
@@ -40,7 +37,6 @@ namespace jb
         //
         // PIMP
         //
-        class Impl;
         std::weak_ptr< Impl > impl_;
 
 

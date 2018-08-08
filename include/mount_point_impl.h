@@ -4,18 +4,15 @@
 
 namespace jb
 {
-    template < typename Policies, typename Pad > class MountPoint;
-
-
     template < typename Policies, typename Pad >
-    class MountPoint< Policies, Pad >::Impl
+    class MountPointImpl
     {
         friend typename Pad;
 
     public:
-        Impl() {}
+        MountPointImpl() {}
 
-        Impl(Impl &&) = delete;
+        MountPointImpl( MountPointImpl &&) = delete;
     };
 }
 

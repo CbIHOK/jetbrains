@@ -10,7 +10,6 @@
 #include <tuple>
 #include <functional>
 #include <type_traits>
-#include "physical_volume.h"
 #include "variadic_hash.h"
 
 #include <boost/container/static_vector.hpp>
@@ -20,16 +19,15 @@ namespace jb
 
     template < typename Policies, typename Pad > class PhysicalVolume;
     template < typename Policies, typename Pad > class MountPoint;
+    template < typename Policies, typename Pad > class MountPointImpl;
 
 
     template < typename Policies, typename Pad >
-    class VirtualVolume< Policies, Pad >::Impl
+    class VirtualVolumeImpl
     {
-
-        using MountPoint = ::jb::MountPoint< Policies, Pad >;
-        using MountPointImpl = typename MountPoint::Impl;
-        using MountPointImplP = std::shared_ptr< MountPointImpl >;
-
+        using PhysicalVolume = ::jb::PhysicalVolume< Policies, Pad >;
+        using MountPoint     = ::jb::MountPoint< Policies, Pad >;
+        using MountPointImpl = ::jb::MountPointImpl< Policies, Pad >;
 
         friend typename Pad;
         friend class MountPoint;
@@ -42,6 +40,7 @@ namespace jb
         using KeyRefT  = typename Policies::KeyPolicy::KeyRefT;
         using KeyHashT = typename Policies::KeyPolicy::KeyHashT;
         using KeyHashF = typename Policies::KeyPolicy::KeyHashF;
+        using ValueT   = typename Policies::ValueT;
 
         static constexpr size_t MountPointLimit = Policies::VirtualVolumePolicy::MountPointLimit;
 
@@ -78,7 +77,10 @@ namespace jb
         //
         // provides O(1) search by mount PIMP pointer, cover dismount use case
         //
-        using MountPointImplCollectionT = std::unordered_map < MountPointImplP, MountPointBacktraceP >;
+        using MountPointImplCollectionT = std::unordered_map <
+            std::shared_ptr< MountPointImpl >,
+            MountPointBacktraceP
+        >;
         MountPointImplCollectionT mounts_;
 
 
@@ -203,14 +205,14 @@ namespace jb
 
     public:
 
-        Impl() : guard_()
+        VirtualVolumeImpl() : guard_()
             , uids_(MountPointLimit)
             , mounts_(MountPointLimit)
             , paths_(MountPointLimit)
         {
         }
 
-        Impl(Impl&&) = delete;
+        VirtualVolumeImpl( VirtualVolumeImpl&& ) = delete;
 
         auto Insert(KeyRefT path, KeyRefT subkey, ValueT && value, bool overwrite ) noexcept
         {

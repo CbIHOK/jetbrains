@@ -8,21 +8,26 @@
 namespace jb
 {
 
-    template < typename Policies, typename Pad > class MountPoint;
-    template < typename Policies, typename Pad > class MountPoint< Policies, Pad >::Impl;
+    template < typename Policies, typename Pad > class Storage;
+    template < typename Policies, typename Pad > class VirtualVolumeImpl;
+    template < typename Policies, typename Pad > class MountPointImpl;
+    template < typename Policies, typename Pad > class PhysicalVolumeImpl;
+
 
     template < typename Policies, typename Pad >
     class PhysicalVolume
     {
-        using Storage           = ::jb::Storage< Policies, Pad >;
-        using VirtualVolumeImpl = ::jb::VirtualVolume< Policies, Pad >::Impl;
-        using MountPointImpl    = ::jb::MountPoint< Policies, Pad >::Impl;
-
         friend typename Pad;
+        template < typename T > friend struct Hash;
+
+        using Storage            = ::jb::Storage< Policies, Pad >;
+        using VirtualVolumeImpl  = ::jb::VirtualVolumeImpl< Policies, Pad >;
+        using MountPointImpl     = ::jb::MountPointImpl< Policies, Pad >;
+        using Impl               = ::jb::PhysicalVolumeImpl< Policies, Pad >;
+
         friend class Storage;
         friend class VirtualVolumeImpl;
         friend class MountPointImpl;
-        template < typename T > friend struct Hash;
 
         using KeyCharT = typename Policies::KeyCharT;
         using KeyValueT = typename Policies::KeyValueT;
@@ -32,7 +37,6 @@ namespace jb
 
         static constexpr size_t MountPointLimit = Policies::VirtualVolumePolicy::MountPointLimit;
         
-        class Impl;
         std::weak_ptr< Impl > impl_;
 
         PhysicalVolume( const std::shared_ptr< Impl > & impl ) noexcept :impl_( impl ) {}
@@ -95,7 +99,5 @@ namespace jb
         }
     };
 }
-
-#include "mount_point.h"
 
 #endif

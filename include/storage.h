@@ -47,11 +47,18 @@ namespace jb
     template < typename Policies, typename Pad = DefaultPad >
     class Storage
     {
+
+    public:
+
         using VirtualVolume  = ::jb::VirtualVolume< Policies, Pad >;
         using PhysicalVolume = ::jb::PhysicalVolume< Policies, Pad >;
         using MountPoint     = ::jb::MountPoint< Policies, Pad >;
 
+    private:
+
         friend typename Pad;
+        friend class VirtualVolume;
+        friend class PhysicalVolume;
 
      
         template < typename VolumeT >

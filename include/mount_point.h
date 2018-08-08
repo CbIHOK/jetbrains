@@ -5,24 +5,17 @@
 
 namespace jb
 {
-
-    template < typename Policies, typename Pad > class VirtualVolume;
-    template < typename Policies, typename Pad > class PhysicalVolume;
-
+    template < typename Policies, typename Pad > class MountPointImpl;
+    template < typename Policies, typename Pad > class VirtualVolumeImpl;
 
     template < typename Policies, typename Pad >
     class MountPoint
     {
-        using VirtualVolume      = ::jb::VirtualVolume< Policies, Pad >;
-        using PhysicalVolume     = ::jb::PhysicalVolume< Policies, Pad >;
-        using VirtualVolumeImpl  = typename VirtualVolume::Impl;
-        using PhysicalVolumeImpl = typename PhysicalVolume::Impl;
+        using Impl              = ::jb::MountPointImpl< Policies, Pad >;
+        using VirtualVolumeImpl = ::jb::VirtualVolumeImpl< Policies, Pad >;
         
-        friend typename VirtualVolume;
         friend typename VirtualVolumeImpl;
-        friend typename PhysicalVolumeImpl;
 
-        class Impl;
         std::weak_ptr< Impl > impl_;
 
         MountPoint(const std::shared_ptr< Impl > impl) noexcept : impl_(impl) {}
@@ -41,10 +34,10 @@ namespace jb
 
         operator bool() const noexcept { return impl_.lock(); }
 
-        friend bool operator == (const MountPoint & l, const MountPoint & r) noexcept { return l.lock() == r.lock();  }
+        friend bool operator == (const MountPoint & l, const MountPoint & r) noexcept { return l.lock() == r.lock(); }
         friend bool operator != (const MountPoint & l, const MountPoint & r) noexcept { return l.lock() != r.lock(); }
 
-        auto Close(bool force = false) noexcept
+        RetCode Close( bool force = false ) const noexcept
         {
         }
     };
