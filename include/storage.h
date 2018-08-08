@@ -103,7 +103,7 @@ namespace jb
 
             using ImplT = typename PhysicalVolume::Impl;
             using ImplP = typename std::shared_ptr< ImplT >;
-            using CollectionT = std::unordered_map< ImplP, size_t >;
+            using CollectionT = std::unordered_map< ImplP, int >;
             using MutexT = std::shared_mutex;
 
             template< typename ...Arg >
@@ -114,7 +114,7 @@ namespace jb
 
             static constexpr auto InserterF = []( CollectionT && collection, const ImplP & item )
             {
-                return collection.insert( { item, std::numeric_limits< size_t >::max() } ).second;
+                return collection.insert( { item, std::numeric_limits< int >::max() } ).second;
             };
 
             static constexpr auto DeleterF = [] ( CollectionT && collection, const ImplP & item )
@@ -131,7 +131,7 @@ namespace jb
 
 
         template < typename VolumeT >
-        [ [ nodiscard ] ]
+        [[ nodiscard ]]
         static auto singletons()
         {
             using SingletonPolicy = SingletonPolicy< VolumeT >;
@@ -146,9 +146,11 @@ namespace jb
 
 
         template < typename VolumeT, typename ...Args >
-        [ [ nodiscard ] ]
+        [[ nodiscard ]]
         static auto open( Args&&... args) noexcept
         {
+            using namespace std;
+
             try
             {
                 using SingletonPolicy = SingletonPolicy< VolumeT >;
@@ -156,38 +158,40 @@ namespace jb
 
                 // get singletons
                 auto[ guard, collection ] = singletons< VolumeT >();
-                std::scoped_lock lock( guard );
+                scoped_lock lock( guard );
 
                 // create new item and add it into collection
                 auto item = SingletonPolicy::CreatorF( std::forward(args)... );
                 
-                if ( SingletonPolicy::InserterF( std::move(collection), item ) )
+                if ( SingletonPolicy::InserterF( move(collection), item ) )
                 {
-                    return std::pair{ RetCode::Ok, VolumeT( item ) };
+                    return pair{ RetCode::Ok, VolumeT( item ) };
                 }
             }
-            catch (const std::bad_alloc &)
+            catch (const bad_alloc &)
             {
-                return std::pair{ RetCode::InsufficientMemory, VolumeT() };
+                return pair{ RetCode::InsufficientMemory, VolumeT() };
             }
             catch (...)
             {
             }
             
-            return std::pair{ RetCode::UnknownError, VolumeT() };
+            return pair{ RetCode::UnknownError, VolumeT() };
         }
 
         template < typename VolumeT >
-        [ [ nodiscard ] ]
+        [[nodiscard]]
         static auto close( VolumeT && volume )
         {
+            using namespace std;
+
             try
             {
                 using SingletonPolicy = SingletonPolicy< VolumeT >;
                 static_assert( SingletonPolicy::enabled, "Unsupported volume type" );
 
                 auto[ guard, collection ] = singletons< VolumeT >( );
-                std::scoped_lock lock( guard );
+                scoped_lock lock( guard );
 
                 auto impl = std::move( volume.impl_ );
                 auto item = impl.lock( );
@@ -212,33 +216,199 @@ namespace jb
             return RetCode::UnknownError;
         }
 
-        template < typename T >
-        static auto update_physical_volume_priorities( T && labmda )
+        [[ nodiscard ]]
+        static auto prioritize_on_top( const PhysicalVolume & volume ) noexcept
         {
-            auto[ guard, collection ] = singletons< PhysicalVolume >();
-            std::unique_lock< std::shared_mutex > lock( guard );
+            using namespace std;
 
-            if ( auto i = collection.find( volume ); i != collection.end() )
+            try
             {
-                auto priority = i->second;
-                for ( auto && v : collection ) update_lambda( v );
+                auto[ guard, collection ] = singletons< PhysicalVolume >( );
+                unique_lock< shared_mutex > lock( guard );
+
+                if ( auto volume_it = collection.find( volume.impl_.lock( ) ); volume_it != collection.end( ) )
+                {
+                    auto volume_priority = volume_it->second;
+
+                    for_each( execution::par, begin( collection ), end( collection ), [] (it ) {
+                        if ( it == volume_it )
+                        {
+                            it->second = 0;
+                        }
+                        else if ( it->second < volume_priority )
+                        {
+                            it->second += 1;
+                        }
+                    } );
+
+                    return RetCodeOk::Ok;
+                }
+                else
+                {
+                    return RetCode::InvalidHandle;
+                }
             }
-            else
+            catch ( ... )
             {
-                return RetCode::UnknownError;
             }
+
+            return RetCode::UnknownError;
         }
 
-        static auto physical_volume_prioritize_on_bottom( PhysicalVolume && volume )
+        [[ nodiscard ]]
+        static auto prioritize_on_bottom( const PhysicalVolume & volume ) noexcept
         {
-            auto[ guard, collection ] = singletons< PhysicalVolume >( );
-            std::unique_lock< std::shared_mutex > lock( guard );
+            using namespace std;
+
+            try
+            {
+                auto[ guard, collection ] = singletons< PhysicalVolume >( );
+                unique_lock< shared_mutex > lock( guard );
+
+                if ( auto volume_it = collection.find( volume.impl_.lock( ) ); volume_it != collection.end( ) )
+                {
+                    auto volume_priority = volume_it->second;
+
+                    for_each( execution::par, begin( collection ), end( collection ), [] ( it ) {
+                        if ( it == volume_it )
+                        {
+                            it->second = collection.size( ) - 1;
+                        }
+                        else if ( it->second > volume_priority )
+                        {
+                            it->second -= 1;
+                        }
+                    } );
+
+                    return RetCodeOk::Ok;
+                }
+                else
+                {
+                    return RetCode::InvalidHandle;
+                }
+            }
+            catch ( ... )
+            {
+            }
+
+            return RetCode::UnknownError;
         }
 
-        static auto physical_volume_prioritize_on_bottom( PhysicalVolume * pv ) {}
-        static auto physical_volume_prioritize_before( PhysicalVolume * pv, PhysicalVolume * before ) {}
-        static auto physical_volume_prioritize_after( PhysicalVolume * pv, PhysicalVolume * after ) {}
 
+        [[ nodiscard ]]
+        static auto prioritize_before( const PhysicalVolume & volume, const PhysicalVolume & before )
+        {
+            using namespace std;
+
+            try
+            {
+                auto[ guard, collection ] = singletons< PhysicalVolume >( );
+                unique_lock< shared_mutex > lock( guard );
+
+                if ( auto volume_it = collection.find( volume.impl_.lock() ); volume_it != collection.end )
+                {
+                    auto volume_priority = volume_it->second;
+
+                    if ( auto before_it = collection.find( before.impl_.lock() ); before_it != collection.end() )
+                    {
+                        auto before_priority = before_it->second;
+                        
+                        auto[ lower, upper, increment, set_volume, set_before ] =
+                            ( volume_priority < before_priority ) ?
+                            tuple{ volume_priority + 1, before_priority, -1, before_priority - 1, before_priority } :
+                            tuple{ before_priority + 1, volume_priority,  1, before_priority, before_priority + 1 };
+
+                        for_each( execution::par, begin( collection ), end( collection ), []( it ){
+                            if ( it == volume_it )
+                            {
+                                it->second = set_volume;
+                            }
+                            else if ( it == before_it )
+                            {
+                                it->second = set_before;
+                            }
+                            else if ( lower <= it->second && it->second < upper )
+                            {
+                                it->second += increment;
+                            }
+                        } );
+
+                        return RetCodeOk::Ok;
+                    }
+                    else
+                    {
+                        return RetCode::InvalidHandle;
+                    }
+                }
+                else
+                {
+                    return RetCode::InvalidHandle;
+                }
+            }
+            catch ( ... )
+            {
+            }
+
+            return RetCode::UnknownError;
+        }
+
+
+        [[ nodiscard ]]
+        static auto prioritize_after( const PhysicalVolume & volume, const PhysicalVolume & after )
+        {
+            using namespace std;
+
+            try
+            {
+                auto[ guard, collection ] = singletons< PhysicalVolume >( );
+                unique_lock< shared_mutex > lock( guard );
+
+                if ( auto volume_it = collection.find( volume.impl_.lock( ) ); volume_it != collection.end() )
+                {
+                    auto volume_priority = volume_it->second;
+
+                    if ( auto after_it = collection.find( after.impl_.lock( ) ); after_it != collection.end() )
+                    {
+                        auto after_priority = after_it->second;
+
+                        auto[ lower, upper, increment, set_volume, set_after ] =
+                            ( volume_priority < after_priority ) ?
+                            tuple{ volume_priority + 1, after_priority,  -1, after_priority,     after_priority - 1  } :
+                            tuple{ after_priority + 1,  volume_priority,  1, after_priority + 1, after_priority      };
+
+                        for_each( execution::par, begin( collection ), end( collection ), [] ( it ) {
+                            if ( it == volume_it )
+                            {
+                                it->second = set_volume;
+                            }
+                            else if ( it == before_it )
+                            {
+                                it->second = set_before;
+                            }
+                            else if ( lower <= it->second && it->second < upper )
+                            {
+                                it->second += increment;
+                            }
+                        } );
+
+                        return RetCodeOk::Ok;
+                    }
+                    else
+                    {
+                        return RetCode::InvalidHandle;
+                    }
+                }
+                else
+                {
+                    return RetCode::InvalidHandle;
+                }
+            }
+            catch ( ... )
+            {
+            }
+
+            return RetCode::UnknownError;
+        }
 
     public:
 
@@ -279,17 +449,28 @@ namespace jb
         {
             try
             {
+                // lock over both open() and prioritize_on_bottom()
                 auto[ guard, collection ] = singletons< PhysicalVolume >();
-                std::scoped_lock lock( guard );
+                std::unique_lock< std::shared_mutex > lock( guard );
 
-                auto[ ret, handle ] = open< PhysicalVolume >( );
-
-                if ( RetCode::Ok == ret )
+                if ( auto[ ret, volume ] = open< PhysicalVolume >( );  RetCode::Ok == ret )
                 {
-                    physical_volume_prioritize_on_bottom( handle );
-                }
+                    assert( volume );
 
-                return std::pair{ ret, handle };
+                    if ( auto ret != prioritize_on_bottom( volume ) )
+                    {
+                        return std::pair{ RetCode::Ok, volume };
+                    }
+                    else
+                    {
+                        assert( close( volume ) != RetCode::InvalidVolume );
+                        return std::pair{ ret, volume };
+                    }
+                }
+                else
+                {
+                    return std::pair{ ret, volume };
+                }
             }
             catch ( ... )
             {

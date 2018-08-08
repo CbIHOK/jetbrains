@@ -10,6 +10,8 @@ namespace jb
     template < typename Policies, typename Pad >
     class Storage< Policies, Pad >::PhysicalVolume
     {
+        friend typename Pad;
+        friend class Storage;
 
         using KeyCharT = typename Policies::KeyCharT;
         using KeyValueT = typename Policies::KeyValueT;
@@ -24,18 +26,66 @@ namespace jb
         using MountPointImplP = std::shared_ptr< MountPointImpl >;
         using RetCode = Storage::RetCode;
 
+        class Impl;
+        std::weak_ptr< Impl > impl_;
+
+        PhysicalVolume( const std::shared_ptr< Impl > & impl ) noexcept :impl_( impl ) {}
+
+
     public:
 
-        class Impl;
 
-        friend bool operator == (const PhysicalVolume & l, const PhysicalVolume & r) noexcept
-        {
-            return true;
-        }
 
         auto get_mount( KeyRefT path )
         {
             return std::pair{ RetCode::Ok, std::shared_ptr< MountPointImpl >() };
+        }
+
+        PhysicalVolume( ) noexcept = default;
+
+        PhysicalVolume( const PhysicalVolume & o ) noexcept = default;
+
+        PhysicalVolume( PhysicalVolume && o ) noexcept = default;
+
+        PhysicalVolume & operator = ( const PhysicalVolume & o ) noexcept = default;
+
+        PhysicalVolume & operator = ( PhysicalVolume && o ) noexcept = default;
+
+        operator bool( ) const noexcept { return impl_.lock( );  }
+
+        friend bool operator == ( const PhysicalVolume & l, const PhysicalVolume & r ) noexcept
+        {
+            return l.impl_.lock( ) == r.impl_.lock( );
+        }
+
+        friend bool operator != ( const PhysicalVolume & l, const PhysicalVolume & r ) noexcept
+        {
+            return l.impl_.lock( ) != r.impl_.lock( );
+        }
+
+        RetCode Close( ) const noexcept
+        {
+            Storage::close( *this );
+        }
+ 
+        RetCode PrioritizeOnTop( ) const noexcept
+        {
+            return Storage::prioritize_on_top( *this );
+        }
+
+        RetCode PrioritizeOnBottom( ) const noexcept
+        {
+            return Storage::prioritize_on_bottom( *this );
+        }
+
+        RetCode PrioritizeBefore( const PhysicalVolume & before ) const noexcept
+        {
+            return Storage::prioritize_on_top( *this, before );
+        }
+
+        RetCode PrioritizeAfter( const PhysicalVolume & after ) const noexcept
+        {
+            return Storage::prioritize_on_top( *this, after );
         }
     };
 }
