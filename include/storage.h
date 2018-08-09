@@ -88,12 +88,12 @@ namespace jb
                 return std::make_shared< ImplT >( std::forward( args )... );
             }
 
-            static constexpr auto InserterF = [] ( CollectionT && collection, const ImplP & item )
+            static constexpr auto InserterF = [] ( CollectionT & collection, const ImplP & item )
             {
                 return collection.insert( item ).second;
             };
 
-            static constexpr auto DeleterF = [] ( CollectionT && collection, const ImplP & item )
+            static constexpr auto DeleterF = [] ( CollectionT & collection, const ImplP & item )
             {
                 if ( auto it = collection.find( item ); it != collection.end( ) )
                 {
@@ -124,12 +124,12 @@ namespace jb
                 return std::make_shared< ImplT >( std::forward( args )... );
             }
 
-            static constexpr auto InserterF = []( CollectionT && collection, const ImplP & item )
+            static constexpr auto InserterF = []( CollectionT & collection, const ImplP & item )
             {
                 return collection.insert( { item, std::numeric_limits< int >::max() } ).second;
             };
 
-            static constexpr auto DeleterF = [] ( CollectionT && collection, const ImplP & item )
+            static constexpr auto DeleterF = [] ( CollectionT & collection, const ImplP & item )
             {
                 if ( auto it = collection.find( item ); it != collection.end() )
                 {
@@ -151,7 +151,7 @@ namespace jb
 
             // c++x guaranties thread safe initialization of the static variables
             static typename SingletonPolicy::MutexT mutex;
-            static typename SingletonPolicy::CollectionT holder( SingletonPolicy::Limit );
+            static typename SingletonPolicy::CollectionT holder{ SingletonPolicy::Limit };
 
             return std::forward_as_tuple( mutex, holder );
         }
@@ -175,20 +175,20 @@ namespace jb
                 // create new item and add it into collection
                 auto item = SingletonPolicy::CreatorF( std::forward(args)... );
                 
-                if ( SingletonPolicy::InserterF( move(collection), item ) )
+                if ( SingletonPolicy::InserterF( collection, item ) )
                 {
-                    return pair{ RetCode::Ok, VolumeT( item ) };
+                    return pair{ RetCode::Ok, VolumeT{ item } };
                 }
             }
             catch (const bad_alloc &)
             {
-                return pair{ RetCode::InsufficientMemory, VolumeT() };
+                return pair{ RetCode::InsufficientMemory, VolumeT{} };
             }
             catch (...)
             {
             }
             
-            return pair{ RetCode::UnknownError, VolumeT() };
+            return pair{ RetCode::UnknownError, VolumeT{} };
         }
 
 
@@ -206,14 +206,13 @@ namespace jb
                 auto[ guard, collection ] = singletons< VolumeT >( );
                 scoped_lock lock( guard );
 
-                auto impl = std::move( volume.impl_ );
-                auto item = impl.lock( );
+                auto impl = volume.impl_.lock( );
 
-                if ( !item )
+                if ( ! impl )
                 {
                     return RetCode::InvalidHandle;
                 }
-                else if ( SingletonPolicy::DeleterF( std::move(collection), item ) )
+                else if ( SingletonPolicy::DeleterF( collection, impl ) )
                 {
                     return RetCode::Ok;
                 }
