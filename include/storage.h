@@ -118,7 +118,7 @@ namespace jb
 
             using ImplT = typename PhysicalVolume::Impl;
             using ImplP = typename std::shared_ptr< ImplT >;
-            using CollectionT = std::unordered_map< ImplP, int >;
+            using CollectionT = std::unordered_map< ImplP, size_t >;
             using MutexT = std::shared_mutex;
 
             template< typename ...Arg >
@@ -129,7 +129,7 @@ namespace jb
 
             static constexpr auto InserterF = []( CollectionT & collection, const ImplP & item )
             {
-                return collection.insert( { item, std::numeric_limits< int >::max() } ).second;
+                return collection.insert( { item, std::numeric_limits< size_t >::max() } ).second;
             };
 
             static constexpr auto DeleterF = [] ( CollectionT & collection, const ImplP & item )
@@ -292,13 +292,13 @@ namespace jb
                     auto volume_priority = volume_it->second;
 
                     for_each( execution::par, begin( collection ), end( collection ), [=] ( auto & val ) {
-                        if ( val.second == volume_it )
+                        if ( val.second == volume_priority )
                         {
-                            it->second = collection.size( ) - 1;
+                            val.second = collection.size( ) - 1;
                         }
                         else if ( val.second > volume_priority )
                         {
-                            it->second -= 1;
+                            val.second -= 1;
                         }
                     } );
 
@@ -470,11 +470,12 @@ namespace jb
         [[nodiscard]]
         static auto OpenPhysicalVolume( std::filesystem::path && path ) noexcept
         {
+            using namespace std;
             try
             {
                 // lock over both open() and prioritize_on_bottom()
-                auto[ guard, collection ] = singletons< PhysicalVolume >();
-                std::unique_lock< std::shared_mutex > lock( guard );
+                static mutex mtx;
+                scoped_lock lock( mtx );
 
                 if ( auto[ ret, volume ] = open< PhysicalVolume >( );  RetCode::Ok == ret )
                 {

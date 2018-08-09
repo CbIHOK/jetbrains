@@ -97,6 +97,7 @@ TEST( VirtualVolume, Limit )
     for ( auto volume : set ) EXPECT_FALSE( volume );
 }
 
+
 TEST( PhysicalVolume, Dummy )
 {
     using Storage = ::jb::Storage<>;
@@ -116,6 +117,7 @@ TEST( PhysicalVolume, Dummy )
         EXPECT_EQ( h1, h2 );
     }
 }
+
 
 TEST( PhysicalVolume, Base )
 {
@@ -156,4 +158,35 @@ TEST( PhysicalVolume, Base )
     EXPECT_EQ( v, copied );
     EXPECT_FALSE( v );
     EXPECT_FALSE( copied );
+}
+
+
+TEST( PhysicalVolume, Limit )
+{
+    using Storage = ::jb::Storage<>;
+    using PhysicalVolume = Storage::PhysicalVolume;
+
+    using namespace jb;
+
+    std::set< PhysicalVolume > set;
+    std::unordered_set< PhysicalVolume, Hash< DefaultPolicies, DefaultPad, PhysicalVolume > > hash;
+
+    for ( size_t i = 0; i < DefaultPolicies::PhysicalVolumePolicy::VolumeLimit; ++i )
+    {
+        auto[ ret, volume ] = Storage::OpenPhysicalVolume( "foo" );
+        EXPECT_EQ( RetCode::Ok, ret );
+        set.insert( volume );
+        hash.insert( volume );
+    }
+
+    EXPECT_EQ( set.size(), DefaultPolicies::PhysicalVolumePolicy::VolumeLimit );
+    EXPECT_EQ( hash.size(), DefaultPolicies::PhysicalVolumePolicy::VolumeLimit );
+
+    auto[ ret, volume ] = Storage::OpenPhysicalVolume( "foo" );
+    EXPECT_EQ( RetCode::LimitReached, ret );
+    EXPECT_FALSE( volume );
+
+    EXPECT_EQ( RetCode::Ok, Storage::CloseAll() );
+
+    for ( auto volume : set ) EXPECT_FALSE( volume );
 }

@@ -73,6 +73,26 @@ namespace jb
             return l.impl_.lock() != r.impl_.lock();
         }
 
+        friend bool operator < ( const PhysicalVolume & l, const PhysicalVolume & r ) noexcept
+        {
+            return l.impl_.lock() < r.impl_.lock();
+        }
+
+        friend bool operator > ( const PhysicalVolume & l, const PhysicalVolume & r ) noexcept
+        {
+            return l.impl_.lock() > r.impl_.lock();
+        }
+
+        friend bool operator <= ( const PhysicalVolume & l, const PhysicalVolume & r ) noexcept
+        {
+            return l.impl_.lock() <= r.impl_.lock();
+        }
+
+        friend bool operator >= ( const PhysicalVolume & l, const PhysicalVolume & r ) noexcept
+        {
+            return l.impl_.lock() >= r.impl_.lock();
+        }
+
         RetCode Close() const noexcept
         {
             return Storage::close( *this );
