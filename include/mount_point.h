@@ -5,16 +5,10 @@
 
 namespace jb
 {
-    template < typename Policies, typename Pad > class MountPointImpl;
-    template < typename Policies, typename Pad > class VirtualVolumeImpl;
-
     template < typename Policies, typename Pad >
     class MountPoint
     {
-        using Impl              = ::jb::MountPointImpl< Policies, Pad >;
-        using VirtualVolumeImpl = ::jb::VirtualVolumeImpl< Policies, Pad >;
-        
-        friend typename VirtualVolumeImpl;
+        class Impl;
 
         std::weak_ptr< Impl > impl_;
 

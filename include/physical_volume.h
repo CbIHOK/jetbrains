@@ -9,25 +9,23 @@ namespace jb
 {
 
     template < typename Policies, typename Pad > class Storage;
-    template < typename Policies, typename Pad > class VirtualVolumeImpl;
-    template < typename Policies, typename Pad > class MountPointImpl;
-    template < typename Policies, typename Pad > class PhysicalVolumeImpl;
+    template < typename Policies, typename Pad > class VirtualVolume;
 
 
     template < typename Policies, typename Pad >
     class PhysicalVolume
     {
+        class Impl;
+
         friend typename Pad;
         template < typename Policies, typename Pad, typename T > friend struct Hash;
 
         using Storage = ::jb::Storage< Policies, Pad >;
-        using VirtualVolumeImpl = ::jb::VirtualVolumeImpl< Policies, Pad >;
-        using MountPointImpl = ::jb::MountPointImpl< Policies, Pad >;
-        using Impl = ::jb::PhysicalVolumeImpl< Policies, Pad >;
+        using VirtualVolume = ::jb::VirtualVolume< Policies, Pad >;
 
         friend class Storage;
-        friend class VirtualVolumeImpl;
-        friend class MountPointImpl;
+        friend typename VirtualVolume::Impl;
+
 
         using KeyCharT = typename Policies::KeyCharT;
         using KeyValueT = typename Policies::KeyValueT;

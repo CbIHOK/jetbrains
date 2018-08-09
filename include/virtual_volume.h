@@ -7,8 +7,8 @@
 
 namespace jb
 {
-    template < typename Policies, typename Pad > class VirtualVolumeImpl;
-
+    template < typename Policies, typename Pad > class Storage;
+    template < typename Policies, typename Pad > class PhysicalVolume;
 
     /** Virtual Volume
 
@@ -17,16 +17,16 @@ namespace jb
     template < typename Policies, typename Pad >
     class VirtualVolume
     {
-        using Storage        = ::jb::Storage< Policies, Pad >;
-        using Impl           = ::jb::VirtualVolumeImpl< Policies, Pad >;
-        using PhysicalVolume = ::jb::PhysicalVolume< Policies, Pad >;
-        using MountPoint     = ::jb::MountPoint< Policies, Pad >;
-
+        class Impl;
 
         friend typename Pad;
-        friend class Storage;
         template < typename Policies, typename Pad, typename T > friend struct Hash;
 
+        using Storage        = ::jb::Storage< Policies, Pad >;
+        using PhysicalVolume = ::jb::PhysicalVolume< Policies, Pad >;
+
+        friend class Storage;
+        friend class PhysicalVolume;
 
         //
         // Few aliases

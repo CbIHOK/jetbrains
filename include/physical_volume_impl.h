@@ -9,7 +9,7 @@ template < typename Policies, typename Pad > class MountPointImpl;
 namespace jb
 {
     template < typename Policies, typename Pad >
-    class PhysicalVolumeImpl
+    class PhysicalVolume< Policies, Pad >::Impl
     {
         using PhysicalVolume = ::jb::PhysicalVolume< Policies, Pad >;
         using MountPointImpl = ::jb::MountPointImpl< Policies, Pad >;

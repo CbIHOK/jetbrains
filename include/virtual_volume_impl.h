@@ -22,7 +22,7 @@ namespace jb
 
 
     template < typename Policies, typename Pad >
-    class VirtualVolumeImpl
+    class VirtualVolume< Policies, Pad >::Impl
     {
         using Storage        = ::jb::Storage< Policies, Pad >;
         using PhysicalVolume = ::jb::PhysicalVolume< Policies, Pad >;
@@ -208,7 +208,7 @@ namespace jb
 
     public:
 
-        VirtualVolumeImpl( ) : guard_( )
+        Impl( ) : guard_( )
             , uids_( MountPointLimit )
             , mounts_( MountPointLimit )
             , paths_( MountPointLimit )
@@ -216,7 +216,7 @@ namespace jb
         }
 
 
-        VirtualVolumeImpl( VirtualVolumeImpl&& ) = delete;
+        Impl( Impl&& ) = delete;
 
 
         auto Insert( KeyRefT path, KeyRefT subkey, ValueT && value, bool overwrite ) noexcept
