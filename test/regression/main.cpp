@@ -1,22 +1,8 @@
-#include <mutex>
-#include <vector>
-#include <assert.h>
-#include <storage.h>
-#include <policies.h>
-#include <iostream>
-#include <btree.h>
-#include <filesystem>
+#include <gtest/gtest.h>
 
-
-int main()
+int main( int argc, char **argv )
 {
-    using namespace jb;
-
-    using Storage = Storage< DefaultPolicies >;
-
-    auto[r, volume ]= Storage::OpenVirtualVolume();
-    auto[r1, m] = volume.Mount( Storage::PhysicalVolume(), "/foo/boo/", "/111/222" );
-    volume.Close();
-
-    return 0;
+    ::testing::InitGoogleTest( &argc, argv );
+    int result = RUN_ALL_TESTS( );
+    return result;
 }

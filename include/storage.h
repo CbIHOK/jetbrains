@@ -11,6 +11,7 @@
 #include <type_traits>
 #include <filesystem>
 #include <limits>
+#include <policies.h>
 
 
 namespace jb
@@ -24,7 +25,7 @@ namespace jb
         UnknownError,           ///< Something wrong happened
         InsufficientMemory,     ///< Operation failed due to low memory
         InvalidHandle,          ///< Given handle does not address valid object
-        MountPointLimitReached, ///< Virtual Volume already has maximum number of Mounts Points
+        LimitReached,           ///< Virtual Volume already has maximum number of Mounts Points
         AlreadyMounted,         ///< Attempt to mount the same physical volume at the same logical path
         InvalidLogicalKey,
         InvalidPhysicalKey,
@@ -46,7 +47,7 @@ namespace jb
 
     /**
     */
-    template < typename Policies, typename Pad = DefaultPad >
+    template < typename Policies = DefaultPolicies, typename Pad = DefaultPad >
     class Storage
     {
 
@@ -171,6 +172,11 @@ namespace jb
                 // get singletons
                 auto[ guard, collection ] = singletons< VolumeT >();
                 scoped_lock lock( guard );
+
+                if ( collection.size( ) >= SingletonPolicy::Limit )
+                {
+                    return pair{ RetCode::LimitReached, VolumeT{} };
+                }
 
                 // create new item and add it into collection
                 auto item = SingletonPolicy::CreatorF( std::forward(args)... );
@@ -492,6 +498,29 @@ namespace jb
             }
 
             return std::pair{ RetCode::UnknownError, PhysicalVolume() };
+        }
+
+
+        static auto CloseAll( ) noexcept
+        {
+            try
+            {
+                auto close_all = [] ( auto singleton ) {
+                    auto[ guard, collection ] = singleton;
+                    std::scoped_lock lock( guard );
+                    collection.clear( );
+                };
+
+                close_all( singletons< VirtualVolume >( ) );
+                close_all( singletons< PhysicalVolume >( ) );
+
+                return RetCode::Ok;
+            }
+            catch(...)
+            {
+            }
+
+            return RetCode::UnknownError;
         }
     };
 }

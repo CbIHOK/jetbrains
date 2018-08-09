@@ -25,6 +25,7 @@ namespace jb
 
         friend typename Pad;
         friend class Storage;
+        template < typename Policies, typename Pad, typename T > friend struct Hash;
 
 
         //
@@ -109,7 +110,7 @@ namespace jb
         @return true if instance is valid
         @throw nothing
         */
-        operator bool() const noexcept { return impl_.lock(); }
+        operator bool() const noexcept { return (bool)impl_.lock(); }
 
 
         /** Comparison operators
@@ -129,6 +130,25 @@ namespace jb
             return l.impl_.lock( ) != r.impl_.lock( );
         }
 
+        friend auto operator < ( const VirtualVolume & l, const VirtualVolume & r ) noexcept
+        {
+            return l.impl_.lock( ) < r.impl_.lock( );
+        }
+
+        friend auto operator > ( const VirtualVolume & l, const VirtualVolume & r ) noexcept
+        {
+            return l.impl_.lock( ) > r.impl_.lock( );
+        }
+
+        friend auto operator <= ( const VirtualVolume & l, const VirtualVolume & r ) noexcept
+        {
+            return l.impl_.lock( ) <= r.impl_.lock( );
+        }
+
+        friend auto operator >= ( const VirtualVolume & l, const VirtualVolume & r ) noexcept
+        {
+            return l.impl_.lock( ) < r.impl_.lock( );
+        }
 
         /** Detaches associated Virtual Volume and close it
         
@@ -199,5 +219,18 @@ namespace jb
 
 #include "virtual_volume_impl.h"
 
+namespace jb
+{
+    template < typename Policies, typename Pad >
+    struct Hash < typename Policies, typename Pad, VirtualVolume< Policies, Pad > >
+    {
+        static constexpr bool enabled = true;
+
+        size_t operator () ( const VirtualVolume< Policies, Pad > & volume ) const noexcept
+        {
+            return std::hash< decltype( volume.impl_.lock( ) ) >{}( volume.impl_.lock( ) );
+        }
+    };
+}
 
 #endif
