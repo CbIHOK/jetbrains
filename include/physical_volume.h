@@ -61,7 +61,7 @@ namespace jb
 
         PhysicalVolume & operator = ( PhysicalVolume && o ) noexcept = default;
 
-        operator bool() const noexcept { return impl_.lock(); }
+        operator bool() const noexcept { return ( bool )impl_.lock(); }
 
         friend bool operator == ( const PhysicalVolume & l, const PhysicalVolume & r ) noexcept
         {
@@ -75,7 +75,7 @@ namespace jb
 
         RetCode Close() const noexcept
         {
-            Storage::close( *this );
+            return Storage::close( *this );
         }
 
         RetCode PrioritizeOnTop() const noexcept
@@ -99,6 +99,10 @@ namespace jb
         }
     };
 }
+
+
+#include "physical_volume_impl.h"
+
 
 namespace jb
 {

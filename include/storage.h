@@ -11,6 +11,8 @@
 #include <type_traits>
 #include <filesystem>
 #include <limits>
+#include <execution>
+#include <assert.h>
 #include <policies.h>
 
 
@@ -289,18 +291,18 @@ namespace jb
                 {
                     auto volume_priority = volume_it->second;
 
-                    for_each( execution::par, begin( collection ), end( collection ), [] ( it ) {
-                        if ( it == volume_it )
+                    for_each( execution::par, begin( collection ), end( collection ), [=] ( auto & val ) {
+                        if ( val.second == volume_it )
                         {
                             it->second = collection.size( ) - 1;
                         }
-                        else if ( it->second > volume_priority )
+                        else if ( val.second > volume_priority )
                         {
                             it->second -= 1;
                         }
                     } );
 
-                    return RetCodeOk::Ok;
+                    return RetCode::Ok;
                 }
                 else
                 {
@@ -478,13 +480,13 @@ namespace jb
                 {
                     assert( volume );
 
-                    if ( auto ret != prioritize_on_bottom( volume ) )
+                    if ( auto ret = prioritize_on_bottom( volume ); ret == RetCode::Ok )
                     {
                         return std::pair{ RetCode::Ok, volume };
                     }
                     else
                     {
-                        assert( close( volume ) != RetCode::InvalidVolume );
+                        assert( RetCode::InvalidHandle != close( volume ) );
                         return std::pair{ ret, volume };
                     }
                 }

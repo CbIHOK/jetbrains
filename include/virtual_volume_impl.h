@@ -15,15 +15,16 @@
 
 namespace jb
 {
-
-    template < typename Policies, typename Pad > class PhysicalVolume;
+    template < typename Policies, typename Pad > class Storage;
     template < typename Policies, typename Pad > class MountPoint;
     template < typename Policies, typename Pad > class MountPointImpl;
+    template < typename Policies, typename Pad > class PhysicalVolume;
 
 
     template < typename Policies, typename Pad >
     class VirtualVolumeImpl
     {
+        using Storage        = ::jb::Storage< Policies, Pad >;
         using PhysicalVolume = ::jb::PhysicalVolume< Policies, Pad >;
         using MountPoint     = ::jb::MountPoint< Policies, Pad >;
         using MountPointImpl = ::jb::MountPointImpl< Policies, Pad >;
@@ -207,7 +208,7 @@ namespace jb
 
     public:
 
-        VirtualVolumeImpl() : guard_()
+        VirtualVolumeImpl( ) : guard_( )
             , uids_( MountPointLimit )
             , mounts_( MountPointLimit )
             , paths_( MountPointLimit )
