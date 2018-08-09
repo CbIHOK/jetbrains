@@ -25,7 +25,7 @@ namespace jb
         InsufficientMemory,     ///< Operation failed due to low memory
         InvalidHandle,          ///< Given handle does not address valid object
         MountPointLimitReached, ///< Virtual Volume already has maximum number of Mounts Points
-        AlreadyExists,          ///< Such Mount Point already exist
+        AlreadyMounted,         ///< Attempt to mount the same physical volume at the same logical path
         InvalidLogicalKey,
         InvalidPhysicalKey,
     };

@@ -12,7 +12,6 @@
 #include <type_traits>
 #include "variadic_hash.h"
 
-#include <boost/container/static_vector.hpp>
 
 namespace jb
 {
@@ -29,6 +28,7 @@ namespace jb
         using MountPoint     = ::jb::MountPoint< Policies, Pad >;
         using MountPointImpl = ::jb::MountPointImpl< Policies, Pad >;
 
+        
         friend typename Pad;
         friend class MountPoint;
 
@@ -37,10 +37,10 @@ namespace jb
         //
         using KeyCharT = typename Policies::KeyCharT;
         using KeyValueT = typename Policies::KeyValueT;
-        using KeyRefT  = typename Policies::KeyPolicy::KeyRefT;
+        using KeyRefT = typename Policies::KeyPolicy::KeyRefT;
         using KeyHashT = typename Policies::KeyPolicy::KeyHashT;
         using KeyHashF = typename Policies::KeyPolicy::KeyHashF;
-        using ValueT   = typename Policies::ValueT;
+        using ValueT = typename Policies::ValueT;
 
         static constexpr size_t MountPointLimit = Policies::VirtualVolumePolicy::MountPointLimit;
 
@@ -103,19 +103,19 @@ namespace jb
 
 
         /* Check if another mount may cause the arrays rehashing...
-        
+
         ...and therefore invalidation of held iterators
 
         @return true if mount acceptable
         @throw nothing
         */
-        [[nodiscard]]
+        [[ nodiscard ]]
         auto check_rehash() const noexcept
         {
-            auto check = [](auto hash) {
+            auto check = [] ( auto hash ) {
                 return hash.size() + 1 <= hash.max_load_factor() * hash.bucket_count();
             };
-            return check(uids_) & check(mounts_) & check(paths_);
+            return check( uids_ ) & check( mounts_ ) & check( paths_ );
         }
 
 
@@ -124,33 +124,34 @@ namespace jb
         @param [in] key - key to be normalized
 
         @return std::tuple<
-            bool - true if key represents valid path
-            KeyValueT - normalized key
+        bool - true if key represents valid path
+        KeyValueT - normalized key
         >
 
         @throw std::exception if unrecoverable error occuder
         */
-        [[nodiscard]]
-        static auto normalize_as_path(KeyRefT key)
+        [[ nodiscard ]]
+        static auto normalize_as_path( KeyRefT key )
         {
+            using namespace std;
             using namespace std::filesystem;
 
-            filesystem::path p{ key };
+            path p{ key };
 
             if ( p.has_root_directory() )
             {
-                if (p.has_filename())
+                if ( p.has_filename() )
                 {
-                    return std::make_tuple(true, p.lexically_normal().string<KeyCharT>());
+                    return pair{ true, p.lexically_normal().string< KeyCharT >() };
                 }
                 else
                 {
-                    return std::make_tuple(true, p.lexically_normal().parent_path().string<KeyCharT>());
+                    return pair{ true, p.lexically_normal().parent_path().string< KeyCharT >() };
                 }
             }
             else
             {
-                return std::make_tuple(false, KeyValueT());
+                return pair{ false, KeyValueT{} };
             }
         }
 
@@ -166,39 +167,40 @@ namespace jb
 
         @throw std::exception if unrecoverable error occuder
         */
-        [[nodiscard]]
-        static auto normalize_as_leaf(KeyRefT key)
+        [ [ nodiscard ] ]
+        static auto normalize_as_leaf( KeyRefT key )
         {
+            using namespace std;
             using namespace std::filesystem;
 
-            filesystem::path p{ key };
+            path p{ key };
 
             if ( !p.has_root_directory() && p.has_filename() )
             {
-                return std::make_tuple(true, p.lexically_normal().string<KeyCharT>());
+                return pair{ true, p.lexically_normal().string<KeyCharT>() };
             }
             else
             {
-                return std::make_tuple(false, KeyValueT());
+                return pair{ false, KeyValueT{} };
             }
         }
 
 
-        [[nodiscard]]
-        static auto get_parent_key(KeyRefT key) noexcept
+        [[ nodiscard ]]
+        static auto get_parent_key( KeyRefT key ) noexcept
         {
             using namespace std::filesystem;
 
-            auto last_separator_pos = key.find_last_of( KeyCharT(path::preferred_separator) );
-            
-            assert( last_separator_pos != KeyRefT::npos );
-            assert( last_seperator_pos < std::min)
+            auto last_separator_pos = key.find_last_of( KeyCharT{ path::preferred_separator } );
 
-            return key.substr(0, last_separator_pos);
+            assert( last_separator_pos != KeyRefT::npos );
+            assert( last_seperator_pos < std::min );
+
+            return key.substr( 0, last_separator_pos );
         }
 
 
-        auto unmount(MountPoint * mp)
+        auto unmount( const MountPoint & mp )
         {
         }
 
@@ -206,110 +208,112 @@ namespace jb
     public:
 
         VirtualVolumeImpl() : guard_()
-            , uids_(MountPointLimit)
-            , mounts_(MountPointLimit)
-            , paths_(MountPointLimit)
+            , uids_( MountPointLimit )
+            , mounts_( MountPointLimit )
+            , paths_( MountPointLimit )
         {
         }
+
 
         VirtualVolumeImpl( VirtualVolumeImpl&& ) = delete;
 
-        auto Insert(KeyRefT path, KeyRefT subkey, ValueT && value, bool overwrite ) noexcept
+
+        auto Insert( KeyRefT path, KeyRefT subkey, ValueT && value, bool overwrite ) noexcept
         {
 
         }
 
-        auto Get(KeyRefT key) noexcept
+        auto Get( KeyRefT key ) noexcept
         {
 
         }
 
-        auto Erase(KeyRefT key, bool force) noexcept
+        auto Erase( KeyRefT key, bool force ) noexcept
         {
 
         }
 
-        auto Mount(PhysicalVolume volume, KeyRefT physical_path, KeyRefT logical_path) noexcept
+        auto Mount( PhysicalVolume volume, KeyRefT physical_path, KeyRefT logical_path ) noexcept
         {
             using namespace std;
 
             try
             {
                 // validate logical path
-                auto[logical_path_valid, normalized_logical_path] = normalize_as_path(logical_path);
-                if (!logical_path_valid)
+                auto[ logical_path_valid, normalized_logical_path ] = normalize_as_path( logical_path );
+                if ( !logical_path_valid )
                 {
-                    return std::pair{ RetCode::InvalidLogicalKey, MountPoint() };
+                    return pair{ RetCode::InvalidLogicalKey, MountPoint{} };
                 }
 
                 // validate physical path
-                auto[physical_path_valid, normalized_physical_path] = normalize_as_path(physical_path);
-                if (!physical_path_valid)
+                auto[ physical_path_valid, normalized_physical_path ] = normalize_as_path( physical_path );
+                if ( !physical_path_valid )
                 {
-                    return std::pair{ RetCode::InvalidPhysicalKey, MountPoint() };
+                    return pair{ RetCode::InvalidPhysicalKey, MountPoint{} };
                 }
 
                 // start mounting
-                std::unique_lock<std::shared_mutex> write_lock(guard_);
+                unique_lock< shared_mutex > write_lock( guard_ );
 
-                // if maximum number of mount reached?
-                if (uids_.size() >= MountPointLimit)
+                // if maximum number of mounts reached?
+                if ( uids_.size() >= MountPointLimit )
                 {
-                    return std::pair{ RetCode::MountPointLimitReached, MountPoint() };
+                    return pair{ RetCode::MountPointLimitReached, MountPoint{} };
                 }
 
-                // if equivalent mount exists?
+                // if another mount of the same physical volume at the logical path already exists
                 auto uid = misc::variadic_hash< Policies, Pad >( normalized_logical_path, volume );
-                if (uids_.find(uid) != uids_.end())
+                if ( uids_.find( uid ) != uids_.end() )
                 {
-                    return std::pair{ RetCode::AlreadyExists, MountPoint() };
+                    return pair{ RetCode::AlreadyMounted, MountPoint() };
                 }
 
                 // check that iterators won't be invalidated on insertion
-                if (!check_rehash())
+                if ( !check_rehash() )
                 {
-                    assert(false); // that's unexpected
-                    return std::pair{ RetCode::UnknownError, MountPoint() };
+                    assert( false ); // that's unexpected
+                    return pair{ RetCode::UnknownError, MountPoint() };
                 }
 
                 // request mount from physical volume
-                auto[ret, mount] = volume.get_mount(normalized_physical_path);
-                if (!mount)
+                auto[ ret, mount ] = volume.get_mount( normalized_physical_path );
+                if ( !mount )
                 {
-                    return std::pair{ ret, MountPoint() };
+                    return pair{ ret, MountPoint() };
                 }
 
-                // TODO consider using custom allocattion
-                auto backtrace = std::make_shared< MountPointBacktrace >(
-                    std::move( MountPointBacktrace{ uids_.end(), mounts_.end(), paths_.end() } ) 
-                );
+                // TODO: consider using a static allocator
+                auto backtrace = make_shared< MountPointBacktrace >(
+                    move( MountPointBacktrace{ uids_.end(), mounts_.end(), paths_.end() } )
+                    );
 
                 try
                 {
                     backtrace->uid_ = uids_.insert( { uid, backtrace } ).first;
                     backtrace->mount_ = mounts_.insert( { mount, backtrace } ).first;
-                    backtrace->path_ = paths_.insert( { KeyHashF()(logical_path), backtrace } );
+                    backtrace->path_ = paths_.insert( { KeyHashF()( logical_path ), backtrace } );
                 }
-                catch (...) // if something went wrong - rollback all
+                catch ( ... ) // if something went wrong - rollback all
                 {
-                    auto rollback = []( auto container, auto it ) {
-                        if (it != container.end()) container.erase( it );
+                    auto rollback = [] ( auto container, auto it ) {
+                        if ( it != container.end() ) container.erase( it );
                     };
 
                     rollback( uids_, backtrace->uid_ );
                     rollback( mounts_, backtrace->mount_ );
                     rollback( paths_, backtrace->path_ );
 
-                    return std::pair{ RetCode::UnknownError, MountPoint() };
+                    return pair{ RetCode::UnknownError, MountPoint{} };
                 }
 
-                return std::pair{ RetCode::Ok, std::move( MountPoint( mount ) ) };
+                return pair{ RetCode::Ok, MountPoint{ mount } };
             }
-            catch (...)
+            catch ( ... )
             {
             }
 
-            return std::pair{ RetCode::UnknownError, MountPoint() };
+            return pair{ RetCode::UnknownError, MountPoint{} };
         }
     };
 }

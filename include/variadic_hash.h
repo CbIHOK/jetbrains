@@ -11,15 +11,14 @@ namespace jb
         template < typename T >
         struct detect_std_hash
         {
-            using HashT = std::hash< T >;
-
             template < typename U > 
             static constexpr decltype( std::declval< std::hash< U > >()( U() ), bool() ) test( T* )
             {
                 return true;
             }
 
-            template < typename > static constexpr bool test( ... ) { return false; }
+            template < typename >
+            static constexpr bool test( ... ) { return false; }
 
             static constexpr bool value = test< T >( nullptr );
         };
