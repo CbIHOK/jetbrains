@@ -6,6 +6,7 @@
 #include <string>
 #include <string_view>
 #include <functional>
+#include <filesystem>
 
 
 namespace jb
@@ -38,6 +39,10 @@ namespace jb
         {
             static constexpr size_t VolumeLimit = 64;
             static constexpr size_t MountPointLimit = (1 << 10);
+
+            static constexpr size_t BloomSize = 16 * ( 1 << 20 ); // 16 Mb
+            static constexpr size_t BloomFnCount = 16;
+
             static constexpr size_t BTreePower = 1024;
         };
     };

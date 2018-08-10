@@ -3,6 +3,7 @@
 add_executable( tests 
     main.cpp
     storage.cpp
+    bloom.cpp
     virtual_volume.cpp 
     )
 
