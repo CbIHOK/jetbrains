@@ -203,6 +203,7 @@ namespace jb
             }
         }
 
+        [[nodiscard]]
         auto Mount( const PhysicalVolume & physical_volume, KeyRefT physical_path, KeyRefT logical_path) noexcept
         {
             if (auto impl = impl_.lock(); impl)

@@ -4,11 +4,23 @@
 #include <variadic_hash.h>
 
 
-TEST( VirtualVolume, Dummy )
+namespace
 {
-    using Storage = ::jb::Storage<>;
-    using VirtualVolume = Storage::VirtualVolume;
+    class TestStorage : public ::testing::Test
+    {
 
+    protected:
+
+        using Storage = ::jb::Storage<>;
+        using VirtualVolume = typename Storage::VirtualVolume;
+        using PhysicalVolume = typename Storage::PhysicalVolume;
+
+    };
+}
+
+
+TEST_F( TestStorage, VirtualVolume_Dummy )
+{
     VirtualVolume v1;
     EXPECT_FALSE( v1 );
 
@@ -25,12 +37,9 @@ TEST( VirtualVolume, Dummy )
 }
 
 
-TEST( VirtualVolume, Base )
+TEST_F( TestStorage, VirtualVolume_Base )
 {
     using namespace jb;
-
-    using Storage = ::jb::Storage<>;
-    using VirtualVolume = Storage::VirtualVolume;
 
     auto [ ret, v ] = Storage::OpenVirtualVolume( );
     EXPECT_EQ( RetCode::Ok, ret );

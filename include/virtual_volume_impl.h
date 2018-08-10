@@ -263,7 +263,7 @@ namespace jb
                     return pair{ RetCode::MountPointLimitReached, MountPoint{} };
                 }
 
-                // if another mount of the same physical volume at the logical path already exists
+                // prevent mouting of the same physical volume at a logicap path
                 auto uid = misc::variadic_hash< Policies, Pad >( normalized_logical_path, volume );
                 if ( uids_.find( uid ) != uids_.end() )
                 {
