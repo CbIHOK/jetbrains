@@ -2,17 +2,14 @@
 #define __JB__PHYSICAL_VOLUME_IMPL__H__
 
 
-template < typename Policies, typename Pad > class PhysicalVolume;
-template < typename Policies, typename Pad > class MountPointImpl;
-
-
 namespace jb
 {
     template < typename Policies, typename Pad >
-    class PhysicalVolume< Policies, Pad >::Impl
+    class Storage< Policies, Pad >::PhysicalVolumeImpl
     {
-        using PhysicalVolume = ::jb::PhysicalVolume< Policies, Pad >;
-        using MountPointImpl = ::jb::MountPointImpl< Policies, Pad >;
+        using Storage = ::jb::Storage< Policies, Pad >;
+        using PhysicalVolume = typename Storage::PhysicalVolume;
+        using MountPointImpl = typename Storage::MountPointImpl;
     };
 }
 

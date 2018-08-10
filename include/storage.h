@@ -17,6 +17,9 @@
 #include <policies.h>
 
 
+class TestStorage;
+
+
 namespace jb
 {
 
@@ -39,16 +42,13 @@ namespace jb
 
     struct DefaultPad {};
 
-    template < typename Policies, typename Pad, typename T > struct Hash
-    { 
-        static constexpr bool enabled = false;
 
+    template < typename T, typename Policies = DefaultPolicies, typename Pad = DefaultPad > struct Hash
+    {
+        static constexpr bool enabled = false;
         size_t operator() ( const T & ) const noexcept { return 0; }
     };
 
-    template < typename Policies, typename Pad > class VirtualVolume;
-    template < typename Policies, typename Pad > class PhysicalVolume;
-    template < typename Policies, typename Pad > class MountPoint;
 
     /**
     */
@@ -56,20 +56,27 @@ namespace jb
     class Storage
     {
 
-    public:
-
-        using ValueT         = typename Policies::ValueT;
-        using VirtualVolume  = ::jb::VirtualVolume< Policies, Pad >;
-        using PhysicalVolume = ::jb::PhysicalVolume< Policies, Pad >;
-        using MountPoint     = ::jb::MountPoint< Policies, Pad >;
-        using TimestampT     = std::filesystem::file_time_type;
-
-
-    private:
-
+        friend class TestStorage;
         friend typename Pad;
         friend class VirtualVolume;
         friend class PhysicalVolume;
+        friend class MountPoint;
+
+    public:
+
+        using ValueT         = typename Policies::ValueT;
+        using TimestampT     = std::filesystem::file_time_type;
+
+        class VirtualVolume;
+        class PhysicalVolume;
+        class MountPoint;
+
+    private:
+
+        class VirtualVolumeImpl;
+        class PhysicalVolumeImpl;
+        class MountPointImpl;
+
 
      
         template < typename VolumeT >
@@ -86,7 +93,7 @@ namespace jb
 
             static constexpr size_t Limit = Policies::VirtualVolumePolicy::VolumeLimit;
 
-            using ImplT = typename VirtualVolume::Impl;
+            using ImplT = typename VirtualVolumeImpl;
             using ImplP = typename std::shared_ptr< ImplT >;
             using CollectionT = std::unordered_set< ImplP >;
             using MutexT = std::mutex;
@@ -122,9 +129,9 @@ namespace jb
 
             static constexpr size_t Limit = Policies::PhysicalVolumePolicy::VolumeLimit;
 
-            using ImplT = typename PhysicalVolume::Impl;
+            using ImplT = typename PhysicalVolumeImpl;
             using ImplP = typename std::shared_ptr< ImplT >;
-            using CollectionT = std::unordered_map< ImplP, size_t >;
+            using CollectionT = std::unordered_map< ImplP, int >;
             using MutexT = std::shared_mutex;
 
             template< typename ...Arg >
@@ -135,7 +142,7 @@ namespace jb
 
             static constexpr auto InserterF = []( CollectionT & collection, const ImplP & item )
             {
-                return collection.insert( { item, std::numeric_limits< size_t >::max() } ).second;
+                return collection.insert( { item, std::numeric_limits< int >::max() } ).second;
             };
 
             static constexpr auto DeleterF = [] ( CollectionT & collection, const ImplP & item )
@@ -257,18 +264,18 @@ namespace jb
                 {
                     auto volume_priority = volume_it->second;
 
-                    for_each( execution::par, begin( collection ), end( collection ), [] (it ) {
-                        if ( it == volume_it )
+                    for_each( execution::par, begin( collection ), end( collection ), [=] ( auto & pv ) {
+                        if ( pv.second == volume_priority )
                         {
-                            it->second = 0;
+                            pv.second = 0;
                         }
-                        else if ( it->second < volume_priority )
+                        else if ( pv.second < volume_priority )
                         {
-                            it->second += 1;
+                            pv.second += 1;
                         }
                     } );
 
-                    return RetCodeOk::Ok;
+                    return RetCode::Ok;
                 }
                 else
                 {
@@ -297,14 +304,14 @@ namespace jb
                 {
                     auto volume_priority = volume_it->second;
 
-                    for_each( execution::par, begin( collection ), end( collection ), [=] ( auto & val ) {
-                        if ( val.second == volume_priority )
+                    for_each( execution::par, begin( collection ), end( collection ), [=] ( auto & pv ) {
+                        if ( pv.second == volume_priority )
                         {
-                            val.second = collection.size( ) - 1;
+                            pv.second = static_cast< int >( collection.size() ) - 1;
                         }
-                        else if ( val.second > volume_priority )
+                        else if ( pv.second > volume_priority )
                         {
-                            val.second -= 1;
+                            pv.second -= 1;
                         }
                     } );
 
@@ -333,7 +340,7 @@ namespace jb
                 auto[ guard, collection ] = singletons< PhysicalVolume >( );
                 unique_lock< shared_mutex > lock( guard );
 
-                if ( auto volume_it = collection.find( volume.impl_.lock() ); volume_it != collection.end )
+                if ( auto volume_it = collection.find( volume.impl_.lock() ); volume_it != collection.end() )
                 {
                     auto volume_priority = volume_it->second;
 
@@ -346,22 +353,22 @@ namespace jb
                             tuple{ volume_priority + 1, before_priority, -1, before_priority - 1, before_priority } :
                             tuple{ before_priority + 1, volume_priority,  1, before_priority, before_priority + 1 };
 
-                        for_each( execution::par, begin( collection ), end( collection ), []( it ){
-                            if ( it == volume_it )
+                        for_each( execution::par, begin( collection ), end( collection ), [=]( auto & pv ){
+                            if ( pv.second == volume_priority )
                             {
-                                it->second = set_volume;
+                                pv.second = set_volume;
                             }
-                            else if ( it == before_it )
+                            else if ( pv.second == before_priority )
                             {
-                                it->second = set_before;
+                                pv.second = set_before;
                             }
-                            else if ( lower <= it->second && it->second < upper )
+                            else if ( lower <= pv.second && pv.second < upper )
                             {
-                                it->second += increment;
+                                pv.second += increment;
                             }
                         } );
 
-                        return RetCodeOk::Ok;
+                        return RetCode::Ok;
                     }
                     else
                     {
@@ -404,22 +411,22 @@ namespace jb
                             tuple{ volume_priority + 1, after_priority,  -1, after_priority,     after_priority - 1  } :
                             tuple{ after_priority + 1,  volume_priority,  1, after_priority + 1, after_priority      };
 
-                        for_each( execution::par, begin( collection ), end( collection ), [] ( it ) {
-                            if ( it == volume_it )
+                        for_each( execution::par, begin( collection ), end( collection ), [=] ( auto & pv ) {
+                            if ( pv.second == volume_priority )
                             {
-                                it->second = set_volume;
+                                pv.second = set_volume;
                             }
-                            else if ( it == before_it )
+                            else if ( pv.second == after_priority )
                             {
-                                it->second = set_before;
+                                pv.second = set_after;
                             }
-                            else if ( lower <= it->second && it->second < upper )
+                            else if ( lower <= pv.second && pv.second < upper )
                             {
-                                it->second += increment;
+                                pv.second += increment;
                             }
                         } );
 
-                        return RetCodeOk::Ok;
+                        return RetCode::Ok;
                     }
                     else
                     {
@@ -436,6 +443,70 @@ namespace jb
             }
 
             return RetCode::UnknownError;
+        }
+
+
+        struct lesser_priority : std::shared_lock< std::shared_mutex >
+        {
+            friend class TestStorage;
+
+            using LockT = std::shared_lock< std::shared_mutex >;
+            using CollectionT = typename SingletonPolicy< PhysicalVolume >::CollectionT;
+            using ImplP = typename SingletonPolicy< PhysicalVolume >::ImplP;
+
+            lesser_priority() noexcept = default;
+
+            lesser_priority( const lesser_priority & ) = delete;
+            lesser_priority & operator = ( const lesser_priority & ) = delete;
+
+            lesser_priority( lesser_priority && ) noexcept = default;
+            lesser_priority & operator = ( lesser_priority && ) noexcept = default;
+            
+            lesser_priority( LockT && lock, const CollectionT & collection ) noexcept
+                : LockT( std::move(lock) )
+                , collection_( collection )
+                , valid_( true )
+            {}
+
+            bool operator () ( const ImplP & l, const ImplP & r ) const noexcept
+            {
+                assert( valid_ && l && r );
+
+                auto l_it = collection_.find( l );
+                auto r_it = collection_.find( r );
+                
+                assert( l_it != collection_.end( ) && r_it != collection_.end( ) );
+                
+                return l_it->second < r_it->second;
+            }
+
+        private:
+
+            bool valid_ = false;
+            const CollectionT & collection_;
+
+        };
+
+
+        [[nodiscard]]
+        static auto get_lesser_priority() noexcept
+        {
+            using namespace std;
+            
+            using CollectionT = typename SingletonPolicy< PhysicalVolume >::CollectionT;
+
+            try
+            {
+                auto[ guard, collection ] = singletons< PhysicalVolume >( );
+                shared_lock< shared_mutex > lock( guard );
+
+                return pair{ RetCode::Ok, lesser_priority{ move( lock ), collection } };
+            }
+            catch ( ... )
+            {
+            }
+
+            return pair{ RetCode::UnknownError, lesser_priority{ shared_lock< shared_mutex >{}, CollectionT{} } };
         }
 
 

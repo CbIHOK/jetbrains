@@ -7,20 +7,15 @@
 
 namespace jb
 {
-    template < typename Policies, typename Pad > class Storage;
-
-
     /** Virtual Volume
 
     Implements monostate pattern, allows many instances to share the same Virtual Volume
     */
     template < typename Policies, typename Pad >
-    class VirtualVolume
+    class Storage< Policies, Pad >::VirtualVolume
     {
-        class Impl;
-
         friend typename Pad;
-        template < typename Policies, typename Pad, typename T > friend struct Hash;
+        template < typename T, typename Policies = DefaultPolicies, typename Pad = DefaultPad > friend struct Hash;
 
         using Storage        = ::jb::Storage< Policies, Pad >;
         using PhysicalVolume = typename Storage::PhysicalVolume;
@@ -29,6 +24,7 @@ namespace jb
 
         friend class Storage;
         friend typename PhysicalVolume;
+        friend typename MountPoint;
 
         //
         // Few aliases
@@ -40,6 +36,7 @@ namespace jb
         //
         // PIMP
         //
+        using Impl = Storage::VirtualVolumeImpl;
         std::weak_ptr< Impl > impl_;
 
 
@@ -215,9 +212,12 @@ namespace jb
         {
             using namespace std;
 
-            if (auto impl = impl_.lock(); impl)
+            auto impl = impl_.lock( );
+            auto physical_impl = physical_volume.impl_.lock( );
+
+            if ( impl && physical_impl )
             {
-                return impl->Mount(physical_volume, physical_path, at, alias);
+                return impl->Mount( physical_impl, physical_path, at, alias);
             }
             else
             {
@@ -229,16 +229,17 @@ namespace jb
 
 #include "virtual_volume_impl.h"
 
+
 namespace jb
 {
     template < typename Policies, typename Pad >
-    struct Hash < typename Policies, typename Pad, VirtualVolume< Policies, Pad > >
+    struct Hash< typename Storage< Policies, Pad >::VirtualVolume, typename Policies, typename Pad >
     {
         static constexpr bool enabled = true;
 
-        size_t operator () ( const VirtualVolume< Policies, Pad > & volume ) const noexcept
+        size_t operator () ( const typename Storage< Policies, Pad >::VirtualVolume & volume ) const noexcept
         {
-            return std::hash< decltype( volume.impl_.lock( ) ) >{}( volume.impl_.lock( ) );
+            return std::hash< decltype( volume.impl_.lock() ) >{}( volume.impl_.lock() );
         }
     };
 }

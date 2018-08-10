@@ -4,28 +4,21 @@
 
 #include <memory>
 
-
 namespace jb
 {
 
-    template < typename Policies, typename Pad > class Storage;
-    template < typename Policies, typename Pad > class VirtualVolume;
-
-
     template < typename Policies, typename Pad >
-    class PhysicalVolume
+    class Storage< Policies, Pad >::PhysicalVolume
     {
-        class Impl;
-
         friend typename Pad;
-        template < typename Policies, typename Pad, typename T > friend struct Hash;
+        friend class TestStorage;
+
+        template < typename T, typename Policies, typename Pad > friend struct Hash;
 
         using Storage = ::jb::Storage< Policies, Pad >;
-        using VirtualVolume = ::jb::VirtualVolume< Policies, Pad >;
 
         friend class Storage;
-        friend typename VirtualVolume::Impl;
-
+        friend typename Storage::VirtualVolume;
 
         using KeyCharT = typename Policies::KeyCharT;
         using KeyValueT = typename Policies::KeyValueT;
@@ -33,8 +26,7 @@ namespace jb
         using KeyHashT = typename Policies::KeyPolicy::KeyHashT;
         using KeyHashF = typename Policies::KeyPolicy::KeyHashF;
 
-        static constexpr size_t MountPointLimit = Policies::VirtualVolumePolicy::MountPointLimit;
-
+        using Impl = typename Storage::PhysicalVolumeImpl;
         std::weak_ptr< Impl > impl_;
 
         PhysicalVolume( const std::shared_ptr< Impl > & impl ) noexcept :impl_( impl ) {}
@@ -71,22 +63,22 @@ namespace jb
 
         friend bool operator < ( const PhysicalVolume & l, const PhysicalVolume & r ) noexcept
         {
-            return l.impl_.lock() < r.impl_.lock();
+            return l.impl_.lock( ) < r.impl_.lock( );
         }
 
         friend bool operator > ( const PhysicalVolume & l, const PhysicalVolume & r ) noexcept
         {
-            return l.impl_.lock() > r.impl_.lock();
+            return l.impl_.lock( ) > r.impl_.lock( );
         }
 
         friend bool operator <= ( const PhysicalVolume & l, const PhysicalVolume & r ) noexcept
         {
-            return l.impl_.lock() <= r.impl_.lock();
+            return l.impl_.lock( ) <= r.impl_.lock( );
         }
 
         friend bool operator >= ( const PhysicalVolume & l, const PhysicalVolume & r ) noexcept
         {
-            return l.impl_.lock() >= r.impl_.lock();
+            return l.impl_.lock( ) > r.impl_.lock( );
         }
 
         RetCode Close() const noexcept
@@ -106,12 +98,12 @@ namespace jb
 
         RetCode PrioritizeBefore( const PhysicalVolume & before ) const noexcept
         {
-            return Storage::prioritize_on_top( *this, before );
+            return Storage::prioritize_before( *this, before );
         }
 
         RetCode PrioritizeAfter( const PhysicalVolume & after ) const noexcept
         {
-            return Storage::prioritize_on_top( *this, after );
+            return Storage::prioritize_after( *this, after );
         }
     };
 }
@@ -123,14 +115,13 @@ namespace jb
 namespace jb
 {
     template < typename Policies, typename Pad >
-    struct Hash < typename Policies, typename Pad, PhysicalVolume< Policies, Pad > >
+    struct Hash< typename Storage< Policies, Pad >::PhysicalVolume, typename Policies, typename Pad >
     {
         static constexpr bool enabled = true;
 
-        size_t operator () ( const PhysicalVolume< Policies, Pad > & volume ) const noexcept
+        size_t operator () ( const typename Storage< Policies, Pad >::PhysicalVolume & volume ) const noexcept
         {
-            void * p = reinterpret_cast< void* >( volume.impl_.lock().get() );
-            return std::hash< void* >()( p );
+            return std::hash< decltype( volume.impl_.lock( ) ) >{}( volume.impl_.lock( ) );
         }
     };
 }

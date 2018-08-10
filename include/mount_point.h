@@ -6,10 +6,11 @@
 namespace jb
 {
     template < typename Policies, typename Pad >
-    class MountPoint
+    class Storage< Policies, Pad >::MountPoint
     {
-        class Impl;
+        using Storage = ::jb::Storage< Policies, Pad >;
 
+        using Impl = typename Storage::MountPointImpl;
         std::weak_ptr< Impl > impl_;
 
         MountPoint(const std::shared_ptr< Impl > impl) noexcept : impl_(impl) {}
