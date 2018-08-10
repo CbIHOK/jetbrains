@@ -13,21 +13,24 @@
 #include "variadic_hash.h"
 
 
+class TestVirtualVolume;
+
+
 namespace jb
 {
     template < typename Policies, typename Pad >
     class Storage< Policies, Pad >::VirtualVolumeImpl
     {
+        friend typename Pad;
+        friend class TestVirtualVolume;
+
+
         using Storage = ::jb::Storage< Policies, Pad >;
-        using PhysicalVolume = typename Storage::PhysicalVolume;
         using PhysicalVolumeImpl = typename Storage::PhysicalVolumeImpl;
         using MountPoint = typename Storage::MountPoint;
         using MountPointImpl = typename Storage::MountPointImpl;
 
         
-        friend typename Pad;
-        friend class MountPoint;
-
         //
         // Few aliases
         //
@@ -220,6 +223,7 @@ namespace jb
             return RetCode::NotImplementedYet;
         }
 
+
         [[ nodiscard ]]
         auto Get( KeyRefT key ) noexcept
         {
@@ -228,17 +232,18 @@ namespace jb
             return pair{ RetCode::NotImplementedYet, ValueT{} };
         }
 
+
         [[ nodiscard ]]
         auto Erase( KeyRefT key, bool force ) noexcept
         {
             return RetCode::NotImplementedYet;
         }
 
+
         [[ nodiscard ]]
         auto Mount( PhysicalVolume volume, KeyRefT physical_path, KeyRefT logical_path, KeyRefT alias ) noexcept
         {
             using namespace std;
-            /*
 
             try
             {
@@ -317,9 +322,6 @@ namespace jb
             }
 
             return pair{ RetCode::UnknownError, MountPoint{} };
-
-            */
-            return pair{ RetCode::NotImplementedYet, MountPoint{} };
         }
     };
 }

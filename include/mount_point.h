@@ -10,6 +10,9 @@ namespace jb
     {
         using Storage = ::jb::Storage< Policies, Pad >;
 
+        friend typename Pad;
+        friend typename Storage::VirtualVolumeImpl;
+
         using Impl = typename Storage::MountPointImpl;
         std::weak_ptr< Impl > impl_;
 

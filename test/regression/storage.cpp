@@ -1,6 +1,5 @@
 #include <gtest/gtest.h>
 #include <storage.h>
-#include <policies.h>
 #include <variadic_hash.h>
 
 

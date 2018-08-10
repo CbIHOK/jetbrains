@@ -5,6 +5,9 @@
 #include <memory>
 
 
+class TestVirtualVolume;
+
+
 namespace jb
 {
     /** Virtual Volume
@@ -17,20 +20,20 @@ namespace jb
         friend typename Pad;
         template < typename T, typename Policies = DefaultPolicies, typename Pad = DefaultPad > friend struct Hash;
 
-        using Storage        = ::jb::Storage< Policies, Pad >;
-        using PhysicalVolume = typename Storage::PhysicalVolume;
-        using MountPoint     = typename Storage::MountPoint;
-        using TimestampT     = typename Storage::TimestampT;
-
-        friend class Storage;
-        friend typename PhysicalVolume;
-        friend typename MountPoint;
-
         //
         // Few aliases
         //
         using ValueT = typename Policies::ValueT;
         using KeyRefT = typename Policies::KeyPolicy::KeyRefT;
+        using Storage        = ::jb::Storage< Policies, Pad >;
+        using PhysicalVolume = typename Storage::PhysicalVolume;
+        using MountPoint     = typename Storage::MountPoint;
+        using TimestampT     = typename Storage::TimestampT;
+
+
+        friend class Storage;
+        friend typename PhysicalVolume;
+        friend typename MountPoint;
 
 
         //
@@ -181,6 +184,7 @@ namespace jb
         }
 
 
+        [[ nodiscard ]]
         auto Get(KeyRefT key) noexcept
         {
             using namespace std;
@@ -195,6 +199,7 @@ namespace jb
             }
         }
 
+
         auto Erase(KeyRefT key, bool force = false) noexcept
         {
             if (auto impl = impl_.lock())
@@ -206,6 +211,7 @@ namespace jb
                 return RetCode::InvalidHandle;
             }
         }
+
 
         [[nodiscard]]
         auto Mount( const PhysicalVolume & physical_volume, KeyRefT physical_path, KeyRefT at, KeyRefT alias ) noexcept

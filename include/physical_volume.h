@@ -106,14 +106,8 @@ namespace jb
             return Storage::prioritize_after( *this, after );
         }
     };
-}
 
 
-#include "physical_volume_impl.h"
-
-
-namespace jb
-{
     template < typename Policies, typename Pad >
     struct Hash< typename Storage< Policies, Pad >::PhysicalVolume, typename Policies, typename Pad >
     {
@@ -125,5 +119,9 @@ namespace jb
         }
     };
 }
+
+
+#include "physical_volume_impl.h"
+
 
 #endif
