@@ -11,10 +11,14 @@ namespace
 
     protected:
 
-        using Storage = ::jb::Storage<>;
-        using VirtualVolume = typename Storage::VirtualVolume;
+        using RetCode        = ::jb::RetCode;
+        using Storage        = ::jb::Storage<>;
+        using VirtualVolume  = typename Storage::VirtualVolume;
         using PhysicalVolume = typename Storage::PhysicalVolume;
+        using ValueT         = Storage::ValueT;
+        using TimestampT     = Storage::TimestampT;
 
+        ~TestStorage( ) { Storage::CloseAll( );  }
     };
 }
 
@@ -25,7 +29,7 @@ TEST_F( TestStorage, VirtualVolume_Dummy )
     EXPECT_FALSE( v1 );
 
     {
-        VirtualVolume v2;
+        VirtualVolume v2{};
         EXPECT_FALSE( v2 );
         EXPECT_TRUE( v1 == v2 );
         EXPECT_FALSE( v1 != v2 );
@@ -34,6 +38,11 @@ TEST_F( TestStorage, VirtualVolume_Dummy )
         size_t h2 = ::jb::misc::variadic_hash< ::jb::DefaultPolicies, ::jb::DefaultPad >( v2 );
         EXPECT_EQ( h1, h2 );
     }
+
+    EXPECT_EQ( RetCode::InvalidHandle, v1.Insert( "/foo", "boo", ValueT{} ) );
+    EXPECT_EQ( RetCode::InvalidHandle, v1.Get( "/foo/boo" ).first );
+    EXPECT_EQ( RetCode::InvalidHandle, v1.Erase( "/foo/boo" ) );
+    EXPECT_EQ( RetCode::InvalidHandle, v1.Mount( PhysicalVolume{}, "/foo/boo", "/", "boo" ).first );
 }
 
 
@@ -76,7 +85,7 @@ TEST_F( TestStorage, VirtualVolume_Base )
 }
 
 
-TEST( VirtualVolume, Limit )
+TEST_F( TestStorage, VirtualVolume_Limit )
 {
     using Storage = ::jb::Storage<>;
     using VirtualVolume = Storage::VirtualVolume;
@@ -107,7 +116,7 @@ TEST( VirtualVolume, Limit )
 }
 
 
-TEST( PhysicalVolume, Dummy )
+TEST_F( TestStorage, PhysicalVolume_Dummy )
 {
     using Storage = ::jb::Storage<>;
     using PhysicalVolume = Storage::PhysicalVolume;
@@ -128,7 +137,7 @@ TEST( PhysicalVolume, Dummy )
 }
 
 
-TEST( PhysicalVolume, Base )
+TEST_F( TestStorage, PhysicalVolume_Base )
 {
     using namespace jb;
 
@@ -170,7 +179,7 @@ TEST( PhysicalVolume, Base )
 }
 
 
-TEST( PhysicalVolume, Limit )
+TEST_F( TestStorage, PhysicalVolume_Limit )
 {
     using Storage = ::jb::Storage<>;
     using PhysicalVolume = Storage::PhysicalVolume;
@@ -199,3 +208,4 @@ TEST( PhysicalVolume, Limit )
 
     for ( auto volume : set ) EXPECT_FALSE( volume );
 }
+

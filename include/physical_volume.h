@@ -42,8 +42,6 @@ namespace jb
 
     public:
 
-
-
         auto get_mount( KeyRefT path )
         {
             return std::pair{ RetCode::Ok, std::shared_ptr< MountPointImpl >() };

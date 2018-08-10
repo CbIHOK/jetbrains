@@ -8,7 +8,7 @@
 namespace jb
 {
     template < typename Policies, typename Pad > class Storage;
-    template < typename Policies, typename Pad > class PhysicalVolume;
+
 
     /** Virtual Volume
 
@@ -23,10 +23,12 @@ namespace jb
         template < typename Policies, typename Pad, typename T > friend struct Hash;
 
         using Storage        = ::jb::Storage< Policies, Pad >;
-        using PhysicalVolume = ::jb::PhysicalVolume< Policies, Pad >;
+        using PhysicalVolume = typename Storage::PhysicalVolume;
+        using MountPoint     = typename Storage::MountPoint;
+        using TimestampT     = typename Storage::TimestampT;
 
         friend class Storage;
-        friend class PhysicalVolume;
+        friend typename PhysicalVolume;
 
         //
         // Few aliases
@@ -167,27 +169,32 @@ namespace jb
         }
 
 
-        auto Insert(KeyRefT path, KeyRefT subkey, ValueT && value, bool overwrite = false) noexcept
+        auto Insert( KeyRefT path, KeyRefT subkey, ValueT && value, TimestampT && timestamp = TimestampT{}, bool overwrite = false ) noexcept
         {
+            using namespace std;
+
             if (auto impl = impl_.lock())
             {
-                return impl->Insert(path, subkey, value, overwrite);
+                return impl->Insert( path, subkey, move( value ), move( timestamp ), overwrite );
             }
             else
             {
-                return std::tuple(Storage::RetCode::InvalidHandle);
+                return RetCode::InvalidHandle;
             }
         }
 
+
         auto Get(KeyRefT key) noexcept
         {
+            using namespace std;
+
             if (auto impl = impl_.lock())
             {
                 return impl->Get(key);
             }
             else
             {
-                return std::tuple(Storage::RetCode::InvalidHandle);
+                return pair{ RetCode::InvalidHandle, ValueT{} };
             }
         }
 
@@ -199,20 +206,22 @@ namespace jb
             }
             else
             {
-                return std::tuple(Storage::RetCode::InvalidHandle);
+                return RetCode::InvalidHandle;
             }
         }
 
         [[nodiscard]]
-        auto Mount( const PhysicalVolume & physical_volume, KeyRefT physical_path, KeyRefT logical_path) noexcept
+        auto Mount( const PhysicalVolume & physical_volume, KeyRefT physical_path, KeyRefT at, KeyRefT alias ) noexcept
         {
+            using namespace std;
+
             if (auto impl = impl_.lock(); impl)
             {
-                return impl->Mount(physical_volume, physical_path, logical_path);
+                return impl->Mount(physical_volume, physical_path, at, alias);
             }
             else
             {
-                return std::pair( RetCode::InvalidHandle, MountPoint() );
+                return pair{ RetCode::InvalidHandle, MountPoint{} };
             }
         }
     };

@@ -12,6 +12,7 @@
 #include <filesystem>
 #include <limits>
 #include <execution>
+
 #include <assert.h>
 #include <policies.h>
 
@@ -31,6 +32,8 @@ namespace jb
         AlreadyMounted,         ///< Attempt to mount the same physical volume at the same logical path
         InvalidLogicalKey,
         InvalidPhysicalKey,
+        ///
+        NotImplementedYet,
     };
 
 
@@ -55,8 +58,11 @@ namespace jb
 
     public:
 
+        using ValueT         = typename Policies::ValueT;
         using VirtualVolume  = ::jb::VirtualVolume< Policies, Pad >;
         using PhysicalVolume = ::jb::PhysicalVolume< Policies, Pad >;
+        using MountPoint     = ::jb::MountPoint< Policies, Pad >;
+        using TimestampT     = std::filesystem::file_time_type;
 
 
     private:

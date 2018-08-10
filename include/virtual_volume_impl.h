@@ -219,24 +219,31 @@ namespace jb
         Impl( Impl&& ) = delete;
 
 
-        auto Insert( KeyRefT path, KeyRefT subkey, ValueT && value, bool overwrite ) noexcept
+        [[ nodiscard ]]
+        auto Insert( KeyRefT path, KeyRefT subkey, ValueT && value, TimestampT && timestamp, bool overwrite ) noexcept
         {
-
+            return RetCode::NotImplementedYet;
         }
 
+        [[ nodiscard ]]
         auto Get( KeyRefT key ) noexcept
         {
+            using namespace std;
 
+            return pair{ RetCode::NotImplementedYet, ValueT{} };
         }
 
+        [[ nodiscard ]]
         auto Erase( KeyRefT key, bool force ) noexcept
         {
-
+            return RetCode::NotImplementedYet;
         }
 
-        auto Mount( PhysicalVolume volume, KeyRefT physical_path, KeyRefT logical_path ) noexcept
+        [[ nodiscard ]]
+        auto Mount( PhysicalVolume volume, KeyRefT physical_path, KeyRefT logical_path, KeyRefT alias ) noexcept
         {
             using namespace std;
+            /*
 
             try
             {
@@ -260,7 +267,7 @@ namespace jb
                 // if maximum number of mounts reached?
                 if ( uids_.size() >= MountPointLimit )
                 {
-                    return pair{ RetCode::MountPointLimitReached, MountPoint{} };
+                    return pair{ RetCode::LimitReached, MountPoint{} };
                 }
 
                 // prevent mouting of the same physical volume at a logicap path
@@ -315,6 +322,9 @@ namespace jb
             }
 
             return pair{ RetCode::UnknownError, MountPoint{} };
+
+            */
+            return pair{ RetCode::NotImplementedYet, MountPoint{} };
         }
     };
 }
