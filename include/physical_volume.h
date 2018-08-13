@@ -10,22 +10,15 @@ namespace jb
     template < typename Policies, typename Pad >
     class Storage< Policies, Pad >::PhysicalVolume
     {
-        friend typename Pad;
-        friend class TestStorage;
-
-        template < typename Policies, typename Pad, typename T > friend struct Hash;
-
         using Storage = ::jb::Storage< Policies, Pad >;
 
+        friend typename Pad;
+        friend class TestStorage;
         friend class Storage;
         friend typename Storage::VirtualVolume;
+        template < typename Policies, typename Pad, typename T > friend struct Hash;
 
-        using KeyCharT = typename Policies::KeyCharT;
-        using KeyValueT = typename Policies::KeyValueT;
-        using KeyRefT = typename Policies::KeyPolicy::KeyRefT;
-        using KeyHashT = typename Policies::KeyPolicy::KeyHashT;
-        using KeyHashF = typename Policies::KeyPolicy::KeyHashF;
-
+        using KeyT = typename Storage::KeyT;
         using Impl = typename Storage::PhysicalVolumeImpl;
         std::weak_ptr< Impl > impl_;
 
@@ -34,7 +27,7 @@ namespace jb
 
     public:
 
-        auto get_mount( KeyRefT path )
+        auto get_mount( KeyT path )
         {
             return std::pair{ RetCode::Ok, std::shared_ptr< MountPointImpl >() };
         }

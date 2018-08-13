@@ -57,7 +57,7 @@ TEST_F( TestStorage, VirtualVolume_Dummy )
     EXPECT_EQ( RetCode::InvalidHandle, v1.Insert( "/foo", "boo", ValueT{} ) );
     EXPECT_EQ( RetCode::InvalidHandle, v1.Get( "/foo/boo" ).first );
     EXPECT_EQ( RetCode::InvalidHandle, v1.Erase( "/foo/boo" ) );
-    EXPECT_EQ( RetCode::InvalidHandle, v1.Mount( PhysicalVolume{}, "/foo/boo", "/", "boo" ).first );
+    EXPECT_EQ( RetCode::InvalidHandle, v1.Mount( PhysicalVolume{}, "/foo/boo", "/boo" ).first );
 }
 
 

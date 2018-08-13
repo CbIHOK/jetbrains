@@ -29,6 +29,7 @@ namespace jb
         //
         using Storage = ::jb::Storage< Policies, Pad >;
         using PhysicalVolumeImpl = typename Storage::PhysicalVolumeImpl;
+        using PhysicalVolumeImplP = std::shared_ptr< PhysicalVolumeImpl >;
         using MountPoint = typename Storage::MountPoint;
         using MountPointImpl = typename Storage::MountPointImpl;
        
@@ -36,7 +37,7 @@ namespace jb
         using ValueT = typename Storage::ValueT;
         using TimestampT = typename Storage::TimestampT;
 
-        static constexpr size_t MountPointLimit = Policies::VirtualVolumePolicy::MountPointLimit;
+        static constexpr size_t MountsLimit = Policies::VirtualVolumePolicy::MountPointLimit;
 
 
         //
@@ -82,7 +83,7 @@ namespace jb
         // provides O(1) search my mount path, cover most of scenario
         //
         using MountedPathCollectionT = std::unordered_multimap< KeyT, MountPointBacktraceP >;
-        MountedPathCollectionT paths_;
+        MountedPathCollectionT mounted_paths_;
 
 
         //
@@ -111,6 +112,24 @@ namespace jb
             };
             return check( uids_ ) & check( mounts_ ) & check( paths_ );
         }
+
+
+        auto find_nearest_mounted_path( const KeyT & logical_path ) const noexcept
+        {
+            auto[ res, parent, rest ] = logical_path.split_at_tile( );
+            assert( res );
+
+            while ( parent != Key{} )
+            {
+                if ( mounted_paths_.find( parent ) != mounted_paths_.end( ) )
+                {
+                    return pair{ parent, rest };
+                }
+            }
+
+            return pair{ Key{}, logical_path };
+        }
+
 
 
         auto unmount( const MountPoint & mp )
@@ -186,40 +205,31 @@ namespace jb
 
 
         [[ nodiscard ]]
-        auto Mount( PhysicalVolume volume, const KeyT & physical_path, const KeyT & logical_path ) noexcept
+        auto Mount( PhysicalVolumeImplP physical_volume, const KeyT & physical_path, const KeyT & logical_path ) noexcept
         {
             using namespace std;
 
             try
             {
-                // validate logical path
-                auto[ logical_path_valid, normalized_logical_path ] = normalize_as_path( logical_path );
-                if ( !logical_path_valid )
-                {
-                    return pair{ RetCode::InvalidLogicalKey, MountPoint{} };
-                }
+                assert( physical_volume );
+                assert( physical_path.is_path( ) );
+                assert( logical_path.is_path( ) );
 
-                // validate physical path
-                auto[ physical_path_valid, normalized_physical_path ] = normalize_as_path( physical_path );
-                if ( !physical_path_valid )
-                {
-                    return pair{ RetCode::InvalidPhysicalKey, MountPoint{} };
-                }
 
                 // start mounting
-                unique_lock< shared_mutex > write_lock( guard_ );
+                unique_lock< shared_mutex > write_lock( mounts_guard_ );
 
                 // if maximum number of mounts reached?
-                if ( uids_.size() >= MountPointLimit )
+                if ( uids_.size() >= MountsLimit)
                 {
                     return pair{ RetCode::LimitReached, MountPoint{} };
                 }
 
                 // prevent mouting of the same physical volume at a logicap path
-                auto uid = misc::variadic_hash< Policies, Pad >( normalized_logical_path, volume );
+                auto uid = misc::variadic_hash< Policies, Pad >( logical_path, physical_volume );
                 if ( uids_.find( uid ) != uids_.end() )
                 {
-                    return pair{ RetCode::AlreadyMounted, MountPoint() };
+                    return pair{ RetCode::VolumeAlreadyMounted, MountPoint() };
                 }
 
                 // check that iterators won't be invalidated on insertion
@@ -230,7 +240,7 @@ namespace jb
                 }
 
                 // request mount from physical volume
-                auto[ ret, mount ] = volume.get_mount( normalized_physical_path );
+                auto[ ret, mount ] = volume.get_mount( physical_path );
                 if ( !mount )
                 {
                     return pair{ ret, MountPoint() };

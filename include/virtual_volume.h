@@ -219,12 +219,17 @@ namespace jb
         {
             using namespace std;
 
+            if ( !physical_path.is_path( ) || !logical_path.is_path( ) )
+            {
+                return pair{ RetCode::InvalidKey, MountPoint{} };
+            }
+
             auto impl = impl_.lock( );
             auto physical_impl = physical_volume.impl_.lock( );
 
             if ( impl && physical_impl )
             {
-                return impl->Mount( physical_impl, physical_path, at, alias);
+                return impl->Mount( physical_impl, physical_path, logical_path );
             }
             else
             {

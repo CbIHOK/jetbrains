@@ -108,7 +108,7 @@ namespace jb
                 {
                     return tuple{ 
                         true, 
-                        Key{ value_, view_.substr( 0, sep ),  Type::Path  }, 
+                        Key{ value_, view_.substr( 0, sep ), Type::Path  }, 
                         Key{ value_, view_.substr( sep ), Type::Path }
                     };
                 }
@@ -136,7 +136,7 @@ namespace jb
                 return tuple{
                     true,
                     Key{ value_, view_.substr( 0, sep ),  Type::Path },
-                    Key{ value_, view_.substr( sep ), Type::Path }
+                    Key{ value_, view_.substr( sep + 1 ), Type::Leaf }
                 };
             }
             else

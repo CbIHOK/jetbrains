@@ -3,7 +3,7 @@
 add_executable( tests 
     main.cpp
     key.cpp
-    #storage.cpp
+    storage.cpp
     #bloom.cpp
     #virtual_volume.cpp 
     )
