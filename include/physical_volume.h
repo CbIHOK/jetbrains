@@ -13,7 +13,7 @@ namespace jb
         friend typename Pad;
         friend class TestStorage;
 
-        template < typename T, typename Policies, typename Pad > friend struct Hash;
+        template < typename Policies, typename Pad, typename T > friend struct Hash;
 
         using Storage = ::jb::Storage< Policies, Pad >;
 
@@ -109,7 +109,7 @@ namespace jb
 
 
     template < typename Policies, typename Pad >
-    struct Hash< typename Storage< Policies, Pad >::PhysicalVolume, typename Policies, typename Pad >
+    struct Hash< Policies, Pad, typename Storage< Policies, Pad >::PhysicalVolume >
     {
         static constexpr bool enabled = true;
 

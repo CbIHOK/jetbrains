@@ -106,7 +106,7 @@ TEST_F( TestStorage, VirtualVolume_Base )
 TEST_F( TestStorage, VirtualVolume_Limit )
 {
     std::set< VirtualVolume, std::less< VirtualVolume > > set;
-    std::unordered_set< VirtualVolume, jb::Hash< VirtualVolume, Policies, Pad > > hash;
+    std::unordered_set< VirtualVolume, jb::Hash< Policies, Pad, VirtualVolume > > hash;
 
     for ( size_t i = 0; i < Policies::VirtualVolumePolicy::VolumeLimit; ++i )
     {
@@ -187,7 +187,7 @@ TEST_F( TestStorage, PhysicalVolume_Base )
 TEST_F( TestStorage, PhysicalVolume_Limit )
 {
     std::set< PhysicalVolume > set;
-    std::unordered_set< PhysicalVolume, jb::Hash< PhysicalVolume, Policies, Pad > > hash;
+    std::unordered_set< PhysicalVolume, jb::Hash< Policies, Pad, PhysicalVolume > > hash;
 
     for ( size_t i = 0; i < Policies::PhysicalVolumePolicy::VolumeLimit; ++i )
     {

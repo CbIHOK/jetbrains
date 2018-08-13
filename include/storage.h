@@ -43,7 +43,7 @@ namespace jb
     struct DefaultPad {};
 
 
-    template < typename T, typename Policies = DefaultPolicies, typename Pad = DefaultPad > struct Hash
+    template < typename Policies, typename Pad, typename T > struct Hash
     {
         static constexpr bool enabled = false;
         size_t operator() ( const T & ) const noexcept { return 0; }

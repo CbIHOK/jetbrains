@@ -18,7 +18,7 @@ namespace jb
     class Storage< Policies, Pad >::VirtualVolume
     {
         friend typename Pad;
-        template < typename T, typename Policies = DefaultPolicies, typename Pad = DefaultPad > friend struct Hash;
+        template < typename Policies, typename Pad, typename T > friend struct Hash;
 
         //
         // Few aliases
@@ -239,7 +239,7 @@ namespace jb
 namespace jb
 {
     template < typename Policies, typename Pad >
-    struct Hash< typename Storage< Policies, Pad >::VirtualVolume, typename Policies, typename Pad >
+    struct Hash< Policies, Pad, typename Storage< Policies, Pad >::VirtualVolume >
     {
         static constexpr bool enabled = true;
 

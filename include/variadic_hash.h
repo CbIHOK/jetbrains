@@ -44,13 +44,13 @@ namespace jb
             size_t operator () ( const T & v ) const noexcept
             {
                 static_assert(
-                    Hash< T, Policies, Pad >::enabled || detect_std_hash< T >::value,
+                    Hash< Policies, Pad, T >::enabled || detect_std_hash< T >::value,
                     "No hashing operation defined for the type"
                     );
 
-                if constexpr ( Hash< T, Policies, Pad >::enabled )
+                if constexpr ( Hash< Policies, Pad, T >::enabled )
                 {
-                    static constexpr Hash< T, Policies, Pad > hasher{};
+                    static constexpr Hash< Policies, Pad, T > hasher{};
                     return hasher( v );
                 }
                 else
