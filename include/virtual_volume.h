@@ -3,6 +3,7 @@
 
 
 #include <memory>
+#include <key.h>
 
 
 class TestVirtualVolume;
@@ -23,12 +24,12 @@ namespace jb
         //
         // Few aliases
         //
-        using ValueT = typename Policies::ValueT;
-        using KeyRefT = typename Policies::KeyPolicy::KeyRefT;
-        using Storage        = ::jb::Storage< Policies, Pad >;
+        using Storage = ::jb::Storage< Policies, Pad >;
+        using ValueT = typename Storage::ValueT;
+        using KeyT = typename Storage::KeyT;
         using PhysicalVolume = typename Storage::PhysicalVolume;
-        using MountPoint     = typename Storage::MountPoint;
-        using TimestampT     = typename Storage::TimestampT;
+        using MountPoint = typename Storage::MountPoint;
+        using TimestampT = typename Storage::TimestampT;
 
 
         friend class Storage;
@@ -169,7 +170,7 @@ namespace jb
         }
 
 
-        auto Insert( KeyRefT path, KeyRefT subkey, ValueT && value, TimestampT && timestamp = TimestampT{}, bool overwrite = false ) noexcept
+        auto Insert( KeyT path, KeyT subkey, ValueT && value, TimestampT && timestamp = TimestampT{}, bool overwrite = false ) noexcept
         {
             using namespace std;
 
@@ -185,7 +186,7 @@ namespace jb
 
 
         [[ nodiscard ]]
-        auto Get(KeyRefT key) noexcept
+        auto Get( KeyT key ) noexcept
         {
             using namespace std;
 
@@ -200,7 +201,7 @@ namespace jb
         }
 
 
-        auto Erase(KeyRefT key, bool force = false) noexcept
+        auto Erase( KeyT key, bool force = false ) noexcept
         {
             if (auto impl = impl_.lock())
             {
@@ -214,7 +215,7 @@ namespace jb
 
 
         [[nodiscard]]
-        auto Mount( const PhysicalVolume & physical_volume, KeyRefT physical_path, KeyRefT at, KeyRefT alias ) noexcept
+        auto Mount( const PhysicalVolume & physical_volume, KeyT physical_path, KeyT logical_path ) noexcept
         {
             using namespace std;
 

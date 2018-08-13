@@ -6,16 +6,16 @@
 #include <memory>
 #include <string>
 #include <string_view>
-#include <storage.h>
 
 
 namespace jb
 {
-    template < typename CharT >
+    template < typename Policies, typename Pad >
     class Key
     {
-        template < typename T, typename Policies, typename Pad > friend struct Hash;
+        template < typename Policies, typename Pad, typename T > friend struct Hash;
 
+        using CharT = typename Policies::KeyCharT;
         using ValueT = std::basic_string< CharT >;
         using ValueP = std::shared_ptr< ValueT >;
         using ViewT = std::basic_string_view< CharT >;
@@ -30,6 +30,7 @@ namespace jb
         
         Key( ValueP value, const ViewT & view, Type type ) noexcept : value_( value ), view_( view ), type_( type ) {}
 
+
     public:
 
         Key( ) noexcept = default;
@@ -40,30 +41,34 @@ namespace jb
         Key( Key && ) noexcept = default;
         Key & operator = ( Key && ) noexcept = default;
 
-        Key( const std::filesystem::path & key ) noexcept
+        template< typename T > 
+        Key( const T & value ) noexcept
         {
             using namespace std;
+            using namespace std::filesystem;
 
             try
             {
-                if ( ! key.has_root_name() )
+                path p{ value };
+
+                if ( ! p.has_root_name() )
                 {
-                    if ( key.has_root_directory( ) && key.has_relative_path() )
+                    if ( p.has_root_directory( ) && p.has_relative_path() )
                     {
-                        if ( key.has_filename( ) )
+                        if ( p.has_filename( ) )
                         {
-                            value_ = make_shared< ValueT >( move( key.lexically_normal( ).string< CharT >( ) ) );
+                            value_ = make_shared< ValueT >( move( p.lexically_normal( ).string< CharT >( ) ) );
                         }
                         else
                         {
-                            value_ = make_shared< ValueT >( move( key.lexically_normal( ).parent_path( ).string< CharT >( ) ) );
+                            value_ = make_shared< ValueT >( move( p.lexically_normal( ).parent_path( ).string< CharT >( ) ) );
                         }
 
                         type_ = Type::Path;
                     }
-                    else if ( key.has_filename( ) )
+                    else if ( p.has_filename( ) )
                     {
-                        value_ = make_shared< ValueT >( move( key.lexically_normal( ).string< CharT >( ) ) );
+                        value_ = make_shared< ValueT >( move( p.lexically_normal( ).string< CharT >( ) ) );
 
                         type_ = Type::Leaf;
                     }
@@ -89,7 +94,6 @@ namespace jb
         friend bool operator <= ( const Key & l, const Key & r ) noexcept { return l.view_ <= r.view_; }
         friend bool operator >= ( const Key & l, const Key & r ) noexcept { return l.view_ >= r.view_; }
         friend bool operator > ( const Key & l, const Key & r ) noexcept { return l.view_ > r.view_; }
-
 
         auto split_at_head( ) const
         {
@@ -140,17 +144,31 @@ namespace jb
                 return tuple{ false, Key{}, Key{} };
             }
         }
+
+        auto is_subkey( const Key & superkey ) const noexcept
+        {
+            if ( Type::Path == type_ && Type::Path == superkey.type_ && superkey.view_.size( ) < view_.size( ) )
+            {
+                return superkey.view_ == view_.substr( 0, superkey.view_.size( ) );
+            }
+            return false;
+        }
+
+        auto is_superkey( const Key & subkey ) const noexcept
+        {
+            return subkey.is_subkey( *this );
+        }
     };
 
 
     template < typename Policies, typename Pad >
-    struct Hash< Policies, Pad, Key< typename Policies::KeyCharT > >
+    struct Hash< Policies, Pad, Key< Policies, Pad > >
     {
         static constexpr bool enabled = true;
 
-        size_t operator() ( const Key< typename Policies::KeyCharT > & value ) const noexcept
+        size_t operator() ( const Key< Policies, Pad > & value ) const noexcept
         {
-            static constexpr Policies::KeyPolicy::KeyHashF hasher{};
+            static constexpr std::hash< typename Key< Policies, Pad >::ViewT > hasher{};
             return hasher( value.view_ );
         }
     };

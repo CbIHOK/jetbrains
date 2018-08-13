@@ -24,22 +24,17 @@ namespace jb
         friend typename Pad;
         friend class TestVirtualVolume;
 
-
+        //
+        // Few aliases
+        //
         using Storage = ::jb::Storage< Policies, Pad >;
         using PhysicalVolumeImpl = typename Storage::PhysicalVolumeImpl;
         using MountPoint = typename Storage::MountPoint;
         using MountPointImpl = typename Storage::MountPointImpl;
-
-        
-        //
-        // Few aliases
-        //
-        using KeyCharT = typename Policies::KeyCharT;
-        using KeyValueT = typename Policies::KeyValueT;
-        using KeyRefT = typename Policies::KeyPolicy::KeyRefT;
-        using KeyHashT = typename Policies::KeyPolicy::KeyHashT;
-        using KeyHashF = typename Policies::KeyPolicy::KeyHashF;
-        using ValueT = typename Policies::ValueT;
+       
+        using KeyT = typename Storage::KeyT;
+        using ValueT = typename Storage::ValueT;
+        using TimestampT = typename Storage::TimestampT;
 
         static constexpr size_t MountPointLimit = Policies::VirtualVolumePolicy::MountPointLimit;
 
@@ -47,7 +42,7 @@ namespace jb
         //
         // just a read/write guard
         //
-        std::shared_mutex guard_;
+        std::shared_mutex mounts_guard_;
 
 
         //
@@ -86,7 +81,7 @@ namespace jb
         //
         // provides O(1) search my mount path, cover most of scenario
         //
-        using MountedPathCollectionT = std::unordered_multimap< KeyHashT, MountPointBacktraceP >;
+        using MountedPathCollectionT = std::unordered_multimap< KeyT, MountPointBacktraceP >;
         MountedPathCollectionT paths_;
 
 
@@ -118,87 +113,6 @@ namespace jb
         }
 
 
-        /* Checks if given key represents valid path and normalize it
-
-        @param [in] key - key to be normalized
-
-        @return std::tuple<
-        bool - true if key represents valid path
-        KeyValueT - normalized key
-        >
-
-        @throw std::exception if unrecoverable error occuder
-        */
-        [[ nodiscard ]]
-        static auto normalize_as_path( KeyRefT key )
-        {
-            using namespace std;
-            using namespace std::filesystem;
-
-            path p{ key };
-
-            if ( p.has_root_directory() )
-            {
-                if ( p.has_filename() )
-                {
-                    return pair{ true, p.lexically_normal().string< KeyCharT >() };
-                }
-                else
-                {
-                    return pair{ true, p.lexically_normal().parent_path().string< KeyCharT >() };
-                }
-            }
-            else
-            {
-                return pair{ false, KeyValueT{} };
-            }
-        }
-
-
-        /* Checks if given key represents leaf name, i.e. does not contain path, and normalize it
-
-        @param [in] key - key to be normalized
-
-        @return std::tuple<
-        bool - true if key represents valid leaf name
-        KeyValueT - normalized key
-        >
-
-        @throw std::exception if unrecoverable error occuder
-        */
-        [ [ nodiscard ] ]
-        static auto normalize_as_leaf( KeyRefT key )
-        {
-            using namespace std;
-            using namespace std::filesystem;
-
-            path p{ key };
-
-            if ( !p.has_root_directory() && p.has_filename() )
-            {
-                return pair{ true, p.lexically_normal().string<KeyCharT>() };
-            }
-            else
-            {
-                return pair{ false, KeyValueT{} };
-            }
-        }
-
-
-        [[ nodiscard ]]
-        static auto get_parent_key( KeyRefT key ) noexcept
-        {
-            using namespace std::filesystem;
-
-            auto last_separator_pos = key.find_last_of( KeyCharT{ path::preferred_separator } );
-
-            assert( last_separator_pos != KeyRefT::npos );
-            assert( last_seperator_pos < std::min );
-
-            return key.substr( 0, last_separator_pos );
-        }
-
-
         auto unmount( const MountPoint & mp )
         {
         }
@@ -218,30 +132,61 @@ namespace jb
 
 
         [[ nodiscard ]]
-        auto Insert( KeyRefT path, KeyRefT subkey, ValueT && value, TimestampT && timestamp, bool overwrite ) noexcept
+        auto Insert( KeyT path, KeyT subkey, ValueT && value, TimestampT && timestamp, bool overwrite ) noexcept
         {
-            return RetCode::NotImplementedYet;
+            try
+            {
+                if ( path.is_path( ) && subkey.is_leaf( ) )
+                {
+                    return RetCode::NotImplementedYet;
+                }
+                else
+                {
+                    return RetCode::InvalidKey;
+                }
+            }
+            catch(...)
+            {
+            }
+
+            return RetCode::UnknownError;
         }
 
 
         [[ nodiscard ]]
-        auto Get( KeyRefT key ) noexcept
+        auto Get( const KeyT & key ) noexcept
         {
             using namespace std;
 
-            return pair{ RetCode::NotImplementedYet, ValueT{} };
+            try
+            {
+                return pair{ RetCode::NotImplementedYet, ValueT{} };
+            }
+            catch ( ... )
+            {
+            }
+
+            return pair{ RetCode::UnknownError, ValueT{} };
         }
 
 
         [[ nodiscard ]]
-        auto Erase( KeyRefT key, bool force ) noexcept
+        auto Erase( const KeyT & key, bool force ) noexcept
         {
-            return RetCode::NotImplementedYet;
+            try
+            {
+                return RetCode::NotImplementedYet;
+            }
+            catch ( ... )
+            {
+            }
+
+            return RetCode::UnknownError;
         }
 
 
         [[ nodiscard ]]
-        auto Mount( PhysicalVolume volume, KeyRefT physical_path, KeyRefT logical_path, KeyRefT alias ) noexcept
+        auto Mount( PhysicalVolume volume, const KeyT & physical_path, const KeyT & logical_path ) noexcept
         {
             using namespace std;
 

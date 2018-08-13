@@ -15,6 +15,7 @@
 
 #include <assert.h>
 #include <policies.h>
+#include <key.h>
 
 
 class TestStorage;
@@ -33,7 +34,7 @@ namespace jb
         InvalidHandle,          ///< Given handle does not address valid object
         LimitReached,           ///< Virtual Volume already has maximum number of Mounts Points
         AlreadyMounted,         ///< Attempt to mount the same physical volume at the same logical path
-        InvalidLogicalKey,
+        InvalidKey,
         InvalidPhysicalKey,
         ///
         NotImplementedYet,
@@ -64,8 +65,9 @@ namespace jb
 
     public:
 
-        using ValueT         = typename Policies::ValueT;
-        using TimestampT     = std::filesystem::file_time_type;
+        using KeyT = ::jb::Key< Policies, Pad >;
+        using ValueT = typename Policies::ValueT;
+        using TimestampT = std::filesystem::file_time_type;
 
         class VirtualVolume;
         class PhysicalVolume;
