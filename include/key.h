@@ -2,9 +2,9 @@
 #define __JB__KEY__H__
 
 
-#include <filesystem>
 #include <string>
 #include <string_view>
+#include <regex>
 
 
 namespace jb
@@ -22,7 +22,7 @@ namespace jb
         using ViewT = std::basic_string_view< CharT >;
 
         static constexpr decltype( ViewT::npos ) npos = ViewT::npos;
-        static constexpr CharT separator{ std::filesystem::path::preferred_separator };
+        static constexpr CharT separator{ '/' };
 
         ValueT value_;
         ViewT view_;
@@ -43,42 +43,25 @@ namespace jb
         explicit Key( const ValueT & value )
         {
             using namespace std;
+            
+            static auto regexp = [] () {
+                using RegexT = basic_regex< CharT >;
+                using RegexStrT = typename RegexT::string_type;
 
-            path p{ value };
+                auto pattern = R"noesc(^(\w[\w-]*)$|^(\/\w[\w-]*)+$|^\/$)noesc"s;
+                return RegexT{ RegexStrT{ begin( pattern ), end( pattern ) } };
+            }();
 
-            if ( ! p.has_root_name() )
+            if ( regex_match( value, regexp ) )
             {
-                if ( p.has_root_directory( ) )
-                {
-                    if ( p.has_filename( ) )
-                    {
-                        value_ =  move( p.lexically_normal( ).string< CharT >( ) );
-                    }
-                    else
-                    {
-                        value_ = move( p.lexically_normal( ).parent_path( ).string< CharT >( ) );
-                    }
-                }
-                else if ( p.has_filename( ) )
-                {
-                    value_ = move( p.lexically_normal( ).string< CharT >( ) );
-                }
-
-                view_ = ViewT( value_.data( ), value_.size( ) );
+                value_ = value;
+                view_ = ViewT( value_.data(), value_.size() );
             }
         }
 
-        operator ValueT( ) const
-        {
-            return ValueT( view_.cbegin(), view_.cend() ) ;
-        }
+        operator ValueT() const { return ValueT{ cbegin( view_ ), cend( view_ ) }; }
 
-        operator ViewT( ) const noexcept
-        {
-            return view_;
-        }
-
-        bool is_valid( ) const noexcept { return view_.size() > 0;  }
+        bool is_valid( ) const noexcept { return view_.size() > 0; }
         bool is_path( ) const noexcept { return view_.size( ) > 0 && view_.front() == separator; }
         bool is_leaf( ) const noexcept { return view_.size( ) > 0 && view_.front() != separator; }
 
