@@ -19,6 +19,7 @@
 
 class TestStorage;
 class TestKey;
+class TestNodeLocker;
 
 
 namespace jb
@@ -63,6 +64,7 @@ namespace jb
         friend typename Pad;
         friend class TestStorage;
         friend class TestKey;
+        friend class TestNodeLocker;
 
         friend class VirtualVolume;
         friend class PhysicalVolume;
