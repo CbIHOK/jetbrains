@@ -34,8 +34,8 @@ namespace jb
 
         Key( ) noexcept = default;
 
-        Key( const Key & ) noexcept = default;
-        Key & operator = ( const Key & ) noexcept = default;
+        Key( const Key & ) = default;
+        Key & operator = ( const Key & ) = default;
 
         Key( Key && ) noexcept = default;
         Key & operator = ( Key && ) noexcept = default;
@@ -43,7 +43,6 @@ namespace jb
         explicit Key( const ValueT & value )
         {
             using namespace std;
-            using namespace std::filesystem;
 
             path p{ value };
 

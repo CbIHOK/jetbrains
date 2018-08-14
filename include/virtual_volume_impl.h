@@ -113,6 +113,8 @@ namespace jb
 
         auto find_nearest_mounted_path( const Key & logical_path ) const noexcept
         {
+            using namespace std;
+
             auto[ res, parent, rest ] = logical_path.split_at_tile( );
             assert( res );
 
@@ -120,11 +122,11 @@ namespace jb
             {
                 if ( mounted_paths_.find( parent ) != mounted_paths_.end( ) )
                 {
-                    return pair{ parent, rest };
+                    return tuple{ parent, rest };
                 }
             }
 
-            return pair{ Key{}, logical_path };
+            return tuple{ Key{}, logical_path };
         }
 
 
@@ -208,7 +210,7 @@ namespace jb
                 assert( physical_volume );
                 assert( physical_path.is_path( ) );
                 assert( logical_path.is_path( ) );
-
+                assert( alias.is_leaf( ) );
 
                 // start mounting
                 unique_lock< shared_mutex > write_lock( mounts_guard_ );
@@ -221,10 +223,10 @@ namespace jb
 
                 // prevent mouting of the same physical volume at a logicap path
                 auto uid = misc::variadic_hash< Policies, Pad >( logical_path, physical_volume );
-                //if ( uids_.find( uid ) != uids_.end() )
-                //{
-                //    return tuple{ RetCode::VolumeAlreadyMounted, MountPoint() };
-                //}
+                if ( uids_.find( uid ) != uids_.end() )
+                {
+                    return tuple{ RetCode::VolumeAlreadyMounted, MountPoint() };
+                }
 
                 // check that iterators won't be invalidated on insertion
                 if ( !check_rehash() )
@@ -232,6 +234,8 @@ namespace jb
                     assert( false ); // that's unexpected
                     return tuple{ RetCode::UnknownError, MountPoint() };
                 }
+
+                auto[ nearest_mp, path_from_mp ] = find_nearest_mounted_path( logical_path );
 
                 return tuple{ RetCode::NotImplementedYet, MountPoint{} };
             }

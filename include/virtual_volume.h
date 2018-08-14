@@ -21,6 +21,8 @@ namespace jb
     {
         friend typename Pad;
         template < typename Policies, typename Pad, typename T > friend struct Hash;
+        friend class Storage;
+        friend class TestVirtualVolume;
 
         //
         // Few aliases
@@ -32,12 +34,6 @@ namespace jb
         using PhysicalVolume = typename Storage::PhysicalVolume;
         using MountPoint = typename Storage::MountPoint;
         using Timestamp = typename Storage::Timestamp;
-
-
-        friend class Storage;
-        friend typename PhysicalVolume;
-        friend typename MountPoint;
-
 
         //
         // PIMP
@@ -152,7 +148,7 @@ namespace jb
 
         friend auto operator >= ( const VirtualVolume & l, const VirtualVolume & r ) noexcept
         {
-            return l.impl_.lock( ) < r.impl_.lock( );
+            return l.impl_.lock( ) >= r.impl_.lock( );
         }
 
         /** Detaches associated Virtual Volume and close it

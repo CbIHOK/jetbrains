@@ -40,7 +40,7 @@ TEST_F( TestKey, Construction )
     EXPECT_TRUE( key.is_path( ) );
     EXPECT_FALSE( key.is_leaf( ) );
 
-    key = move( Key{ "boo"s } );
+    key = Key{ "boo"s };
     EXPECT_TRUE( key.is_valid( ) );
     EXPECT_FALSE( key.is_path( ) );
     EXPECT_TRUE( key.is_leaf( ) );
@@ -50,7 +50,7 @@ TEST_F( TestKey, Construction )
     EXPECT_FALSE( key.is_path( ) );
     EXPECT_FALSE( key.is_leaf( ) );
 
-    key = move( Key{ "foo/"s } );
+    key = Key{ "foo/"s };
     EXPECT_FALSE( key.is_valid( ) );
     EXPECT_FALSE( key.is_path( ) );
     EXPECT_FALSE( key.is_leaf( ) );
@@ -60,7 +60,22 @@ TEST_F( TestKey, Construction )
     EXPECT_FALSE( key.is_path( ) );
     EXPECT_FALSE( key.is_leaf( ) );
 
-    key = move( Key{ "c:/boo/"s } );
+    key = Key{ "c:/boo/"s };
+    EXPECT_FALSE( key.is_valid( ) );
+    EXPECT_FALSE( key.is_path( ) );
+    EXPECT_FALSE( key.is_leaf( ) );
+
+    key = Key{ ".."s };
+    EXPECT_FALSE( key.is_valid( ) );
+    EXPECT_FALSE( key.is_path( ) );
+    EXPECT_FALSE( key.is_leaf( ) );
+
+    key = Key{ "."s };
+    EXPECT_FALSE( key.is_valid( ) );
+    EXPECT_FALSE( key.is_path( ) );
+    EXPECT_FALSE( key.is_leaf( ) );
+
+    key = Key{ "\foo"s };
     EXPECT_FALSE( key.is_valid( ) );
     EXPECT_FALSE( key.is_path( ) );
     EXPECT_FALSE( key.is_leaf( ) );
