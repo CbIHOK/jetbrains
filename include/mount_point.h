@@ -30,10 +30,10 @@ namespace jb
 
         MountPoint & operator = (MountPoint && o) noexcept = default;
 
-        operator bool() const noexcept { return impl_.lock(); }
+        operator bool() const noexcept { return (bool)impl_.lock(); }
 
-        friend bool operator == (const MountPoint & l, const MountPoint & r) noexcept { return l.lock() == r.lock(); }
-        friend bool operator != (const MountPoint & l, const MountPoint & r) noexcept { return l.lock() != r.lock(); }
+        friend bool operator == (const MountPoint & l, const MountPoint & r) noexcept { return l.impl_.lock() == r.impl_.lock(); }
+        friend bool operator != (const MountPoint & l, const MountPoint & r) noexcept { return l.impl_.lock() != r.impl_.lock(); }
 
         RetCode Close( bool force = false ) const noexcept
         {

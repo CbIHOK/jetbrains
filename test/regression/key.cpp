@@ -1,16 +1,23 @@
 #include <gtest/gtest.h>
-#include <key.h>
-#include <policies.h>
 #include <storage.h>
+#include <policies.h>
 
 
 using namespace std;
 
 
-TEST( Key, Dummy )
+class TestKey : public ::testing::Test
 {
-    using Key = ::jb::Key< ::jb::DefaultPolicies, ::jb::DefaultPolicies >;
+protected:
 
+    using Storage = ::jb::Storage< ::jb::DefaultPolicies, ::jb::DefaultPolicies >;
+    using Key = typename Storage::Key;
+    using KeyValue = typename Storage::KeyValue;
+};
+
+
+TEST_F( TestKey, Dummy )
+{
     Key key;
     EXPECT_FALSE( key.is_valid( ) );
     EXPECT_FALSE( key.is_path( ) );
@@ -22,154 +29,153 @@ TEST( Key, Dummy )
     EXPECT_FALSE( key > Key{} );
     EXPECT_TRUE( key >= Key{} );
 
-    key = move( Key{ "/" } );
-    EXPECT_TRUE( key == Key{} );
+    EXPECT_EQ( "", ( KeyValue )key );
 }
 
 
-TEST( Key, Construction )
+TEST_F( TestKey, Construction )
 {
-    using Key = ::jb::Key< ::jb::DefaultPolicies, ::jb::DefaultPolicies >;
-
-    Key key{ "/foo/boo" };
+    Key key{ "/foo/boo"s };
     EXPECT_TRUE( key.is_valid( ) );
     EXPECT_TRUE( key.is_path( ) );
     EXPECT_FALSE( key.is_leaf( ) );
 
-    key = move( Key{ "boo" } );
+    key = move( Key{ "boo"s } );
     EXPECT_TRUE( key.is_valid( ) );
     EXPECT_FALSE( key.is_path( ) );
     EXPECT_TRUE( key.is_leaf( ) );
 
-    key = Key{ "" };
+    key = Key{ ""s };
     EXPECT_FALSE( key.is_valid( ) );
     EXPECT_FALSE( key.is_path( ) );
     EXPECT_FALSE( key.is_leaf( ) );
 
-    key = move( Key{ "foo/" } );
+    key = move( Key{ "foo/"s } );
     EXPECT_FALSE( key.is_valid( ) );
     EXPECT_FALSE( key.is_path( ) );
     EXPECT_FALSE( key.is_leaf( ) );
 
-    key = Key{ ":/boo/" };
+    key = Key{ ":/boo/"s };
     EXPECT_FALSE( key.is_valid( ) );
     EXPECT_FALSE( key.is_path( ) );
     EXPECT_FALSE( key.is_leaf( ) );
 
-    key = move( Key{ "c:/boo/" } );
+    key = move( Key{ "c:/boo/"s } );
     EXPECT_FALSE( key.is_valid( ) );
     EXPECT_FALSE( key.is_path( ) );
     EXPECT_FALSE( key.is_leaf( ) );
 }
 
 
-TEST( Key, Compare )
+TEST_F( TestKey, Compare )
 {
-    using Key = ::jb::Key< ::jb::DefaultPolicies, ::jb::DefaultPad >;
     using Hash = ::jb::Hash< ::jb::DefaultPolicies, ::jb::DefaultPad, Key >;
 
-    EXPECT_EQ( Key{ "boo"sv }, Key{ "boo" } );
-    EXPECT_NE( Key{ "boo1" }, Key{ "boo2"sv } );
-    EXPECT_LT( Key{ "boo1" }, Key{ "boo2" } );
-    EXPECT_LE( Key{ "boo1" }, Key{ "boo2" } );
-    EXPECT_GE( Key{ "boo2" }, Key{ "boo1" } );
-    EXPECT_GT( Key{ "boo2" }, Key{ "boo1" } );
-    EXPECT_EQ( Hash{}( Key{ "boo" } ), Hash{}( Key{ "boo" } ) );
-    EXPECT_NE( Hash{}( Key{ "boo" } ), Hash{}( Key{ "foo" } ) );
+    EXPECT_EQ( Key{ "boo"s }, Key{ "boo"s } );
+    EXPECT_NE( Key{ "boo1"s }, Key{ "boo2"s } );
+    EXPECT_LT( Key{ "boo1"s }, Key{ "boo2"s } );
+    EXPECT_LE( Key{ "boo1"s }, Key{ "boo2"s } );
+    EXPECT_GE( Key{ "boo2"s }, Key{ "boo1"s } );
+    EXPECT_GT( Key{ "boo2"s }, Key{ "boo1"s } );
+    //EXPECT_EQ( Hash{}( Key{ "boo" } ), Hash{}( Key{ "boo" } ) );
+    //EXPECT_NE( Hash{}( Key{ "boo" } ), Hash{}( Key{ "foo" } ) );
 }
 
 
-TEST( Key, SplitAtHead )
+TEST_F( TestKey, SplitAtHead )
 {
-    using Key = ::jb::Key< ::jb::DefaultPolicies, ::jb::DefaultPolicies >;
-
     {
-        auto[ ret, super_key, sub_key ] = Key{}.split_at_head( );
+        Key in{};
+        auto[ ret, super_key, sub_key ] = in.split_at_head( );
         EXPECT_FALSE( ret );
         EXPECT_EQ( Key{}, super_key );
         EXPECT_EQ( Key{}, sub_key );
     }
 
     {
-        auto[ ret, super_key, sub_key ] = Key{ "/" }.split_at_head( );
-        EXPECT_FALSE( ret );
+        Key in{ "/"s };
+        auto[ ret, super_key, sub_key ] = in.split_at_head( );
+        EXPECT_TRUE( ret );
         EXPECT_EQ( Key{}, super_key );
         EXPECT_EQ( Key{}, sub_key );
     }
 
     {
-        auto[ ret, super_key, sub_key ] = Key{ "/foo" }.split_at_head( );
+        Key in{ "/foo"s };
+        auto[ ret, super_key, sub_key ] = in.split_at_head( );
         EXPECT_TRUE( ret );
-        EXPECT_EQ( Key{ "/foo" }, super_key );
+        EXPECT_EQ( Key{ "/foo"s }, super_key );
         EXPECT_EQ( Key{}, sub_key );
     }
 
     {
-        auto[ ret, super_key, sub_key ] = Key{ "/foo/boo" }.split_at_head( );
+        Key in{ "/foo/boo"s };
+        auto[ ret, super_key, sub_key ] = in.split_at_head( );
         EXPECT_TRUE( ret );
-        EXPECT_EQ( Key{ "/foo" }, super_key );
-        EXPECT_EQ( Key{ "/boo" }, sub_key );
+        EXPECT_EQ( Key{ "/foo"s }, super_key );
+        EXPECT_EQ( Key{ "/boo"s }, sub_key );
     }
 }
 
 
-TEST( Key, SplitAtTile )
+TEST_F( TestKey, SplitAtTile )
 {
-    using Key = ::jb::Key< ::jb::DefaultPolicies, ::jb::DefaultPolicies >;
-
     {
-        auto[ ret, super_key, sub_key ] = Key{}.split_at_tile( );
+        Key in{};
+        auto[ ret, super_key, sub_key ] = in.split_at_tile( );
         EXPECT_FALSE( ret );
         EXPECT_EQ( Key{}, super_key );
         EXPECT_EQ( Key{}, sub_key );
     }
 
     {
-        auto[ ret, super_key, sub_key ] = Key{ "/" }.split_at_tile( );
-        EXPECT_FALSE( ret );
+        Key in{ "/"s };
+        auto[ ret, super_key, sub_key ] = in.split_at_tile( );
+        EXPECT_TRUE( ret );
         EXPECT_EQ( Key{}, super_key );
         EXPECT_EQ( Key{}, sub_key );
     }
 
     {
-        auto[ ret, super_key, sub_key ] = Key{ "/foo" }.split_at_tile( );
+        Key in{ "/foo"s };
+        auto[ ret, super_key, sub_key ] = in.split_at_tile( );
         EXPECT_TRUE( ret );
         EXPECT_EQ( Key{}, super_key );
-        EXPECT_EQ( Key{ "/foo" }, sub_key );
+        EXPECT_EQ( Key{ "/foo"s }, sub_key );
     }
 
     {
-        auto[ ret, super_key, sub_key ] = Key{ "/foo/boo" }.split_at_tile( );
+        Key in{ "/foo/boo"s };
+        auto[ ret, super_key, sub_key ] = in.split_at_tile( );
         EXPECT_TRUE( ret );
-        EXPECT_EQ( Key{ "/foo" }, super_key );
-        EXPECT_EQ( Key{ "/boo" }, sub_key );
+        EXPECT_EQ( Key{ "/foo"s }, super_key );
+        EXPECT_EQ( Key{ "/boo"s }, sub_key );
     }
 }
 
-TEST( Key, IsSubkey )
+
+TEST_F( TestKey, IsSubkey )
 {
-    using Key = ::jb::Key< ::jb::DefaultPolicies, ::jb::DefaultPolicies >;
 
     EXPECT_FALSE( Key{}.is_subkey( Key{} ) );
-    EXPECT_FALSE( Key{ "/foo" }.is_subkey( Key{} ) );
-    EXPECT_FALSE( Key{ "" }.is_subkey( Key{ "/foo" } ) );
-    EXPECT_FALSE( Key{ "/boo" }.is_subkey( Key{ "boo" } ) );
-    EXPECT_FALSE( Key{ "boo" }.is_subkey( Key{ "/boo" } ) );
-    EXPECT_FALSE( Key{ "/foo" }.is_subkey( Key{ "/boo" } ) );
-    EXPECT_FALSE( Key{ "/foo" }.is_subkey( Key{ "/boo/foo" } ) );
-    EXPECT_TRUE( Key{ "/foo/boo" }.is_subkey( Key{ "/foo" } ) );
+    EXPECT_FALSE( Key{ "/foo"s }.is_subkey( Key{} ) );
+    EXPECT_FALSE( Key{}.is_subkey( Key{ "/foo"s } ) );
+    EXPECT_FALSE( Key{ "/boo"s }.is_subkey( Key{ "boo"s } ) );
+    EXPECT_FALSE( Key{ "boo"s }.is_subkey( Key{ "/boo"s } ) );
+    EXPECT_FALSE( Key{ "/foo"s }.is_subkey( Key{ "/boo"s } ) );
+    EXPECT_FALSE( Key{ "/foo"s }.is_subkey( Key{ "/boo/foo"s } ) );
+    EXPECT_TRUE( Key{ "/foo/boo"s }.is_subkey( Key{ "/foo"s } ) );
 }
 
-TEST( Key, IsSuperkey )
-{
-    using Key = ::jb::Key< ::jb::DefaultPolicies, ::jb::DefaultPolicies >;
 
+TEST_F( TestKey, IsSuperkey )
+{
     EXPECT_FALSE( Key{}.is_superkey( Key{} ) );
-    EXPECT_FALSE( Key{ "/foo" }.is_superkey( Key{} ) );
-    EXPECT_FALSE( Key{ "" }.is_superkey( Key{ "/foo" } ) );
-    EXPECT_FALSE( Key{ "/boo" }.is_superkey( Key{ "boo" } ) );
-    EXPECT_FALSE( Key{ "boo" }.is_superkey( Key{ "/boo" } ) );
-    EXPECT_FALSE( Key{ "/foo" }.is_superkey( Key{ "/boo" } ) );
-    EXPECT_FALSE( Key{ "/foo" }.is_superkey( Key{ "/boo/foo" } ) );
-    EXPECT_TRUE( Key{ "/foo" }.is_superkey( Key{ "/foo/boo" } ) );
+    EXPECT_FALSE( Key{ "/foo"s }.is_superkey( Key{} ) );
+    EXPECT_FALSE( Key{}.is_superkey( Key{ "/foo"s } ) );
+    EXPECT_FALSE( Key{ "/boo"s }.is_superkey( Key{ "boo"s } ) );
+    EXPECT_FALSE( Key{ "boo"s }.is_superkey( Key{ "/boo"s } ) );
+    EXPECT_FALSE( Key{ "/foo"s }.is_superkey( Key{ "/boo"s } ) );
+    EXPECT_FALSE( Key{ "/foo"s }.is_superkey( Key{ "/boo/foo"s } ) );
+    EXPECT_TRUE( Key{ "/foo"s }.is_superkey( Key{ "/foo/boo"s } ) );
 }

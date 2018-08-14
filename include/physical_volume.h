@@ -18,7 +18,6 @@ namespace jb
         friend typename Storage::VirtualVolume;
         template < typename Policies, typename Pad, typename T > friend struct Hash;
 
-        using KeyT = typename Storage::KeyT;
         using Impl = typename Storage::PhysicalVolumeImpl;
         std::weak_ptr< Impl > impl_;
 
@@ -26,11 +25,6 @@ namespace jb
 
 
     public:
-
-        auto get_mount( KeyT path )
-        {
-            return std::pair{ RetCode::Ok, std::shared_ptr< MountPointImpl >() };
-        }
 
         PhysicalVolume() noexcept = default;
 

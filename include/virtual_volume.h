@@ -3,7 +3,8 @@
 
 
 #include <memory>
-#include <key.h>
+#include <tuple>
+#include <exception>
 
 
 class TestVirtualVolume;
@@ -25,11 +26,12 @@ namespace jb
         // Few aliases
         //
         using Storage = ::jb::Storage< Policies, Pad >;
-        using ValueT = typename Storage::ValueT;
-        using KeyT = typename Storage::KeyT;
+        using Value = typename Storage::Value;
+        using Key = typename Storage::Key;
+        using KeyValue = typename Storage::KeyValue;
         using PhysicalVolume = typename Storage::PhysicalVolume;
         using MountPoint = typename Storage::MountPoint;
-        using TimestampT = typename Storage::TimestampT;
+        using Timestamp = typename Storage::Timestamp;
 
 
         friend class Storage;
@@ -170,70 +172,146 @@ namespace jb
         }
 
 
-        auto Insert( KeyT path, KeyT subkey, ValueT && value, TimestampT && timestamp = TimestampT{}, bool overwrite = false ) noexcept
+        auto Insert( const KeyValue & key, const KeyValue & subkey, Value && value, Timestamp && good_before = Timestamp{}, bool overwrite = false ) noexcept
         {
             using namespace std;
 
-            if (auto impl = impl_.lock())
+            try
             {
-                return impl->Insert( path, subkey, move( value ), move( timestamp ), overwrite );
+                Key key_{ key };
+                if ( !key_.is_path( ) )
+                {
+                    return tuple{ RetCode::InvalidKey };
+                }
+
+                Key subkey_{ subkey };
+                if ( !subkey_.is_leaf( ) )
+                {
+                    return tuple{ RetCode::InvalidSubkey };
+                }
+
+                if ( auto impl = impl_.lock( ) )
+                {
+                    return impl->Insert( key_, subkey_, move( value ), move( good_before ), overwrite );
+                }
+                else
+                {
+                    return tuple{ RetCode::InvalidHandle };
+                }
             }
-            else
+            catch ( const bad_alloc & )
             {
-                return RetCode::InvalidHandle;
+                return tuple{ RetCode::InsufficientMemory };
             }
+            catch ( ... )
+            {
+            }
+
+            return tuple{ RetCode::UnknownError };
         }
 
 
         [[ nodiscard ]]
-        auto Get( KeyT key ) noexcept
+        auto Get( const KeyValue & key ) noexcept
         {
             using namespace std;
 
-            if (auto impl = impl_.lock())
+            try
             {
-                return impl->Get(key);
+                Key key_{ key };
+                if ( !key_.is_path( ) )
+                {
+                    return tuple{ RetCode::InvalidKey, Value{} };
+                }
+
+                if ( auto impl = impl_.lock( ) )
+                {
+                    return impl->Get( key_ );
+                }
+                else
+                {
+                    return tuple{ RetCode::InvalidHandle, Value{} };
+                }
             }
-            else
+            catch ( const std::bad_alloc & )
             {
-                return pair{ RetCode::InvalidHandle, ValueT{} };
+                return tuple{ RetCode::InsufficientMemory, Value{} };
             }
+            catch ( ... )
+            {
+            }
+
+            return tuple{ RetCode::UnknownError, Value{} };
         }
 
 
-        auto Erase( KeyT key, bool force = false ) noexcept
+        auto Erase( const KeyValue & key, bool force = false ) noexcept
         {
-            if (auto impl = impl_.lock())
+            using namespace std;
+
+            try
             {
-                return impl->Erase(key, force);
+                Key key_{ key };
+                if ( !key_.is_path( ) )
+                {
+                    return tuple{ RetCode::InvalidKey };
+                }
+
+                if ( auto impl = impl_.lock( ) )
+                {
+                    return impl->Erase( key_, force );
+                }
+                else
+                {
+                    return tuple{ RetCode::InvalidHandle };
+                }
             }
-            else
+            catch ( const std::bad_alloc & )
             {
-                return RetCode::InvalidHandle;
+                return tuple{ RetCode::InsufficientMemory };
             }
+            catch ( ... )
+            {
+            }
+
+            return tuple{ RetCode::UnknownError };
         }
 
 
         [[nodiscard]]
-        auto Mount( const PhysicalVolume & physical_volume, KeyT physical_path, KeyT logical_path ) noexcept
+        auto Mount( const PhysicalVolume & physical_volume, const KeyValue & physical_path, const KeyValue & logical_path, const KeyValue & alias ) noexcept
         {
             using namespace std;
 
-            if ( !physical_path.is_path( ) || !logical_path.is_path( ) )
+            Key physical_path_{ physical_path };
+            if ( ! physical_path_.is_path( ) )
             {
-                return pair{ RetCode::InvalidKey, MountPoint{} };
+                return tuple{ RetCode::InvalidPhysicalPath, MountPoint{} };
             }
+
+            Key logical_path_{ logical_path };
+            if ( !logical_path_.is_path( ) )
+            {
+                return tuple{ RetCode::InvalidLogicalPath, MountPoint{} };
+            }
+
+            Key alias_{ alias };
+            if ( !alias_.is_leaf( ) )
+            {
+                return tuple{ RetCode::InvalidAlias, MountPoint{} };
+            }
+
 
             auto impl = impl_.lock( );
             auto physical_impl = physical_volume.impl_.lock( );
 
             if ( impl && physical_impl )
             {
-                return impl->Mount( physical_impl, physical_path, logical_path );
+                return impl->Mount( physical_impl, physical_path_, logical_path_, alias_ );
             }
             else
             {
-                return pair{ RetCode::InvalidHandle, MountPoint{} };
+                return tuple{ RetCode::InvalidHandle, MountPoint{} };
             }
         }
     };

@@ -15,10 +15,10 @@
 
 #include <assert.h>
 #include <policies.h>
-#include <key.h>
 
 
 class TestStorage;
+class TestKey;
 
 
 namespace jb
@@ -35,7 +35,10 @@ namespace jb
         LimitReached,           ///< Virtual Volume already has maximum number of Mounts Points
         VolumeAlreadyMounted,   ///< Attempt to mount the same physical volume at the same logical path
         InvalidKey,
-        InvalidPhysicalKey,
+        InvalidSubkey,
+        InvalidPhysicalPath,
+        InvalidLogicalPath,
+        InvalidAlias,
         ///
         NotImplementedYet,
     };
@@ -57,17 +60,26 @@ namespace jb
     class Storage
     {
 
-        friend class TestStorage;
         friend typename Pad;
+        friend class TestStorage;
+        friend class TestKey;
+
         friend class VirtualVolume;
         friend class PhysicalVolume;
         friend class MountPoint;
 
+        class VirtualVolumeImpl;
+        class PhysicalVolumeImpl;
+        class MountPointImpl;
+
+
     public:
 
-        using KeyT = ::jb::Key< Policies, Pad >;
-        using ValueT = typename Policies::ValueT;
-        using TimestampT = std::filesystem::file_time_type;
+        class Key;
+
+        using KeyValue = typename Key::ValueT;
+        using Value = typename Policies::ValueT;
+        using Timestamp = typename Policies::TimestampT;
 
         class VirtualVolume;
         class PhysicalVolume;
@@ -75,12 +87,6 @@ namespace jb
 
     private:
 
-        class VirtualVolumeImpl;
-        class PhysicalVolumeImpl;
-        class MountPointImpl;
-
-
-     
         template < typename VolumeT >
         struct SingletonPolicy
         {
@@ -608,6 +614,7 @@ namespace jb
 }
 
 
+#include "key.h"
 #include "virtual_volume.h"
 #include "physical_volume.h"
 #include "mount_point.h"

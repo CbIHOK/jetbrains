@@ -8,14 +8,15 @@ class TestStorage : public ::testing::Test
 
 protected:
 
-    using RetCode        = ::jb::RetCode;
-    using Storage        = ::jb::Storage<>;
-    using Policies       = ::jb::DefaultPolicies;
-    using Pad            = ::jb::DefaultPad;
-    using VirtualVolume  = typename Storage::VirtualVolume;
+    using RetCode = ::jb::RetCode;
+    using Storage = ::jb::Storage<>;
+    using Policies = ::jb::DefaultPolicies;
+    using Pad = ::jb::DefaultPad;
+    using VirtualVolume = typename Storage::VirtualVolume;
     using PhysicalVolume = typename Storage::PhysicalVolume;
-    using ValueT         = Storage::ValueT;
-    using TimestampT     = Storage::TimestampT;
+    using MountPoint = typename Storage::MountPoint;
+    using Value = Storage::Value;
+    using Timestamp = Storage::Timestamp;
 
     
     ~TestStorage( ) { Storage::CloseAll( ); }
@@ -54,10 +55,27 @@ TEST_F( TestStorage, VirtualVolume_Dummy )
         EXPECT_EQ( h1, h2 );
     }
 
-    EXPECT_EQ( RetCode::InvalidHandle, v1.Insert( "/foo", "boo", ValueT{} ) );
-    EXPECT_EQ( RetCode::InvalidHandle, v1.Get( "/foo/boo" ).first );
-    EXPECT_EQ( RetCode::InvalidHandle, v1.Erase( "/foo/boo" ) );
-    EXPECT_EQ( RetCode::InvalidHandle, v1.Mount( PhysicalVolume{}, "/foo/boo", "/boo" ).first );
+    {
+        auto[ ret ] = v1.Insert( "/foo", "boo", Value{} );
+        EXPECT_EQ( RetCode::InvalidHandle, ret );
+    }
+
+    {
+        auto[ ret, value ] = v1.Get( "/foo/boo" );
+        EXPECT_EQ( RetCode::InvalidHandle, ret );
+        EXPECT_EQ( Value{}, value );
+    }
+
+    {
+        auto[ ret ] = v1.Erase( "/foo/boo" );
+        EXPECT_EQ( RetCode::InvalidHandle, ret );
+    }
+
+    {
+        auto[ ret, mp ] = v1.Mount( PhysicalVolume{}, "/foo/boo", "/", "boo" );
+        EXPECT_EQ( RetCode::InvalidHandle, ret );
+        EXPECT_EQ( MountPoint{}, mp );
+    }
 }
 
 
@@ -90,10 +108,27 @@ TEST_F( TestStorage, VirtualVolume_Base )
     EXPECT_FALSE( moved );
     EXPECT_EQ( copied, v );
 
-    EXPECT_EQ( RetCode::InvalidLogicalKey, v.Insert( "/foo", "boo", ValueT{} ) );
-    EXPECT_EQ( RetCode::InvalidLogicalKey, v.Get( "/foo/boo" ).first );
-    EXPECT_EQ( RetCode::InvalidLogicalKey, v.Erase( "/foo/boo" ) );
-    EXPECT_EQ( RetCode::InvalidHandle, v.Mount( PhysicalVolume{}, "/foo/boo", "/", "boo" ).first );
+    {
+        auto[ ret ] = v.Insert( "/foo", "boo", Value{} );
+        EXPECT_EQ( RetCode::InvalidHandle, ret );
+    }
+
+    {
+        auto[ ret, value ] = v.Get( "/foo/boo" );
+        EXPECT_EQ( RetCode::InvalidHandle, ret );
+        EXPECT_EQ( Value{}, value );
+    }
+
+    {
+        auto[ ret ] = v.Erase( "/foo/boo" );
+        EXPECT_EQ( RetCode::InvalidHandle, ret );
+    }
+
+    {
+        auto[ ret, mp ] = v.Mount( PhysicalVolume{}, "/foo/boo", "/", "boo" );
+        EXPECT_EQ( RetCode::InvalidHandle, ret );
+        EXPECT_EQ( MountPoint{}, mp );
+    }
 
     EXPECT_EQ( RetCode::Ok, copied.Close( ) );
     EXPECT_EQ( RetCode::InvalidHandle, v.Close( ) );
