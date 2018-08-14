@@ -6,6 +6,8 @@
 #include <unordered_map>
 #include <shared_mutex>
 #include <tuple>
+#include <execution>
+#include <boost/container/static_vector.hpp>
 #include "variadic_hash.h"
 
 
@@ -28,6 +30,7 @@ namespace jb
         using PhysicalVolumeImplP = std::shared_ptr< PhysicalVolumeImpl >;
         using MountPoint = typename Storage::MountPoint;
         using MountPointImpl = typename Storage::MountPointImpl;
+        using MountPointImplP = std::shared_ptr< MountPointImpl >;
        
         using Key = typename Storage::Key;
         using KeyValue = typename Storage::KeyValue;
@@ -70,7 +73,7 @@ namespace jb
         // provides O(1) search by mount PIMP pointer, cover dismount use case
         //
         using MountPointImplCollectionT = std::unordered_map <
-            std::shared_ptr< MountPointImpl >,
+            MountPointImplP,
             MountPointBacktraceP
         >;
         MountPointImplCollectionT mounts_;
@@ -79,7 +82,7 @@ namespace jb
         //
         // provides O(1) search my mount path, cover most of scenario
         //
-        using MountedPathCollectionT = std::unordered_multimap< typename Key::ValueT, MountPointBacktraceP >;
+        using MountedPathCollectionT = std::unordered_multimap< typename KeyValue, MountPointBacktraceP >;
         MountedPathCollectionT mounted_paths_;
 
 
@@ -111,7 +114,7 @@ namespace jb
         }
 
 
-        auto find_nearest_mounted_path( const Key & logical_path ) const noexcept
+        auto find_nearest_mounted_path( const Key & logical_path ) const
         {
             using namespace std;
 
@@ -127,6 +130,39 @@ namespace jb
             }
 
             return tuple{ Key{}, logical_path };
+        }
+
+
+        auto prepare_mount_points( const Key & path ) const
+        {
+            using namespace std;
+            using namespace boost::container;
+
+            // lock physical volume collection and get compare routine
+            auto lesser_pv = Storage::get_lesser_priority();
+
+            // get mount points by logical path
+            auto[ from, to ] = mounted_paths_.equal_range( path );
+
+            // vector on stack
+            static_vector< MountPointImplP, MountsLimit > mount_points;
+
+            // fill the collection with mount points
+            for_each( from, to, [&] ( const auto & mount_point ) {
+                MountPointBacktraceP backtrace = mount_point.second;
+                MountPointImplP mount_point_impl = backtrace->mount_->first;
+                mount_points.insert( mount_points.end(), mount_point_impl );
+            } );
+
+            // introduce comparing of mount points by physical volume priority
+            auto lesser_mp = [&] ( const auto & mp1, const auto & mp2 ) {
+                return lesser_pv( mp1->physical_volume(), mp2->physical_volume() );
+            };
+
+            // sort mount points by physical volume priority
+            sort( execution::par, begin( mount_points ), end( mount_points ), lesser_mp );
+
+            return mount_points;
         }
 
 
@@ -150,12 +186,25 @@ namespace jb
 
 
         [[ nodiscard ]]
-        auto Insert( const Key & path, const Key & subkey, Value && value, Timestamp && timestamp, bool overwrite ) noexcept
+        auto Insert( const Key & path, const Key & subkey, Value && value, Timestamp && good_before, bool overwrite )
         {
             using namespace std;
 
+            assert( path.is_path() );
+            assert( subkey.is_leaf() );
+
             try
             {
+                shared_lock l( mounts_guard_ );
+
+                auto[ mp_path, path_from_mp ] = find_nearest_mounted_path( path );
+                auto mount_points = move( get_mount_points( mount_point_path ) );
+
+                if ( mount_points.empty() )
+                {
+                    return tuple{ RetCode::InvalidLogicalPath };
+                }
+
                 return tuple{ RetCode::NotImplementedYet };
             }
             catch(...)
@@ -235,7 +284,7 @@ namespace jb
                     return tuple{ RetCode::UnknownError, MountPoint() };
                 }
 
-                auto[ nearest_mp, path_from_mp ] = find_nearest_mounted_path( logical_path );
+                auto[ mp_path, path_from_mp ] = find_nearest_mounted_path( logical_path );
 
                 return tuple{ RetCode::NotImplementedYet, MountPoint{} };
             }

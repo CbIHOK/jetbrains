@@ -31,8 +31,7 @@ protected:
 
         assert( l_impl && r_impl );
 
-        auto [ret_code, lesser] = Storage::get_lesser_priority();
-        EXPECT_EQ( RetCode::Ok, ret_code );
+        auto lesser = Storage::get_lesser_priority();
 
         return lesser( l_impl, r_impl );
     }

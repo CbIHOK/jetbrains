@@ -8,10 +8,11 @@ namespace jb
     template < typename Policies, typename Pad >
     class Storage< Policies, Pad >::MountPoint
     {
-        using Storage = ::jb::Storage< Policies, Pad >;
-
         friend typename Pad;
         friend typename Storage::VirtualVolumeImpl;
+
+        using PhysicalVolumeImpl = typename Storage::PhysicalVolumeImpl;
+
 
         using Impl = typename Storage::MountPointImpl;
         std::weak_ptr< Impl > impl_;

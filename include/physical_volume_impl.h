@@ -16,16 +16,17 @@ namespace jb
         using PhysicalVolume = typename Storage::PhysicalVolume;
         using MountPointImpl = typename Storage::MountPointImpl;
 
-        using NodeUid = size_t;
+        class NodeLocker;
 
     public:
+
+        using NodeUid = size_t;
+        using NodeLock = typename NodeLocker::NodeLock;
 
         auto get_mount( Key path )
         {
             return std::pair{ RetCode::Ok, std::shared_ptr< MountPointImpl >( ) };
         }
-
-        class NodeLocker;
     };
 }
 

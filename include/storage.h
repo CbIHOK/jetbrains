@@ -478,7 +478,7 @@ namespace jb
                 , valid_( true )
             {}
 
-            bool operator () ( const ImplP & l, const ImplP & r ) const noexcept
+            bool operator () ( const ImplP & l, const ImplP & r ) const
             {
                 assert( valid_ && l && r );
 
@@ -499,24 +499,16 @@ namespace jb
 
 
         [[nodiscard]]
-        static auto get_lesser_priority() noexcept
+        static auto get_lesser_priority()
         {
             using namespace std;
             
             using CollectionT = typename SingletonPolicy< PhysicalVolume >::CollectionT;
 
-            try
-            {
-                auto[ guard, collection ] = singletons< PhysicalVolume >( );
-                shared_lock< shared_mutex > lock( guard );
+            auto[ guard, collection ] = singletons< PhysicalVolume >( );
+            shared_lock< shared_mutex > lock( guard );
 
-                return pair{ RetCode::Ok, lesser_priority{ move( lock ), collection } };
-            }
-            catch ( ... )
-            {
-            }
-
-            return pair{ RetCode::UnknownError, lesser_priority{ shared_lock< shared_mutex >{}, CollectionT{} } };
+            return lesser_priority{ move( lock ), collection };
         }
 
 

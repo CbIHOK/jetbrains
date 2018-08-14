@@ -117,7 +117,7 @@ TEST_F( TestVirtualVolume, Insert_BadPath )
 
     {
         auto[ ret ] = v.Insert( "/", "foo", Value{} );
-        EXPECT_EQ( RetCode::InvalidKey, ret );
+        EXPECT_EQ( RetCode::InvalidLogicalPath, ret );
     }
 
     {
