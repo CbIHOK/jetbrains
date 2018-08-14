@@ -133,7 +133,7 @@ namespace jb
         }
 
 
-        auto prepare_mount_points( const Key & path ) const
+        auto get_mount_points( const Key & path ) const
         {
             using namespace std;
             using namespace boost::container;
@@ -198,7 +198,7 @@ namespace jb
                 shared_lock l( mounts_guard_ );
 
                 auto[ mp_path, path_from_mp ] = find_nearest_mounted_path( path );
-                auto mount_points = move( get_mount_points( mount_point_path ) );
+                auto mount_points = move( get_mount_points( mp_path ) );
 
                 if ( mount_points.empty() )
                 {

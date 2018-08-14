@@ -188,7 +188,7 @@ namespace jb
 
                 if ( auto impl = impl_.lock( ) )
                 {
-                    return impl->Insert( key_, subkey_, value, good_before, overwrite );
+                    return impl->Insert( key_, subkey_, move(value), move(good_before), overwrite );
                 }
                 else
                 {
