@@ -35,52 +35,57 @@ TEST_F( TestKey, Dummy )
 
 TEST_F( TestKey, Construction )
 {
-    KeyValue k = "/foo/boo"s;
-    Key key{ k };
-    EXPECT_TRUE( key.is_valid( ) );
-    EXPECT_TRUE( key.is_path( ) );
-    EXPECT_FALSE( key.is_leaf( ) );
+    EXPECT_TRUE( Key{ "/"s }.is_valid() );
+    EXPECT_TRUE( Key{ "/"s }.is_path() );
+    EXPECT_FALSE( Key{ "/"s }.is_leaf() );
 
-    k = "/foo/boo"s;
-    key = Key{ k };
-    EXPECT_TRUE( key.is_valid( ) );
-    EXPECT_FALSE( key.is_path( ) );
-    EXPECT_TRUE( key.is_leaf( ) );
+    EXPECT_FALSE( Key{ "//"s }.is_valid() );
+    EXPECT_FALSE( Key{ "//"s }.is_path() );
+    EXPECT_FALSE( Key{ "//"s }.is_leaf() );
 
-    key = Key{ ""s };
-    EXPECT_FALSE( key.is_valid( ) );
-    EXPECT_FALSE( key.is_path( ) );
-    EXPECT_FALSE( key.is_leaf( ) );
+    EXPECT_FALSE( Key{ "//foo"s }.is_valid() );
+    EXPECT_FALSE( Key{ "//foo"s }.is_path() );
+    EXPECT_FALSE( Key{ "//foo"s }.is_leaf() );
 
-    key = Key{ "foo/"s };
-    EXPECT_FALSE( key.is_valid( ) );
-    EXPECT_FALSE( key.is_path( ) );
-    EXPECT_FALSE( key.is_leaf( ) );
+    EXPECT_FALSE( Key{ "/boo//foo"s }.is_valid() );
+    EXPECT_FALSE( Key{ "/boo//foo"s }.is_path() );
+    EXPECT_FALSE( Key{ "/boo//foo"s }.is_leaf() );
 
-    key = Key{ ":/boo/"s };
-    EXPECT_FALSE( key.is_valid( ) );
-    EXPECT_FALSE( key.is_path( ) );
-    EXPECT_FALSE( key.is_leaf( ) );
+    EXPECT_TRUE( Key{ "boo"s }.is_valid() );
+    EXPECT_FALSE( Key{ "boo"s }.is_path() );
+    EXPECT_TRUE( Key{ "boo"s }.is_leaf() );
 
-    key = Key{ "c:/boo/"s };
-    EXPECT_FALSE( key.is_valid( ) );
-    EXPECT_FALSE( key.is_path( ) );
-    EXPECT_FALSE( key.is_leaf( ) );
+    EXPECT_FALSE( Key{ "bo{o"s }.is_valid() );
+    EXPECT_FALSE( Key{ "bo{o"s }.is_path() );
+    EXPECT_FALSE( Key{ "bo{o"s }.is_leaf() );
 
-    key = Key{ ".."s };
-    EXPECT_FALSE( key.is_valid( ) );
-    EXPECT_FALSE( key.is_path( ) );
-    EXPECT_FALSE( key.is_leaf( ) );
+    EXPECT_FALSE( Key{ "boo/"s }.is_valid() );
+    EXPECT_FALSE( Key{ "boo/"s }.is_path() );
+    EXPECT_FALSE( Key{ "boo/"s }.is_leaf() );
 
-    key = Key{ "."s };
-    EXPECT_FALSE( key.is_valid( ) );
-    EXPECT_FALSE( key.is_path( ) );
-    EXPECT_FALSE( key.is_leaf( ) );
+    EXPECT_FALSE( Key{ "/boo/"s }.is_valid() );
+    EXPECT_FALSE( Key{ "/boo/"s }.is_path() );
+    EXPECT_FALSE( Key{ "/boo/"s }.is_leaf() );
 
-    key = Key{ "\foo"s };
-    EXPECT_FALSE( key.is_valid( ) );
-    EXPECT_FALSE( key.is_path( ) );
-    EXPECT_FALSE( key.is_leaf( ) );
+    EXPECT_FALSE( Key{ "-boo"s }.is_valid() );
+    EXPECT_FALSE( Key{ "-boo"s }.is_path() );
+    EXPECT_FALSE( Key{ "-boo"s }.is_leaf() );
+
+    EXPECT_FALSE( Key{ "_boo"s }.is_valid() );
+    EXPECT_FALSE( Key{ "_boo"s }.is_path() );
+    EXPECT_FALSE( Key{ "_boo"s }.is_leaf() );
+
+    EXPECT_FALSE( Key{ "1_boo"s }.is_valid() );
+    EXPECT_FALSE( Key{ "1_boo"s }.is_path() );
+    EXPECT_FALSE( Key{ "1_boo"s }.is_leaf() );
+
+    EXPECT_TRUE( Key{ "foo-1_boo"s }.is_valid() );
+    EXPECT_FALSE( Key{ "foo-1_boo"s }.is_path() );
+    EXPECT_TRUE( Key{ "foo-1_boo"s }.is_leaf() );
+
+    EXPECT_TRUE( Key{ "/foo-1_boo"s }.is_valid() );
+    EXPECT_TRUE( Key{ "/foo-1_boo"s }.is_path() );
+    EXPECT_FALSE( Key{ "/foo-1_boo"s }.is_leaf() );
 }
 
 
@@ -110,24 +115,24 @@ TEST_F( TestKey, SplitAtHead )
     }
 
     {
-        Key in{ "/"s };
-        auto[ ret, super_key, sub_key ] = in.split_at_head( );
+        KeyValue in = { "/"s };
+        auto[ ret, super_key, sub_key ] = Key{ in }.split_at_head();
         EXPECT_TRUE( ret );
         EXPECT_EQ( Key{}, super_key );
         EXPECT_EQ( Key{}, sub_key );
     }
 
     {
-        Key in{ "/foo"s };
-        auto[ ret, super_key, sub_key ] = in.split_at_head( );
+        KeyValue in{ "/foo"s };
+        auto[ ret, super_key, sub_key ] = Key{ in }.split_at_head();
         EXPECT_TRUE( ret );
         EXPECT_EQ( Key{ "/foo"s }, super_key );
         EXPECT_EQ( Key{}, sub_key );
     }
 
     {
-        Key in{ "/foo/boo"s };
-        auto[ ret, super_key, sub_key ] = in.split_at_head( );
+        KeyValue in{ "/foo/boo"s };
+        auto[ ret, super_key, sub_key ] = Key{ in }.split_at_head();
         EXPECT_TRUE( ret );
         EXPECT_EQ( Key{ "/foo"s }, super_key );
         EXPECT_EQ( Key{ "/boo"s }, sub_key );
@@ -138,32 +143,32 @@ TEST_F( TestKey, SplitAtHead )
 TEST_F( TestKey, SplitAtTile )
 {
     {
-        Key in{};
-        auto[ ret, super_key, sub_key ] = in.split_at_tile( );
+        KeyValue in{};
+        auto[ ret, super_key, sub_key ] = Key{ in }.split_at_tile();
         EXPECT_FALSE( ret );
         EXPECT_EQ( Key{}, super_key );
         EXPECT_EQ( Key{}, sub_key );
     }
 
     {
-        Key in{ "/"s };
-        auto[ ret, super_key, sub_key ] = in.split_at_tile( );
+        KeyValue in{ "/"s };
+        auto[ ret, super_key, sub_key ] = Key{ in }.split_at_tile( );
         EXPECT_TRUE( ret );
         EXPECT_EQ( Key{}, super_key );
         EXPECT_EQ( Key{}, sub_key );
     }
 
     {
-        Key in{ "/foo"s };
-        auto[ ret, super_key, sub_key ] = in.split_at_tile( );
+        KeyValue in{ "/foo"s };
+        auto[ ret, super_key, sub_key ] = Key{ in }.split_at_tile( );
         EXPECT_TRUE( ret );
         EXPECT_EQ( Key{}, super_key );
         EXPECT_EQ( Key{ "/foo"s }, sub_key );
     }
 
     {
-        Key in{ "/foo/boo"s };
-        auto[ ret, super_key, sub_key ] = in.split_at_tile( );
+        KeyValue in{ "/foo/boo"s };
+        auto[ ret, super_key, sub_key ] = Key{ in }.split_at_tile( );
         EXPECT_TRUE( ret );
         EXPECT_EQ( Key{ "/foo"s }, super_key );
         EXPECT_EQ( Key{ "/boo"s }, sub_key );

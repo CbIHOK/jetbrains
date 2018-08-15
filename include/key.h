@@ -58,7 +58,7 @@ namespace jb
                 using RegexT = basic_regex< CharT >;
                 using RegexStrT = typename RegexT::string_type;
 
-                auto pattern = R"noesc(^(\w[\w-]*)$|^(\/\w[\w-]*)+$|^\/$)noesc"s;
+                auto pattern = R"noesc(^([a-zA-Z][\w-]*)$|^(\/[a-zA-Z][\w-]*)+$|^\/$)noesc"s;
                 return RegexT{ RegexStrT{ pattern.begin(), pattern.end() } };
             }();
 
