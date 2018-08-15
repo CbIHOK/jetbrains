@@ -181,6 +181,10 @@ namespace jb
                 {
                     return tuple{ true, Key{ view_.substr( superkey.view_.size() ) } };
                 }
+                else if ( superkey.view_.size() == view_.size() && superkey.view_ == view_.substr( 0, superkey.view_.size() ) )
+                {
+                    return tuple{ true, move( root() ) };
+                }
             }
 
             return tuple{ false, Key{} };

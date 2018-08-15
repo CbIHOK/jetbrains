@@ -33,6 +33,7 @@ namespace jb
         using MountPoint = typename Storage::MountPoint;
         using MountPointImpl = typename Storage::MountPointImpl;
         using MountPointImplP = std::shared_ptr< MountPointImpl >;
+        using MountPointImplWeakP = std::weak_ptr< MountPointImpl >;
         using NodeUid = typename PhysicalVolumeImpl::NodeUid;
         using execution_connector = typename MountPointImpl::execution_connector;
        
@@ -95,9 +96,9 @@ namespace jb
         //
         struct MountPointBacktrace
         {
-            typename MountUidCollectionT::const_iterator uid_;
-            typename MountPointImplCollectionT::const_iterator mount_;
-            typename MountedPathCollectionT::const_iterator path_;
+            MountUid uid_;
+            MountPointImplWeakP mount_;
+            KeyValue path_;
         };
 
 
@@ -167,7 +168,8 @@ namespace jb
             // fill the collection with mount points
             for_each( from, to, [&] ( const auto & mount_point ) {
                 MountPointBacktraceP backtrace = mount_point.second;
-                MountPointImplP mount_point_impl = backtrace->mount_->first;
+                MountPointImplP mount_point_impl = backtrace->mount_.lock();
+                assert( mount_point_impl );
                 mount_points.emplace( mount_points.end(), mount_point_impl );
             } );
 
@@ -369,8 +371,13 @@ namespace jb
                         future = async( std::launch::async, [&] { return mp->lock_path( relative_path, in, out ); } );
                     }
 
+                    // enable applying chain
+                    connectors.front().second.store( true, memory_order_release );
+
                     // wait for all futures
                     for ( auto & future : futures ) { future.wait(); }
+
+                    auto overall_status = RetCode::NotFound;
 
                     // through all futures
                     for ( auto & future : futures )
@@ -382,17 +389,21 @@ namespace jb
                         {
                             // get lock over the path we're going mount to
                             lock_mount_to = move( lock );
+                            overall_status = RetCode::Ok;
                             break;
                         }
                         else if ( RetCode::NotFound != ret )
                         {
                             // something happened on physical level
-                            return { ret, MountPoint{} };
+                            overall_status = ret;
                         }
                     }
 
-                    // target path for mounting does not exist
-                    return { RetCode::NotFound, MountPoint{} };
+                    // unable to lock
+                    if ( RetCode::Ok != overall_status )
+                    {
+                        return { overall_status, MountPoint{} };
+                    }
                 }
 
                 // create mounting point
@@ -406,15 +417,18 @@ namespace jb
 
                 // create backtrace record
                 MountPointBacktraceP backtrace_ptr = make_shared< MountPointBacktrace >();
-                auto backtrace = * backtrace_ptr;
 
                 // combine logical path for new mount
                 KeyValue mounted_path = logical_path / alias;
 
                 // fill backtrace
-                backtrace.uid_ = uids_.emplace( uid, backtrace_ptr ).first;
-                backtrace.mount_ = mounts_.emplace( mp, backtrace_ptr ).first;
-                backtrace.path_ = mounted_paths_.emplace( move( mounted_path ), backtrace_ptr );
+                backtrace_ptr->uid_ = uid;
+                backtrace_ptr->mount_ = mp;
+                backtrace_ptr->path_ = mounted_path;
+
+                uids_.insert( { uid, backtrace_ptr } );
+                mounts_.insert( { mp, backtrace_ptr } );
+                mounted_paths_.insert( { mounted_path, backtrace_ptr } );
 
                 // done
                 return { RetCode::Ok, MountPoint{ mp } };

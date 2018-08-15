@@ -197,3 +197,14 @@ TEST_F( TestVirtualVolume, Mount_ToRoot )
     ASSERT_TRUE( pv );
     EXPECT_EQ( RetCode::Ok, std::get< RetCode >( vv.Mount( pv, "/", "/", "mount" ) ) );
 }
+
+TEST_F( TestVirtualVolume, Mount_ToMount )
+{
+    auto vv = std::get< VirtualVolume >( Storage::OpenVirtualVolume() );
+    ASSERT_TRUE( vv );
+    auto pv = std::get< PhysicalVolume >( Storage::OpenPhysicalVolume( "foo" ) );
+    ASSERT_TRUE( pv );
+    ASSERT_EQ( RetCode::Ok, std::get< RetCode >( vv.Mount( pv, "/", "/", "mount" ) ) );
+    EXPECT_EQ( RetCode::Ok, std::get< RetCode >( vv.Mount( pv, "/", "/mount", "mount1" ) ) );
+}
+
