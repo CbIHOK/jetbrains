@@ -132,3 +132,31 @@ TEST_F( TestVirtualVolume, Insert_InvalidLogicalPath )
     ASSERT_EQ( RetCode::Ok, ret );
     EXPECT_EQ( RetCode::InvalidLogicalPath, std::get< RetCode >( v.Insert( "/", "foo", Value{} ) ) );
 }
+
+TEST_F( TestVirtualVolume, Get_InvalidKey )
+{
+    auto[ ret, v ] = Storage::OpenVirtualVolume( );
+    ASSERT_EQ( RetCode::Ok, ret );
+    EXPECT_EQ( RetCode::InvalidKey, std::get< RetCode >( v.Get( "\\" ) ) );
+}
+
+TEST_F( TestVirtualVolume, Get_InvalidLogicalPath )
+{
+    auto[ ret, v ] = Storage::OpenVirtualVolume( );
+    ASSERT_EQ( RetCode::Ok, ret );
+    EXPECT_EQ( RetCode::InvalidLogicalPath, std::get< RetCode >( v.Get( "/foo/boo" ) ) );
+}
+
+TEST_F( TestVirtualVolume, Erase_InvalidKey )
+{
+    auto[ ret, v ] = Storage::OpenVirtualVolume( );
+    ASSERT_EQ( RetCode::Ok, ret );
+    EXPECT_EQ( RetCode::InvalidKey, std::get< RetCode >( v.Erase( "sfhgsg" ) ) );
+}
+
+TEST_F( TestVirtualVolume, Erase_InvalidLogicalPath )
+{
+    auto[ ret, v ] = Storage::OpenVirtualVolume( );
+    ASSERT_EQ( RetCode::Ok, ret );
+    EXPECT_EQ( RetCode::InvalidLogicalPath, std::get< RetCode >( v.Erase( "/foo/boo" ) ) );
+}

@@ -38,8 +38,15 @@ namespace jb
 
         Key( ) noexcept = default;
 
-        Key( const Key & ) = default;
-        Key & operator = ( const Key & ) = default;
+        Key( const Key & o ) : view_{ o.view_ }
+        {
+        }
+        
+        Key & operator = ( const Key & )
+        {
+            view_ = o.view_;
+            return *this;
+        }
 
         Key( Key && ) noexcept = default;
         Key & operator = ( Key && ) noexcept = default;

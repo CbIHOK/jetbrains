@@ -114,26 +114,39 @@ namespace jb
         }
 
 
+        /* Finds nearest mounted path for 
+        */
+        [[nodiscard]]
         auto find_nearest_mounted_path( const Key & logical_path ) const
         {
             using namespace std;
 
-            auto[ res, parent, rest ] = logical_path.split_at_tile( );
-            assert( res );
+            auto current = logical_path;
 
-            while ( parent != Key{} )
+            while ( current != Key{} )
             {
-                if ( mounted_paths_.find( parent ) != mounted_paths_.end( ) )
+                if ( mounted_paths_.count( current ) )
                 {
-                    return tuple{ parent, rest };
+                    break;
                 }
+
+                auto [ ret, superkey, subkey ] = current.split_at_tile( );
+                assert( ret );
+
+                current = move( superkey );
             }
 
-            return tuple{ Key{}, logical_path };
+            return tuple{ current };
         }
 
 
-        auto get_mount_points( const Key & path ) const
+        /* Provides collection of Mounts for given logical path
+
+        @param [in] logical_path - logical path
+        @return vector< MountPointImplP > sorted in priority of their Physical Volumes
+        */
+        [[nodiscard]]
+        auto get_mount_points( const Key & logical_path ) const
         {
             using namespace std;
             using namespace boost::container;
@@ -142,7 +155,7 @@ namespace jb
             auto lesser_pv = Storage::get_lesser_priority();
 
             // get mount points by logical path
-            auto[ from, to ] = mounted_paths_.equal_range( path );
+            auto[ from, to ] = mounted_paths_.equal_range( logical_path );
 
             // vector on stack
             static_vector< MountPointImplP, MountsLimit > mount_points;
@@ -197,7 +210,7 @@ namespace jb
             {
                 shared_lock l( mounts_guard_ );
 
-                auto[ mp_path, path_from_mp ] = find_nearest_mounted_path( path );
+                auto[ mp_path ] = find_nearest_mounted_path( path );
                 auto mount_points = move( get_mount_points( mp_path ) );
 
                 if ( mount_points.empty() )
@@ -216,41 +229,63 @@ namespace jb
 
 
         [[ nodiscard ]]
-        auto Get( const Key & key ) noexcept
+        std::tuple< RetCode, Value > Get( const Key & key ) noexcept
         {
             using namespace std;
 
+            assert( key.is_path( ) );
+
             try
             {
-                return tuple{ RetCode::NotImplementedYet, Value{} };
+                shared_lock l( mounts_guard_ );
+
+                auto[ mp_path ] = find_nearest_mounted_path( key );
+                auto mount_points = move( get_mount_points( mp_path ) );
+
+                if ( mount_points.empty( ) )
+                {
+                    return { RetCode::InvalidLogicalPath, Value{} };
+                }
+
+                return { RetCode::NotImplementedYet, Value{} };
             }
             catch ( ... )
             {
             }
 
-            return tuple{ RetCode::UnknownError, Value{} };
+            return { RetCode::UnknownError, Value{} };
         }
 
 
         [[ nodiscard ]]
-        auto Erase( const Key & key, bool force ) noexcept
+        std::tuple< RetCode > Erase( const Key & key, bool force ) noexcept
         {
             using namespace std;
 
             try
             {
-                return tuple{ RetCode::NotImplementedYet };
+                shared_lock l( mounts_guard_ );
+
+                auto[ mp_path ] = find_nearest_mounted_path( key );
+                auto mount_points = move( get_mount_points( mp_path ) );
+
+                if ( mount_points.empty( ) )
+                {
+                    return { RetCode::InvalidLogicalPath, };
+                }
+
+                return { RetCode::NotImplementedYet };
             }
             catch ( ... )
             {
             }
 
-            return tuple{ RetCode::UnknownError };
+            return { RetCode::UnknownError };
         }
 
 
         [[ nodiscard ]]
-        auto Mount( PhysicalVolumeImplP physical_volume, const Key & physical_path, const Key & logical_path, const Key & alias ) noexcept
+        std::tuple< RetCode, MountPoint > Mount( PhysicalVolumeImplP physical_volume, const Key & physical_path, const Key & logical_path, const Key & alias ) noexcept
         {
             using namespace std;
 
@@ -267,32 +302,32 @@ namespace jb
                 // if maximum number of mounts reached?
                 if ( uids_.size() >= MountsLimit)
                 {
-                    return tuple{ RetCode::LimitReached, MountPoint{} };
+                    return { RetCode::LimitReached, MountPoint{} };
                 }
 
                 // prevent mouting of the same physical volume at a logicap path
                 auto uid = misc::variadic_hash< Policies, Pad >( logical_path, physical_volume );
                 if ( uids_.find( uid ) != uids_.end() )
                 {
-                    return tuple{ RetCode::VolumeAlreadyMounted, MountPoint() };
+                    return { RetCode::VolumeAlreadyMounted, MountPoint() };
                 }
 
                 // check that iterators won't be invalidated on insertion
                 if ( !check_rehash() )
                 {
                     assert( false ); // that's unexpected
-                    return tuple{ RetCode::UnknownError, MountPoint() };
+                    return { RetCode::UnknownError, MountPoint() };
                 }
 
-                auto[ mp_path, path_from_mp ] = find_nearest_mounted_path( logical_path );
+                auto[ mp_path ] = find_nearest_mounted_path( logical_path );
 
-                return tuple{ RetCode::NotImplementedYet, MountPoint{} };
+                return { RetCode::NotImplementedYet, MountPoint{} };
             }
             catch ( ... )
             {
             }
 
-            return tuple{ RetCode::UnknownError, MountPoint{} };
+            return { RetCode::UnknownError, MountPoint{} };
         }
     };
 }
