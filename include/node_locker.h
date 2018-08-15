@@ -4,6 +4,7 @@
 
 #include <shared_mutex>
 #include <unordered_map>
+#include <list>
 #include <atomic>
 
 
@@ -56,37 +57,54 @@ namespace jb
     template < typename Policies, typename Pad >
     class Storage< Policies, Pad >::PhysicalVolumeImpl::NodeLocker::NodeLock
     {
-        std::function< void( ) > unlock_;
+        std::list< std::function< void( ) > > unlocks_;
 
         friend class NodeLocker;
 
-        NodeLock( std::function< void( ) > && unlock ) noexcept : unlock_( unlock )
+        NodeLock( std::function< void( ) > && unlock ) noexcept
         {
-            assert( unlock_ );
+            assert( unlock );
+            unlocks_.push_back( unlock );
+        }
+
+        void unlock_all( )
+        {
+            std::for_each( rbegin( unlocks_ ), rend( unlocks_ ), [=] ( auto & unlock ) {
+                assert( unlock );
+                unlock( );
+            } );
+
+            unlocks_.clear( );
         }
 
     public:
 
-        NodeLock( ) noexcept = delete;
+        NodeLock( ) = default;
         NodeLock( const NodeLock & ) = delete;
         NodeLock& operator = ( const NodeLock & ) = delete;
 
         NodeLock( NodeLock&& o )
         {
-            if ( unlock_ ) unlock_( );
-            unlock_ = move( o.unlock_ );
+            unlock_all( );
+            unlocks_ = move( o.unlocks_ );
         }
 
         NodeLock& operator = ( NodeLock&& o )
         {
-            if ( unlock_ ) unlock_( );
-            unlock_ = move( o.unlock_ );
+            unlock_all( );
+            unlocks_ = move( o.unlocks_ );
+            return *this;
+        }
+
+        NodeLock & operator << ( NodeLock && other )
+        {
+            unlocks_.splice( end( unlocks_ ), other.unlocks_ );
             return *this;
         }
 
         ~NodeLock( )
         {
-            if ( unlock_ ) unlock_( );
+            unlock_all( );
         }
     };
 }

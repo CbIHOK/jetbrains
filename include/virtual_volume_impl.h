@@ -28,6 +28,7 @@ namespace jb
         using Storage = ::jb::Storage< Policies, Pad >;
         using PhysicalVolumeImpl = typename Storage::PhysicalVolumeImpl;
         using PhysicalVolumeImplP = std::shared_ptr< PhysicalVolumeImpl >;
+        using NodeLock = typename PhysicalVolumeImpl::NodeLock;
         using MountPoint = typename Storage::MountPoint;
         using MountPointImpl = typename Storage::MountPointImpl;
         using MountPointImplP = std::shared_ptr< MountPointImpl >;
@@ -199,7 +200,7 @@ namespace jb
 
 
         [[ nodiscard ]]
-        auto Insert( const Key & path, const Key & subkey, Value && value, Timestamp && good_before, bool overwrite )
+        auto insert( const Key & path, const Key & subkey, Value && value, Timestamp && good_before, bool overwrite )
         {
             using namespace std;
 
@@ -229,7 +230,7 @@ namespace jb
 
 
         [[ nodiscard ]]
-        std::tuple< RetCode, Value > Get( const Key & key ) noexcept
+        std::tuple< RetCode, Value > get( const Key & key ) noexcept
         {
             using namespace std;
 
@@ -258,7 +259,7 @@ namespace jb
 
 
         [[ nodiscard ]]
-        std::tuple< RetCode > Erase( const Key & key, bool force ) noexcept
+        std::tuple< RetCode > erase( const Key & key, bool force ) noexcept
         {
             using namespace std;
 
@@ -285,7 +286,7 @@ namespace jb
 
 
         [[ nodiscard ]]
-        std::tuple< RetCode, MountPoint > Mount( PhysicalVolumeImplP physical_volume, const Key & physical_path, const Key & logical_path, const Key & alias ) noexcept
+        std::tuple< RetCode, MountPoint > mount( PhysicalVolumeImplP physical_volume, const Key & physical_path, const Key & logical_path, const Key & alias ) noexcept
         {
             using namespace std;
 
@@ -320,6 +321,14 @@ namespace jb
                 }
 
                 auto[ mp_path ] = find_nearest_mounted_path( logical_path );
+
+                NodeLock mount_to_lock;
+
+                if ( mp_path != Key{} )
+                {
+                }
+
+                MountPointImplP mp = make_shared< MountPointImpl >( physical_volume, physical_path, move( mount_to_lock ) );
 
                 return { RetCode::NotImplementedYet, MountPoint{} };
             }

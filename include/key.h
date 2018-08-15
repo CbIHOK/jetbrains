@@ -28,7 +28,6 @@ namespace jb
         static constexpr decltype( ViewT::npos ) npos = ViewT::npos;
         static constexpr CharT separator{ '/' };
 
-        ValueT value_;
         ViewT view_;
         
         explicit Key( const ViewT & view ) noexcept : view_( view ) {}
@@ -65,8 +64,7 @@ namespace jb
 
             if ( regex_match( value, regexp ) )
             {
-                value_ = value;
-                view_ = ViewT( value_.data(), value_.size() );
+                view_ = ViewT( value.data(), value.size() );
             }
         }
 

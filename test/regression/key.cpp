@@ -35,12 +35,14 @@ TEST_F( TestKey, Dummy )
 
 TEST_F( TestKey, Construction )
 {
-    Key key{ "/foo/boo"s };
+    KeyValue k = "/foo/boo"s;
+    Key key{ k };
     EXPECT_TRUE( key.is_valid( ) );
     EXPECT_TRUE( key.is_path( ) );
     EXPECT_FALSE( key.is_leaf( ) );
 
-    key = Key{ "boo"s };
+    k = "/foo/boo"s;
+    key = Key{ k };
     EXPECT_TRUE( key.is_valid( ) );
     EXPECT_FALSE( key.is_path( ) );
     EXPECT_TRUE( key.is_leaf( ) );

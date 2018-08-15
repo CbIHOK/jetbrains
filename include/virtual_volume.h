@@ -188,7 +188,7 @@ namespace jb
 
                 if ( auto impl = impl_.lock( ) )
                 {
-                    return impl->Insert( key_, subkey_, move(value), move(good_before), overwrite );
+                    return impl->insert( key_, subkey_, move(value), move(good_before), overwrite );
                 }
                 else
                 {
@@ -222,7 +222,7 @@ namespace jb
 
                 if ( auto impl = impl_.lock( ) )
                 {
-                    return impl->Get( key_ );
+                    return impl->get( key_ );
                 }
                 else
                 {
@@ -255,7 +255,7 @@ namespace jb
 
                 if ( auto impl = impl_.lock( ) )
                 {
-                    return impl->Erase( key_, force );
+                    return impl->erase( key_, force );
                 }
                 else
                 {
@@ -304,7 +304,7 @@ namespace jb
 
                 if ( impl && physical_impl )
                 {
-                    return impl->Mount( physical_impl, physical_path_, logical_path_, alias_ );
+                    return impl->mount( physical_impl, physical_path_, logical_path_, alias_ );
                 }
                 else
                 {
