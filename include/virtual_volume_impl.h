@@ -7,6 +7,7 @@
 #include <shared_mutex>
 #include <tuple>
 #include <execution>
+#include <future>
 #include <boost/container/static_vector.hpp>
 #include "variadic_hash.h"
 
@@ -32,13 +33,15 @@ namespace jb
         using MountPoint = typename Storage::MountPoint;
         using MountPointImpl = typename Storage::MountPointImpl;
         using MountPointImplP = std::shared_ptr< MountPointImpl >;
+        using NodeUid = typename PhysicalVolumeImpl::NodeUid;
+        using execution_connector = typename MountPointImpl::execution_connector;
        
         using Key = typename Storage::Key;
         using KeyValue = typename Storage::KeyValue;
         using Value = typename Storage::Value;
         using Timestamp = typename Storage::Timestamp;
 
-        static constexpr size_t MountsLimit = Policies::VirtualVolumePolicy::MountPointLimit;
+        static constexpr size_t MountLimit = Policies::VirtualVolumePolicy::MountPointLimit;
 
 
         //
@@ -159,13 +162,13 @@ namespace jb
             auto[ from, to ] = mounted_paths_.equal_range( logical_path );
 
             // vector on stack
-            static_vector< MountPointImplP, MountsLimit > mount_points;
+            static_vector< MountPointImplP, MountLimit > mount_points;
 
             // fill the collection with mount points
             for_each( from, to, [&] ( const auto & mount_point ) {
                 MountPointBacktraceP backtrace = mount_point.second;
                 MountPointImplP mount_point_impl = backtrace->mount_->first;
-                mount_points.insert( mount_points.end(), mount_point_impl );
+                mount_points.emplace( mount_points.end(), mount_point_impl );
             } );
 
             // introduce comparing of mount points by physical volume priority
@@ -189,9 +192,9 @@ namespace jb
     public:
 
         VirtualVolumeImpl( ) : mounts_guard_( )
-            , uids_( MountsLimit )
-            , mounts_( MountsLimit )
-            , mounted_paths_( MountsLimit )
+            , uids_( MountLimit )
+            , mounts_( MountLimit )
+            , mounted_paths_( MountLimit )
         {
         }
 
@@ -286,9 +289,13 @@ namespace jb
 
 
         [[ nodiscard ]]
-        std::tuple< RetCode, MountPoint > mount( PhysicalVolumeImplP physical_volume, const Key & physical_path, const Key & logical_path, const Key & alias ) noexcept
+        std::tuple< RetCode, MountPoint > mount( PhysicalVolumeImplP physical_volume, 
+                                                 const Key & physical_path,
+                                                 const Key & logical_path,
+                                                 const Key & alias ) noexcept
         {
             using namespace std;
+            using namespace boost::container;
 
             try
             {
@@ -297,11 +304,11 @@ namespace jb
                 assert( logical_path.is_path( ) );
                 assert( alias.is_leaf( ) );
 
-                // start mounting
+                // lock over all mounts
                 unique_lock< shared_mutex > write_lock( mounts_guard_ );
 
                 // if maximum number of mounts reached?
-                if ( uids_.size() >= MountsLimit)
+                if ( mounts_.size() >= MountLimit)
                 {
                     return { RetCode::LimitReached, MountPoint{} };
                 }
@@ -320,17 +327,101 @@ namespace jb
                     return { RetCode::UnknownError, MountPoint() };
                 }
 
-                auto[ mp_path ] = find_nearest_mounted_path( logical_path );
+                // find nearest mount point for logical path
+                auto mp_path = std::get< Key >( find_nearest_mounted_path( logical_path ) );
 
-                NodeLock mount_to_lock;
+                // will lock path to mount
+                NodeLock lock_mount_to;
 
+                // if we're mounting under another mount we need to lock corresponding path on physical level
                 if ( mp_path != Key{} )
                 {
+                    // get mount points for logical path
+                    auto mount_points = move( get_mount_points( mp_path ) );
+                    assert( mount_points.size() );
+
+                    // get physical path as a rest from mount point
+                    auto[ is_superkey, relative_path ] = mp_path.is_superkey( logical_path );
+                    assert( is_superkey );
+
+                    // futures, one per mount
+                    static_vector< future< tuple< RetCode, NodeUid, NodeLock > >, MountLimit > futures;
+                    futures.resize( mount_points.size() );
+
+                    // execution connectors are pairs of < cancel, do_it > flags
+                    static_vector< pair< atomic_bool, atomic_bool >, MountLimit > connectors;
+                    connectors.resize( mount_points.size() + 1 );
+
+                    // through all mounts: start locking routine
+                    for ( auto mp_it = begin( mount_points ); mp_it != end( mount_points ); ++mp_it )
+                    {
+                        auto d = static_cast< size_t >( distance( begin( mount_points ), mp_it ) );
+                         
+                        MountPointImplP mp = *mp_it;
+                        
+                        assert( d < futures.size() );
+                        auto & future = futures[ d ];
+
+                        assert( d < connectors.size() && d + 1 < connectors.size() );
+                        auto & in = connectors[ d ];
+                        auto & out = connectors[ d + 1 ];
+
+                        future = async( std::launch::async, [&] { return mp->lock_path( relative_path, in, out ); } );
+                    }
+
+                    // wait for all futures
+                    for ( auto & future : futures ) { future.wait(); }
+
+                    // through all futures
+                    for ( auto & future : futures )
+                    {
+                        // get result
+                        auto[ ret, node_uid, lock ] = future.get();
+
+                        if ( RetCode::Ok == ret )
+                        {
+                            // get lock over the path we're going mount to
+                            lock_mount_to = move( lock );
+                            break;
+                        }
+                        else if ( RetCode::NotFound != ret )
+                        {
+                            // something happened on physical level
+                            return { ret, MountPoint{} };
+                        }
+                    }
+
+                    // target path for mounting does not exist
+                    return { RetCode::NotFound, MountPoint{} };
                 }
 
-                MountPointImplP mp = make_shared< MountPointImpl >( physical_volume, physical_path, move( mount_to_lock ) );
+                // create mounting point
+                MountPointImplP mp = make_shared< MountPointImpl >( physical_volume, physical_path, move( lock_mount_to ) );
 
-                return { RetCode::NotImplementedYet, MountPoint{} };
+                // if mounting successful
+                if ( mp->status() != RetCode::Ok )
+                {
+                    return { mp->status(), MountPoint{} };
+                }
+
+                // create backtrace record
+                MountPointBacktraceP backtrace_ptr = make_shared< MountPointBacktrace >();
+                auto backtrace = * backtrace_ptr;
+
+                // combine logical path for new mount
+                KeyValue mounted_path = logical_path / alias;
+
+                // fill backtrace
+                backtrace.uid_ = uids_.emplace( uid, backtrace_ptr ).first;
+                backtrace.mount_ = mounts_.emplace( mp, backtrace_ptr ).first;
+                backtrace.path_ = mounted_paths_.emplace( move( mounted_path ), backtrace_ptr );
+
+                // done
+                return { RetCode::Ok, MountPoint{ mp } };
+            }
+            catch ( const bad_alloc & )
+            {
+                return { RetCode::InsufficientMemory, MountPoint{} };
             }
             catch ( ... )
             {

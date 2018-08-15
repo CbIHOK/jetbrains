@@ -80,12 +80,36 @@ namespace jb
         auto begin( ) const noexcept { return view_.begin( ); }
         auto end( ) const noexcept { return view_.end( ); }
 
+        auto static root()
+        { 
+            static KeyValue r{ separator };
+            static Key ret{ r }; 
+            return ret;
+        }
+
         friend auto operator == ( const Key & l, const Key & r ) noexcept { return l.view_ == r.view_; }
         friend auto operator != ( const Key & l, const Key & r ) noexcept { return l.view_ != r.view_; }
         friend auto operator < ( const Key & l, const Key & r ) noexcept { return l.view_ < r.view_; }
         friend auto operator <= ( const Key & l, const Key & r ) noexcept { return l.view_ <= r.view_; }
         friend auto operator >= ( const Key & l, const Key & r ) noexcept { return l.view_ >= r.view_; }
         friend auto operator > ( const Key & l, const Key & r ) noexcept { return l.view_ > r.view_; }
+
+        friend auto operator / ( const Key & l, const Key & r ) noexcept
+        {
+            if ( l == root() || r.is_path() )
+            {
+                return ( ValueT )l.view_ + ( ValueT )r.view_;
+            }
+            else if ( r.is_leaf() )
+            {
+                return ( ValueT )l.view_ + separator + ( ValueT )r.view_;
+            }
+            else
+            {
+                assert( false );
+                return ValueT{};
+            }
+        }
 
         auto split_at_head( ) const
         {
@@ -145,17 +169,28 @@ namespace jb
 
         auto is_subkey( const Key & superkey ) const noexcept
         {
-            if ( is_path() && superkey.is_path() && superkey.view_.size( ) < view_.size( ) )
+            using namespace std;
+
+            if ( is_path() )
             {
-                return superkey.view_ == view_.substr( 0, superkey.view_.size( ) );
+                if ( superkey == Key{} || superkey == root() )
+                {
+                    return tuple{ true, Key{ view_ } };
+                }
+                else if ( superkey.view_.size() < view_.size() && superkey.view_ == view_.substr( 0, superkey.view_.size() ) )
+                {
+                    return tuple{ true, Key{ view_.substr( superkey.view_.size() ) } };
+                }
             }
-            return false;
+
+            return tuple{ false, Key{} };
         }
 
         auto is_superkey( const Key & subkey ) const noexcept
         {
             return subkey.is_subkey( *this );
         }
+
     };
 
 

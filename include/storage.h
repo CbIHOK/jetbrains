@@ -38,6 +38,7 @@ namespace jb
         InvalidKey,             ///< Invalid key value
         InvalidSubkey,          ///< Invalid subkey value
         InvalidLogicalPath,     ///< Given logical path cannot be mapped onto a physical one
+        NotFound     ,          ///< Such path does not exist
         ///
         NotImplementedYet,
     };

@@ -34,15 +34,11 @@ namespace jb
         
         PhysicalVolumeImpl( ) = default;
 
-        struct execution_chain
-        {
-            std::atomic_bool cancel_;
-            std::atomic_bool doit_;
-        };
+        using execution_connector = std::pair< std::atomic_bool, std::atomic_bool >;
 
 
         [[nodiscard]]
-        static auto check_for_cancel( const execution_chain & incoming, execution_chain & outgoing ) noexcept
+        static auto check_for_cancel( const execution_connector & in, execution_connector & out ) noexcept
         {
             using namespace std;
 
@@ -58,12 +54,16 @@ namespace jb
 
 
         [[nodiscard]]
-        static auto check_for_doit( const execution_chain & incoming, execution_chain & outgoing ) noexcept
+        static auto check_for_doit( const execution_connector & in, execution_connector & out ) noexcept
         {
-            if ( auto doit = incoming.doit_.load( memory_order_acquire ) )
-            {
-                outgoing.cancel_.store( true, memory_order_release );
+            using namespace std;
+            
+            const atomic_bool & in_do_it = in.second;
+            atomic_bool & out_cancel = out.first;
 
+            if ( auto doit = in_do_it.load( memory_order_acquire ) )
+            {
+                out_cancel.store( true, memory_order_release );
                 return true;
             }
 
@@ -72,15 +72,16 @@ namespace jb
 
 
         [[nodiscard]]
-        std::tuple< RetCode, NodeUid, NodeLock > lock_path( NodeUid entry_node_uid_,
-                        const Key & entry_path_,
-                        const Key & relative_path,
-                        const execution_chain & incoming,
-                        execution_chain & outgoing )
+        std::tuple< RetCode, NodeUid, NodeLock > lock_path( 
+            NodeUid entry_node_uid_,
+            const Key & entry_path_,
+            const Key & relative_path,
+            const execution_connector & in,
+            execution_connector & out )
         {
             using namespace std;
 
-            while ( !check_for_doit( incoming, outgoing ) )
+            while ( !check_for_doit( in, out ) )
             {
                 this_thread::sleep_for( 1ms );
             }

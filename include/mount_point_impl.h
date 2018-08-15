@@ -26,6 +26,7 @@ namespace jb
         using PhysicalVolumeImplP = std::shared_ptr< PhysicalVolumeImpl >;
         using NodeLock = typename PhysicalVolumeImpl::NodeLock;
         using NodeUid = typename PhysicalVolumeImpl::NodeUid;
+        using execution_connector = typename PhysicalVolumeImpl::execution_connector;
 
         MountPointImpl( ) = delete;
         MountPointImpl( MountPointImpl &&) = delete;
@@ -39,8 +40,8 @@ namespace jb
 
             assert( physical_volume_ );
 
-            PhysicalVolumeImpl::execution_chain in{ false, true };
-            PhysicalVolumeImpl::execution_chain out{};
+            execution_connector in{ false, true };
+            execution_connector out{};
 
             tuple< RetCode, NodeUid, NodeLock > res = physical_volume_->lock_path( 0, Key{}, physical_path, in, out );
             
@@ -49,14 +50,22 @@ namespace jb
             locks_ << move( std::get< NodeLock >( res ) );
         }
 
+        auto status() const noexcept
+        {
+            return status_;
+        }
+
         auto physical_volume() const noexcept
         {
             return physical_volume_;
         }
         
-        auto lock_path( const Key & relative_path, std::atomic_bool & cancel, std::atomic_bool & doit )
+        std::tuple< RetCode, NodeUid, NodeLock >lock_path(
+            const Key & relative_path, 
+            const std::pair< std::atomic_bool, std::atomic_bool > & in,
+            std::pair< std::atomic_bool, std::atomic_bool > & out )
         {
-            return physical_volume_->lock_path( entry_node_uid_, entry_path_, relative_path, cancel, doit );
+            return physical_volume_->lock_path( entry_node_uid_, Key{ entry_path_ }, relative_path, in, out );
         }
 
         auto insert( const Key & relative_path, const Key & subkey, Value && value, Timestamp && good_before, std::atomic_bool & cancel, std::atomic_bool & doit )

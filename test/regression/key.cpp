@@ -178,26 +178,40 @@ TEST_F( TestKey, SplitAtTile )
 
 TEST_F( TestKey, IsSubkey )
 {
+    EXPECT_FALSE( std::get< bool >( Key{}.is_subkey( Key{} ) ) );
 
-    EXPECT_FALSE( Key{}.is_subkey( Key{} ) );
-    EXPECT_FALSE( Key{ "/foo"s }.is_subkey( Key{} ) );
-    EXPECT_FALSE( Key{}.is_subkey( Key{ "/foo"s } ) );
-    EXPECT_FALSE( Key{ "/boo"s }.is_subkey( Key{ "boo"s } ) );
-    EXPECT_FALSE( Key{ "boo"s }.is_subkey( Key{ "/boo"s } ) );
-    EXPECT_FALSE( Key{ "/foo"s }.is_subkey( Key{ "/boo"s } ) );
-    EXPECT_FALSE( Key{ "/foo"s }.is_subkey( Key{ "/boo/foo"s } ) );
-    EXPECT_TRUE( Key{ "/foo/boo"s }.is_subkey( Key{ "/foo"s } ) );
+    EXPECT_TRUE( std::get< bool >( Key{ "/foo"s }.is_subkey( Key{} ) ) );
+    EXPECT_EQ( Key{ "/foo"s }, std::get< Key >( Key{ "/foo"s }.is_subkey( Key{} ) ) );
+
+    EXPECT_TRUE( std::get< bool >( Key{ "/foo"s }.is_subkey( Key::root() ) ) );
+    EXPECT_EQ( Key{ "/foo"s }, std::get< Key >( Key{ "/foo"s }.is_subkey( Key::root() ) ) );
+
+    EXPECT_FALSE( std::get< bool >( Key{}.is_subkey( Key{ "/foo"s } ) ) );
+    EXPECT_FALSE( std::get< bool >( Key{ "/boo"s }.is_subkey( Key{ "boo"s } ) ) );
+
+    EXPECT_FALSE( std::get< bool >( Key{ "/boo"s }.is_subkey( Key{ "boo"s } ) ) );
+    EXPECT_FALSE( std::get< bool >( Key{ "boo"s }.is_subkey( Key{ "/boo"s } ) ) );
+    EXPECT_FALSE( std::get< bool >( Key{ "/foo"s }.is_subkey( Key{ "/boo"s } ) ) );
+    EXPECT_FALSE( std::get< bool >( Key{ "/foo"s }.is_subkey( Key{ "/boo/foo"s } ) ) );
+
+    EXPECT_TRUE( std::get< bool >( Key{ "/foo/boo"s }.is_subkey( Key{ "/foo"s } ) ) );
+    EXPECT_EQ( Key{ "/boo"s }, std::get< Key >( Key{ "/foo/boo"s }.is_subkey( Key{ "/foo"s } ) ) );
 }
 
 
 TEST_F( TestKey, IsSuperkey )
 {
-    EXPECT_FALSE( Key{}.is_superkey( Key{} ) );
-    EXPECT_FALSE( Key{ "/foo"s }.is_superkey( Key{} ) );
-    EXPECT_FALSE( Key{}.is_superkey( Key{ "/foo"s } ) );
-    EXPECT_FALSE( Key{ "/boo"s }.is_superkey( Key{ "boo"s } ) );
-    EXPECT_FALSE( Key{ "boo"s }.is_superkey( Key{ "/boo"s } ) );
-    EXPECT_FALSE( Key{ "/foo"s }.is_superkey( Key{ "/boo"s } ) );
-    EXPECT_FALSE( Key{ "/foo"s }.is_superkey( Key{ "/boo/foo"s } ) );
-    EXPECT_TRUE( Key{ "/foo"s }.is_superkey( Key{ "/foo/boo"s } ) );
+    EXPECT_FALSE( std::get< bool >( Key{}.is_superkey( Key{} ) ) );
+    EXPECT_FALSE( std::get< bool >( Key{ "/foo"s }.is_superkey( Key{} ) ) );
+    
+    EXPECT_TRUE( std::get< bool >( Key{}.is_superkey( Key{ "/foo"s } ) ) );
+    EXPECT_EQ( Key{ "/foo"s }, std::get< Key >( Key{}.is_superkey( Key{ "/foo"s } ) ) );
+
+    EXPECT_FALSE( std::get< bool >( Key{ "/boo"s }.is_superkey( Key{ "boo"s } ) ) );
+    EXPECT_FALSE( std::get< bool >( Key{ "boo"s }.is_superkey( Key{ "/boo"s } ) ) );
+    EXPECT_FALSE( std::get< bool >( Key{ "/foo"s }.is_superkey( Key{ "/boo"s } ) ) );
+    EXPECT_FALSE( std::get< bool >( Key{ "/foo"s }.is_superkey( Key{ "/boo/foo"s } ) ) );
+    
+    EXPECT_TRUE( std::get< bool >( Key{ "/foo"s }.is_superkey( Key{ "/foo/boo"s } ) ) );
+    EXPECT_EQ( Key{ "/boo"s }, std::get< Key >( Key{ "/foo"s }.is_superkey( Key{ "/foo/boo"s } ) ) );
 }
