@@ -70,25 +70,25 @@ namespace jb
         // physical path. Let us to avoid identical mounts with O(1) complexity
         //
         using MountUid = size_t;
-        using MountUidCollectionT = std::unordered_map< MountUid, MountPointBacktraceP >;
-        MountUidCollectionT uids_;
+        using MountUidCollection = std::unordered_map< MountUid, MountPointBacktraceP >;
+        MountUidCollection uids_;
 
 
         //
         // provides O(1) search by mount PIMP pointer, cover dismount use case
         //
-        using MountPointImplCollectionT = std::unordered_map <
+        using MountPointImplCollection = std::unordered_map <
             MountPointImplP,
             MountPointBacktraceP
         >;
-        MountPointImplCollectionT mounts_;
+        MountPointImplCollection mounts_;
 
 
         //
         // provides O(1) search my mount path, cover most of scenario
         //
-        using MountedPathCollectionT = std::unordered_multimap< typename KeyValue, MountPointBacktraceP >;
-        MountedPathCollectionT mounted_paths_;
+        using MountedPathCollection = std::unordered_multimap< typename KeyValue, MountPointBacktraceP >;
+        MountedPathCollection mounted_paths_;
 
 
         //
@@ -96,9 +96,9 @@ namespace jb
         //
         struct MountPointBacktrace
         {
-            MountUid uid_;
-            MountPointImplWeakP mount_;
-            KeyValue path_;
+            typename MountUidCollection::const_iterator uid_;
+            typename MountPointImplCollection::const_iterator mount_;
+            typename MountedPathCollection::const_iterator path_;
         };
 
 
@@ -168,7 +168,7 @@ namespace jb
             // fill the collection with mount points
             for_each( from, to, [&] ( const auto & mount_point ) {
                 MountPointBacktraceP backtrace = mount_point.second;
-                MountPointImplP mount_point_impl = backtrace->mount_.lock();
+                MountPointImplP mount_point_impl = backtrace->mount_->first;
                 assert( mount_point_impl );
                 mount_points.emplace( mount_points.end(), mount_point_impl );
             } );
@@ -270,6 +270,8 @@ namespace jb
 
             try
             {
+                assert( key.is_path() );
+
                 shared_lock l( mounts_guard_ );
 
                 auto[ mp_path ] = find_nearest_mounted_path( key );
@@ -291,10 +293,13 @@ namespace jb
 
 
         [[ nodiscard ]]
-        std::tuple< RetCode, MountPoint > mount( PhysicalVolumeImplP physical_volume, 
-                                                 const Key & physical_path,
-                                                 const Key & logical_path,
-                                                 const Key & alias ) noexcept
+        std::tuple< RetCode, MountPoint > mount
+        (
+            PhysicalVolumeImplP physical_volume, 
+            const Key & physical_path,
+            const Key & logical_path,
+            const Key & alias
+        ) noexcept
         {
             using namespace std;
             using namespace boost::container;
@@ -421,14 +426,10 @@ namespace jb
                 // combine logical path for new mount
                 KeyValue mounted_path = logical_path / alias;
 
-                // fill backtrace
-                backtrace_ptr->uid_ = uid;
-                backtrace_ptr->mount_ = mp;
-                backtrace_ptr->path_ = mounted_path;
-
-                uids_.insert( { uid, backtrace_ptr } );
-                mounts_.insert( { mp, backtrace_ptr } );
-                mounted_paths_.insert( { mounted_path, backtrace_ptr } );
+                // insert all the keys and fill backtrace
+                backtrace_ptr->uid_ = uids_.insert( { uid, backtrace_ptr } ).first;
+                backtrace_ptr->mount_ = mounts_.insert( { mp, backtrace_ptr } ).first;
+                backtrace_ptr->path_ = mounted_paths_.insert( { mounted_path, backtrace_ptr } );
 
                 // done
                 return { RetCode::Ok, MountPoint{ mp } };
