@@ -6,7 +6,7 @@ add_executable( tests
     node_locker.cpp
     virtual_volume.cpp 
     storage.cpp
-    #bloom.cpp
+    bloom.cpp
     )
 
 target_link_libraries( tests SHAtwo gtest gtest_main )

@@ -12,14 +12,18 @@ namespace jb
     template < typename Policies, typename Pad >
     class Storage< Policies, Pad >::Key
     {
-        friend typename Pad;
-        friend class Storage;
-        template < typename Policies, typename Pad, typename T > friend struct Hash;
 
+    public:
 
         using CharT = typename Policies::KeyCharT;
         using ValueT = std::basic_string< CharT >;
         using ViewT = std::basic_string_view< CharT >;
+
+    private:
+
+        friend typename Pad;
+        friend class Storage;
+        template < typename Policies, typename Pad, typename T > friend struct Hash;
 
         static constexpr decltype( ViewT::npos ) npos = ViewT::npos;
         static constexpr CharT separator{ '/' };
@@ -44,12 +48,12 @@ namespace jb
         {
             using namespace std;
             
-            static auto regexp = [] () {
+            static auto regexp = [=] () {
                 using RegexT = basic_regex< CharT >;
                 using RegexStrT = typename RegexT::string_type;
 
                 auto pattern = R"noesc(^(\w[\w-]*)$|^(\/\w[\w-]*)+$|^\/$)noesc"s;
-                return RegexT{ RegexStrT{ begin( pattern ), end( pattern ) } };
+                return RegexT{ RegexStrT{ pattern.begin(), pattern.end() } };
             }();
 
             if ( regex_match( value, regexp ) )
@@ -60,17 +64,23 @@ namespace jb
         }
 
         operator ValueT() const { return ValueT{ cbegin( view_ ), cend( view_ ) }; }
+        operator ViewT( ) const { return view_; }
 
-        bool is_valid( ) const noexcept { return view_.size() > 0; }
-        bool is_path( ) const noexcept { return view_.size( ) > 0 && view_.front() == separator; }
-        bool is_leaf( ) const noexcept { return view_.size( ) > 0 && view_.front() != separator; }
+        auto is_valid( ) const noexcept { return view_.size() > 0; }
+        auto is_path( ) const noexcept { return view_.size( ) > 0 && view_.front() == separator; }
+        auto is_leaf( ) const noexcept { return view_.size( ) > 0 && view_.front() != separator; }
+        auto data( ) const noexcept { return view_.data( ); }
+        auto size( ) const noexcept { return view_.size( ); }
+        auto length( ) const noexcept { return view_.size( ); }
+        auto begin( ) const noexcept { return view_.begin( ); }
+        auto end( ) const noexcept { return view_.end( ); }
 
-        friend bool operator == ( const Key & l, const Key & r ) noexcept { return l.view_ == r.view_; }
-        friend bool operator != ( const Key & l, const Key & r ) noexcept { return l.view_ != r.view_; }
-        friend bool operator < ( const Key & l, const Key & r ) noexcept { return l.view_ < r.view_; }
-        friend bool operator <= ( const Key & l, const Key & r ) noexcept { return l.view_ <= r.view_; }
-        friend bool operator >= ( const Key & l, const Key & r ) noexcept { return l.view_ >= r.view_; }
-        friend bool operator > ( const Key & l, const Key & r ) noexcept { return l.view_ > r.view_; }
+        friend auto operator == ( const Key & l, const Key & r ) noexcept { return l.view_ == r.view_; }
+        friend auto operator != ( const Key & l, const Key & r ) noexcept { return l.view_ != r.view_; }
+        friend auto operator < ( const Key & l, const Key & r ) noexcept { return l.view_ < r.view_; }
+        friend auto operator <= ( const Key & l, const Key & r ) noexcept { return l.view_ <= r.view_; }
+        friend auto operator >= ( const Key & l, const Key & r ) noexcept { return l.view_ >= r.view_; }
+        friend auto operator > ( const Key & l, const Key & r ) noexcept { return l.view_ > r.view_; }
 
         auto split_at_head( ) const
         {

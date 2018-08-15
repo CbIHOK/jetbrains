@@ -110,18 +110,25 @@ TEST_F( TestVirtualVolume, Limit )
 }
 
 
-TEST_F( TestVirtualVolume, Insert_BadPath )
+TEST_F( TestVirtualVolume, Insert_InvalidKey )
 {
     auto[ ret, v ] = Storage::OpenVirtualVolume( );
     ASSERT_EQ( RetCode::Ok, ret );
+    EXPECT_EQ( RetCode::InvalidKey, std::get< RetCode >( v.Insert( "..", "foo", Value{} ) ) );
+}
 
-    {
-        auto[ ret ] = v.Insert( "/", "foo", Value{} );
-        EXPECT_EQ( RetCode::InvalidLogicalPath, ret );
-    }
 
-    {
-        auto[ ret ] = v.Insert( "\boo", "foo", Value{} );
-        EXPECT_EQ( RetCode::InvalidKey, ret );
-    }
+TEST_F( TestVirtualVolume, Insert_InvalidSubkey )
+{
+    auto[ ret, v ] = Storage::OpenVirtualVolume( );
+    ASSERT_EQ( RetCode::Ok, ret );
+    EXPECT_EQ( RetCode::InvalidSubkey, std::get< RetCode >( v.Insert( "/foo", "-foo", Value{} ) ) );
+}
+
+
+TEST_F( TestVirtualVolume, Insert_InvalidLogicalPath )
+{
+    auto[ ret, v ] = Storage::OpenVirtualVolume( );
+    ASSERT_EQ( RetCode::Ok, ret );
+    EXPECT_EQ( RetCode::InvalidLogicalPath, std::get< RetCode >( v.Insert( "/", "foo", Value{} ) ) );
 }

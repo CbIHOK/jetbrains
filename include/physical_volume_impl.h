@@ -3,6 +3,7 @@
 
 
 class TestNodeLocker;
+class TestBloom;
 
 namespace jb
 {
@@ -10,6 +11,7 @@ namespace jb
     class Storage< Policies, Pad >::PhysicalVolumeImpl
     {
         friend class TestNodeLocker;
+        friend class TestBloom;
 
         using Storage = ::jb::Storage< Policies, Pad >;
         using Key = typename Storage::Key;
@@ -17,6 +19,7 @@ namespace jb
         using MountPointImpl = typename Storage::MountPointImpl;
 
         class NodeLocker;
+        class Bloom;
 
     public:
 
@@ -32,6 +35,7 @@ namespace jb
 
 
 #include "node_locker.h"
+#include "bloom.h"
 
 
 #endif

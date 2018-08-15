@@ -30,6 +30,7 @@ namespace jb
 
             static constexpr size_t BloomSize = 16 * ( 1 << 20 ); // 16 Mb
             static constexpr size_t BloomFnCount = 16;
+            static constexpr size_t BloomPrecision = 4096;
 
             static constexpr size_t BTreePower = 1024;
         };

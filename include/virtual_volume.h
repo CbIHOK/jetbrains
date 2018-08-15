@@ -168,7 +168,7 @@ namespace jb
         }
 
 
-        auto Insert( const KeyValue & key, const KeyValue & subkey, Value && value, Timestamp && good_before = Timestamp{}, bool overwrite = false ) noexcept
+        std::tuple< RetCode > Insert( const KeyValue & key, const KeyValue & subkey, Value && value, Timestamp && good_before = Timestamp{}, bool overwrite = false ) noexcept
         {
             using namespace std;
 
@@ -177,13 +177,13 @@ namespace jb
                 Key key_{ key };
                 if ( !key_.is_path( ) )
                 {
-                    return tuple{ RetCode::InvalidKey };
+                    return { RetCode::InvalidKey };
                 }
 
                 Key subkey_{ subkey };
                 if ( !subkey_.is_leaf( ) )
                 {
-                    return tuple{ RetCode::InvalidSubkey };
+                    return { RetCode::InvalidSubkey };
                 }
 
                 if ( auto impl = impl_.lock( ) )
@@ -192,23 +192,23 @@ namespace jb
                 }
                 else
                 {
-                    return tuple{ RetCode::InvalidHandle };
+                    return { RetCode::InvalidHandle };
                 }
             }
             catch ( const bad_alloc & )
             {
-                return tuple{ RetCode::InsufficientMemory };
+                return { RetCode::InsufficientMemory };
             }
             catch ( ... )
             {
             }
 
-            return tuple{ RetCode::UnknownError };
+            return { RetCode::UnknownError };
         }
 
 
-        [[ nodiscard ]]
-        auto Get( const KeyValue & key ) noexcept
+        
+        std::tuple< RetCode, Value > Get( const KeyValue & key ) noexcept
         {
             using namespace std;
 
@@ -217,7 +217,7 @@ namespace jb
                 Key key_{ key };
                 if ( !key_.is_path( ) )
                 {
-                    return tuple{ RetCode::InvalidKey, Value{} };
+                    return { RetCode::InvalidKey, Value{} };
                 }
 
                 if ( auto impl = impl_.lock( ) )
@@ -226,22 +226,22 @@ namespace jb
                 }
                 else
                 {
-                    return tuple{ RetCode::InvalidHandle, Value{} };
+                    return { RetCode::InvalidHandle, Value{} };
                 }
             }
             catch ( const std::bad_alloc & )
             {
-                return tuple{ RetCode::InsufficientMemory, Value{} };
+                return { RetCode::InsufficientMemory, Value{} };
             }
             catch ( ... )
             {
             }
 
-            return tuple{ RetCode::UnknownError, Value{} };
+            return { RetCode::UnknownError, Value{} };
         }
 
 
-        auto Erase( const KeyValue & key, bool force = false ) noexcept
+        std::tuple< RetCode > Erase( const KeyValue & key, bool force = false ) noexcept
         {
             using namespace std;
 
@@ -250,7 +250,7 @@ namespace jb
                 Key key_{ key };
                 if ( !key_.is_path( ) )
                 {
-                    return tuple{ RetCode::InvalidKey };
+                    return { RetCode::InvalidKey };
                 }
 
                 if ( auto impl = impl_.lock( ) )
@@ -259,56 +259,67 @@ namespace jb
                 }
                 else
                 {
-                    return tuple{ RetCode::InvalidHandle };
+                    return { RetCode::InvalidHandle };
                 }
             }
             catch ( const std::bad_alloc & )
             {
-                return tuple{ RetCode::InsufficientMemory };
+                return { RetCode::InsufficientMemory };
             }
             catch ( ... )
             {
             }
 
-            return tuple{ RetCode::UnknownError };
+            return { RetCode::UnknownError };
         }
 
 
         [[nodiscard]]
-        auto Mount( const PhysicalVolume & physical_volume, const KeyValue & physical_path, const KeyValue & logical_path, const KeyValue & alias ) noexcept
+        std::tuple< RetCode, MountPoint > Mount( const PhysicalVolume & physical_volume, const KeyValue & physical_path, const KeyValue & logical_path, const KeyValue & alias ) noexcept
         {
             using namespace std;
 
-            Key physical_path_{ physical_path };
-            if ( ! physical_path_.is_path( ) )
+            try
             {
-                return tuple{ RetCode::InvalidPhysicalPath, MountPoint{} };
+                Key physical_path_{ physical_path };
+                if ( !physical_path_.is_path( ) )
+                {
+                    return { RetCode::InvalidKey, MountPoint{} };
+                }
+
+                Key logical_path_{ logical_path };
+                if ( !logical_path_.is_path( ) )
+                {
+                    return { RetCode::InvalidKey, MountPoint{} };
+                }
+
+                Key alias_{ alias };
+                if ( !alias_.is_leaf( ) )
+                {
+                    return { RetCode::InvalidSubkey, MountPoint{} };
+                }
+
+                auto impl = impl_.lock( );
+                auto physical_impl = physical_volume.impl_.lock( );
+
+                if ( impl && physical_impl )
+                {
+                    return impl->Mount( physical_impl, physical_path_, logical_path_, alias_ );
+                }
+                else
+                {
+                    return { RetCode::InvalidHandle, MountPoint{} };
+                }
+            }
+            catch ( const std::bad_alloc & )
+            {
+                return { RetCode::InsufficientMemory, MountPoint{} };
+            }
+            catch ( ... )
+            {
             }
 
-            Key logical_path_{ logical_path };
-            if ( !logical_path_.is_path( ) )
-            {
-                return tuple{ RetCode::InvalidLogicalPath, MountPoint{} };
-            }
-
-            Key alias_{ alias };
-            if ( !alias_.is_leaf( ) )
-            {
-                return tuple{ RetCode::InvalidAlias, MountPoint{} };
-            }
-
-
-            auto impl = impl_.lock( );
-            auto physical_impl = physical_volume.impl_.lock( );
-
-            if ( impl && physical_impl )
-            {
-                return impl->Mount( physical_impl, physical_path_, logical_path_, alias_ );
-            }
-            else
-            {
-                return tuple{ RetCode::InvalidHandle, MountPoint{} };
-            }
+            return { RetCode::UnknownError, MountPoint{} };
         }
     };
 }

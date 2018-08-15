@@ -20,7 +20,7 @@
 class TestStorage;
 class TestKey;
 class TestNodeLocker;
-
+class TestBloom;
 
 namespace jb
 {
@@ -33,13 +33,11 @@ namespace jb
         UnknownError,           ///< Something wrong happened
         InsufficientMemory,     ///< Operation failed due to low memory
         InvalidHandle,          ///< Given handle does not address valid object
-        LimitReached,           ///< Virtual Volume already has maximum number of Mounts Points
+        LimitReached,           ///< All handles of a type are alreay exhausted
         VolumeAlreadyMounted,   ///< Attempt to mount the same physical volume at the same logical path
-        InvalidKey,
-        InvalidSubkey,
-        InvalidPhysicalPath,
-        InvalidLogicalPath,
-        InvalidAlias,
+        InvalidKey,             ///< Invalid key value
+        InvalidSubkey,          ///< Invalid subkey value
+        InvalidLogicalPath,     ///< Given logical path cannot be mapped onto a physical one
         ///
         NotImplementedYet,
     };
@@ -65,6 +63,7 @@ namespace jb
         friend class TestStorage;
         friend class TestKey;
         friend class TestNodeLocker;
+        friend class TestBloom;
 
         friend class VirtualVolume;
         friend class PhysicalVolume;
