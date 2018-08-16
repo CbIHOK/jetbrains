@@ -100,8 +100,8 @@ namespace jb
         // provides O(1) search my mount path hash
         //
         // the approach is to hold paths not as string but as their hash values. That at the first
-        // reduces heapdefragmentation, and moreover places the data nearly in memory, i.e. that
-        // looks cache-friendly
+        // reduces heapdefragmentation, and moreover places the data nearly in memory, i.e. looks
+        // cache-friendly, by the cost of infinitesimal probability of key collision
         //
         using MountedPathCollection = std::unordered_multimap< KeyHashT, MountPointBacktraceP >;
         MountedPathCollection paths_;
@@ -144,7 +144,12 @@ namespace jb
         }
 
 
-        /* Finds nearest mounted path for 
+        /* Finds nearest mount for given logical path
+
+        @param [in] logical path
+        @retval Key - nearest mounted path
+        @retval KeyHashT - hash value of nearest mounted path
+        @throw nothing
         */
         [[nodiscard]]
         auto find_nearest_mounted_path( const Key & logical_path ) const noexcept
@@ -177,7 +182,8 @@ namespace jb
         /* Provides collection of Mounts for given logical path
 
         @param [in] logical_path - logical path
-        @return vector< MountPointImplP > sorted in priority of their Physical Volumes
+        @retval vector< MountPointImplP > sorted in priority of corresponding Physical Volumes
+        @throw may throw std::exception for some reasons
         */
         [[nodiscard]]
         auto get_mount_points( KeyHashT & mp_path_hash ) const
@@ -214,7 +220,18 @@ namespace jb
         }
 
 
+        /* Runs the same request on whole collection of mounts in parallel
 
+        Takes care about applying of request in proper order as well as about canceling senseless
+        operation
+
+        @tparam - type of mount collection
+        @tparam - type of request
+        @param [in] mounts - mount collection
+        @param [in] f - request
+        @retval vector< MountPointImplP > sorted in priority of corresponding Physical Volumes
+        @throw may throw std::exception for some reasons
+        */
         template < typename M, typename F >
         [ [ nodiscard ] ]
         auto run_parallel( const M & mounts, F f )
@@ -268,6 +285,10 @@ namespace jb
 
     public:
 
+        /** Default constructor
+
+        @throw may throw std::exception by some reason
+        */
         VirtualVolumeImpl( ) : mounts_guard_( )
             , uids_( MountLimit )
             , mounts_( MountLimit )
@@ -277,11 +298,18 @@ namespace jb
         }
 
 
+        /** The class is not copyable/movable
+        */
         VirtualVolumeImpl( VirtualVolumeImpl&& ) = delete;
 
 
+        /** Inserts subkey of a given name with given value and expiration timemark at specified logical path
+
+        @params
+        @throw nothing
+        */
         [[ nodiscard ]]
-        std::tuple< RetCode > insert( const Key & path, const Key & subkey, Value && value, Timestamp && good_before, bool overwrite )
+        std::tuple< RetCode > insert( const Key & path, const Key & subkey, Value && value, Timestamp && good_before, bool overwrite ) noexcept
         {
             using namespace std;
 
@@ -506,14 +534,14 @@ namespace jb
                     return { RetCode::VolumeAlreadyMounted, MountPointImplP() };
                 }
 
-                // check that iterators won't be invalidated on insertion
+                // make sure that iterators won't be invalidated on insertion
                 if ( !check_rehash() )
                 {
                     assert( false ); // that's unexpected
                     return { RetCode::UnknownError, MountPointImplP() };
                 }
 
-                // will lock path to mount
+                // will lock path to mount at physical level
                 NodeLock lock_mount_to;
 
                 // find nearest upper mount point
@@ -613,7 +641,7 @@ namespace jb
             using namespace std;
 
             // lock over all mounts
-            unique_lock l( mounts_guard_ );
+            unique_lock< shared_mutex > lock( mounts_guard_ );
 
             if ( auto mp_impl = mp.impl_.lock( ) )
             {
