@@ -35,7 +35,7 @@ namespace jb
         using MountPointImplP = std::shared_ptr< MountPointImpl >;
         using MountPointImplWeakP = std::weak_ptr< MountPointImpl >;
         using NodeUid = typename PhysicalVolumeImpl::NodeUid;
-        //using execution_connector = typename MountPointImpl::execution_connector;
+        using execution_connector = typename MountPointImpl::execution_connector;
        
         using Key = typename Storage::Key;
         using KeyValue = typename Storage::KeyValue;
@@ -233,7 +233,7 @@ namespace jb
             using namespace std;
             using namespace boost::container;
 
-            using ContractT = decltype( f( MountPointImplP{}, pair< atomic_bool, atomic_bool >{}, pair< atomic_bool, atomic_bool >{} ) );
+            using ContractT = decltype( f( MountPointImplP{}, execution_connector{}, execution_connector{} ) );
             using FutureT = future< ContractT >;
 
             // futures, one per mount
@@ -241,7 +241,7 @@ namespace jb
             futures.resize( mounts.size( ) );
 
             // execution connectors are pairs of < cancel, do_it > flags
-            static_vector< pair< atomic_bool, atomic_bool >, MountLimit > connectors;
+            static_vector< execution_connector, MountLimit > connectors;
             connectors.resize( mounts.size( ) + 1 );
 
             // through all mounts: connect the routines and start them asynchronuosly
@@ -267,7 +267,7 @@ namespace jb
             }
 
             // let the 1st routine to DO IT
-            connectors[ 0 ].second.store( true, memory_order_release );
+            connectors.front().second.store( true, memory_order_release );
 
             // wait for all futures
             for ( auto & future : futures ) { future.wait( ); }
@@ -318,15 +318,44 @@ namespace jb
 
             try
             {
-                // TODO: consider locing only for collection mount points
+                // TODO: consider locking only for collection mount points
                 shared_lock l( mounts_guard_ );
 
-                if ( auto[ mount_path, mount_path_hash ] = find_nearest_mounted_path( key ); mount_path )
+                if ( auto[ mount_path, mount_hash ] = find_nearest_mounted_path( key ); mount_path )
                 {
-                    auto mount_points = move( get_mount_points( mount_path_hash ) );
-                    assert( mount_points.size( ) );
+                    // get mounts for the key
+                    auto mounts = move( get_mount_points( mount_hash ) );
+                    assert( mounts.size( ) );
 
-                    return { RetCode::NotImplementedYet, Value{} };
+                    // get relative path as a rest from mount point
+                    auto[ is_superkey, relative_path ] = mount_path.is_superkey( key );
+                    assert( is_superkey );
+
+                    // run get() for all mounts in parallel
+                    auto futures = move( run_parallel( mounts, [=] ( const auto & mount, const auto & in, auto & out ) noexcept {
+                        return mount->get( relative_path, in, out );
+                    } ) );
+
+                    // through all futures
+                    for ( auto & future : futures )
+                    {
+                        // get result
+                        auto[ ret, value ] = future.get( );
+
+                        if ( RetCode::Ok == ret )
+                        {
+                            // done
+                            return { RetCode::Ok, value };
+                        }
+                        else if ( RetCode::NotFound != ret )
+                        {
+                            // something happened on physical level
+                            return { ret, Value{} };
+                        }
+                    }
+
+                    // key not found
+                    return { RetCode::NotFound, Value{} };
                 }
                 else
                 {
@@ -356,10 +385,11 @@ namespace jb
 
                 if ( auto[ mount_path, mount_hash ] = find_nearest_mounted_path( key ); mount_path )
                 {
+                    // get mounts for the key
                     auto mounts = move( get_mount_points( mount_hash ) );
                     assert( mounts.size() );
 
-                    // get physical path as a rest from mount point
+                    // get relative path as a rest from mount point
                     auto[ is_superkey, relative_path ] = mount_path.is_superkey( key );
                     assert( is_superkey );
 
