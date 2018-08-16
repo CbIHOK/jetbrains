@@ -133,12 +133,14 @@ TEST_F( TestVirtualVolume, Insert_InvalidLogicalPath )
     EXPECT_EQ( RetCode::InvalidLogicalPath, std::get< RetCode >( v.Insert( "/", "foo", Value{} ) ) );
 }
 
+
 TEST_F( TestVirtualVolume, Get_InvalidKey )
 {
     auto[ ret, v ] = Storage::OpenVirtualVolume( );
     ASSERT_EQ( RetCode::Ok, ret );
     EXPECT_EQ( RetCode::InvalidKey, std::get< RetCode >( v.Get( "\\" ) ) );
 }
+
 
 TEST_F( TestVirtualVolume, Get_InvalidLogicalPath )
 {
@@ -147,12 +149,14 @@ TEST_F( TestVirtualVolume, Get_InvalidLogicalPath )
     EXPECT_EQ( RetCode::InvalidLogicalPath, std::get< RetCode >( v.Get( "/foo/boo" ) ) );
 }
 
+
 TEST_F( TestVirtualVolume, Erase_InvalidKey )
 {
     auto[ ret, v ] = Storage::OpenVirtualVolume( );
     ASSERT_EQ( RetCode::Ok, ret );
     EXPECT_EQ( RetCode::InvalidKey, std::get< RetCode >( v.Erase( "sfhgsg" ) ) );
 }
+
 
 TEST_F( TestVirtualVolume, Erase_InvalidLogicalPath )
 {
@@ -161,12 +165,14 @@ TEST_F( TestVirtualVolume, Erase_InvalidLogicalPath )
     EXPECT_EQ( RetCode::InvalidLogicalPath, std::get< RetCode >( v.Erase( "/foo/boo" ) ) );
 }
 
+
 TEST_F( TestVirtualVolume, Mount_InvalidPhysicalVolume )
 {
     auto[ ret, v ] = Storage::OpenVirtualVolume();
     ASSERT_EQ( RetCode::Ok, ret );
     EXPECT_EQ( RetCode::InvalidHandle, std::get< RetCode >( v.Mount( PhysicalVolume{}, "/foo/boo", "/", "boo" ) ) );
 }
+
 
 TEST_F( TestVirtualVolume, Mount_InvalidPhysicalPath )
 {
@@ -175,6 +181,7 @@ TEST_F( TestVirtualVolume, Mount_InvalidPhysicalPath )
     EXPECT_EQ( RetCode::InvalidKey, std::get< RetCode >( v.Mount( PhysicalVolume{}, "foo", "/", "boo" ) ) );
 }
 
+
 TEST_F( TestVirtualVolume, Mount_InvalidLogicalPath )
 {
     auto[ ret, v ] = Storage::OpenVirtualVolume();
@@ -182,12 +189,14 @@ TEST_F( TestVirtualVolume, Mount_InvalidLogicalPath )
     EXPECT_EQ( RetCode::InvalidKey, std::get< RetCode >( v.Mount( PhysicalVolume{}, "/foo", "/-boo", "boo" ) ) );
 }
 
+
 TEST_F( TestVirtualVolume, Mount_InvalidAlias )
 {
     auto[ ret, v ] = Storage::OpenVirtualVolume();
     ASSERT_EQ( RetCode::Ok, ret );
     EXPECT_EQ( RetCode::InvalidSubkey, std::get< RetCode >( v.Mount( PhysicalVolume{}, "/", "/", "/boo" ) ) );
 }
+
 
 TEST_F( TestVirtualVolume, Mount_ToRoot )
 {
@@ -198,13 +207,60 @@ TEST_F( TestVirtualVolume, Mount_ToRoot )
     EXPECT_EQ( RetCode::Ok, std::get< RetCode >( vv.Mount( pv, "/", "/", "mount" ) ) );
 }
 
-TEST_F( TestVirtualVolume, Mount_ToMount )
+
+TEST_F( TestVirtualVolume, Mount_ToSamePoint )
 {
     auto vv = std::get< VirtualVolume >( Storage::OpenVirtualVolume() );
     ASSERT_TRUE( vv );
-    auto pv = std::get< PhysicalVolume >( Storage::OpenPhysicalVolume( "foo" ) );
-    ASSERT_TRUE( pv );
-    ASSERT_EQ( RetCode::Ok, std::get< RetCode >( vv.Mount( pv, "/", "/", "mount" ) ) );
-    EXPECT_EQ( RetCode::Ok, std::get< RetCode >( vv.Mount( pv, "/", "/mount", "mount1" ) ) );
+    
+    auto pv1 = std::get< PhysicalVolume >( Storage::OpenPhysicalVolume( "foo" ) );
+    ASSERT_TRUE( pv1 );
+    
+    auto pv2 = std::get< PhysicalVolume >( Storage::OpenPhysicalVolume( "boo" ) );
+    ASSERT_TRUE( pv2 );
+
+    ASSERT_EQ( RetCode::Ok, std::get< RetCode >( vv.Mount( pv1, "/", "/", "mount" ) ) );
+    EXPECT_EQ( RetCode::Ok, std::get< RetCode >( vv.Mount( pv1, "/", "/mount", "mount1" ) ) );
+    EXPECT_EQ( RetCode::Ok, std::get< RetCode >( vv.Mount( pv2, "/", "/mount", "mount1" ) ) );
 }
 
+
+TEST_F( TestVirtualVolume, Unmount_DependentMounts )
+{
+    auto vv = std::get< VirtualVolume >( Storage::OpenVirtualVolume( ) );
+    ASSERT_TRUE( vv );
+
+    auto pv1 = std::get< PhysicalVolume >( Storage::OpenPhysicalVolume( "foo" ) );
+    ASSERT_TRUE( pv1 );
+
+    auto pv2 = std::get< PhysicalVolume >( Storage::OpenPhysicalVolume( "boo" ) );
+    ASSERT_TRUE( pv2 );
+
+    auto[ ret, mount ] = vv.Mount( pv1, "/", "/", "mount" );
+    ASSERT_EQ( RetCode::Ok, ret );
+
+    ASSERT_EQ( RetCode::Ok, std::get< RetCode >( vv.Mount( pv1, "/", "/mount", "mount1" ) ) );
+    ASSERT_EQ( RetCode::Ok, std::get< RetCode >( vv.Mount( pv2, "/", "/mount", "mount1" ) ) );
+
+    EXPECT_EQ( RetCode::HasDependentMounts, std::get< RetCode >( mount.Close( ) ) );
+}
+
+TEST_F( TestVirtualVolume, Unmount_DependentMounts_Force )
+{
+    auto vv = std::get< VirtualVolume >( Storage::OpenVirtualVolume( ) );
+    ASSERT_TRUE( vv );
+
+    auto pv1 = std::get< PhysicalVolume >( Storage::OpenPhysicalVolume( "foo" ) );
+    ASSERT_TRUE( pv1 );
+
+    auto pv2 = std::get< PhysicalVolume >( Storage::OpenPhysicalVolume( "boo" ) );
+    ASSERT_TRUE( pv2 );
+
+    auto[ ret, mount ] = vv.Mount( pv1, "/", "/", "mount" );
+    ASSERT_EQ( RetCode::Ok, ret );
+
+    ASSERT_EQ( RetCode::Ok, std::get< RetCode >( vv.Mount( pv1, "/", "/mount", "mount1" ) ) );
+    ASSERT_EQ( RetCode::Ok, std::get< RetCode >( vv.Mount( pv2, "/", "/mount", "mount1" ) ) );
+
+    EXPECT_EQ( RetCode::Ok, std::get< RetCode >( mount.Close( true ) ) );
+}

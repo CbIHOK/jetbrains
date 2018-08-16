@@ -304,7 +304,14 @@ namespace jb
 
                 if ( impl && physical_impl )
                 {
-                    return impl->mount( physical_impl, physical_path_, logical_path_, alias_ );
+                    if ( auto[ ret, mp_impl ] = impl->mount( physical_impl, physical_path_, logical_path_, alias_ );  RetCode::Ok == ret )
+                    {
+                        return { RetCode::Ok, MountPoint{ mp_impl, impl } };
+                    }
+                    else
+                    {
+                        return { ret, MountPoint{} };
+                    }
                 }
                 else
                 {

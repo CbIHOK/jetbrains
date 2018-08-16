@@ -39,6 +39,8 @@ namespace jb
         InvalidSubkey,          ///< Invalid subkey value
         InvalidLogicalPath,     ///< Given logical path cannot be mapped onto a physical one
         NotFound,               ///< Such path does not have a physical representation
+        InUse,                  ///< The handler is currently used by concurrent operation and cannot be closed
+        HasDependentMounts,     ///< There are underlaying mount
         ///
         NotImplementedYet
     };

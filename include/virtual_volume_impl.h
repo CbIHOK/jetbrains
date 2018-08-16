@@ -8,6 +8,7 @@
 #include <tuple>
 #include <execution>
 #include <future>
+#include <functional>
 #include <boost/container/static_vector.hpp>
 #include "variadic_hash.h"
 
@@ -23,8 +24,10 @@ namespace jb
         friend typename Pad;
         friend class TestVirtualVolume;
 
+    public:
+
         //
-        // Few aliases
+        // Short aliases
         //
         using Storage = ::jb::Storage< Policies, Pad >;
         using PhysicalVolumeImpl = typename Storage::PhysicalVolumeImpl;
@@ -46,8 +49,10 @@ namespace jb
         static constexpr auto MountLimit = Policies::VirtualVolumePolicy::MountPointLimit;
 
 
+    private:
+
         //
-        // just a read/write guard
+        // just a read/write mount collection guardian
         //
         std::shared_mutex mounts_guard_;
 
@@ -57,10 +62,13 @@ namespace jb
         // collection, and we're going to use separate hashed arrays to keep searches O(1). This
         // structure keeps releation between the arrays as iterators and let us easily move from
         // one collection to another. Take into account that hashed arrays guarantee that iterators
-        // stays valid after insert()/erase() operations until rehashing routine, and we can simply
+        // stay valid after insert()/erase() operations until rehashing routine, and we can simply
         // pre-allocate the arrays with maximum number of buckets to avoid iterator invalidation
         //
-        //   dependency     path <--> backtrace <--> mount     mount uid
+        //                incoming                  incoming
+        //                 search                    search
+        //                   v                         v
+        //  dependencies    path <--> backtrace <--> mount     mount uid
         //       ^________________________|________________________^
         //
         // a forwarding declaration, see below for definition
@@ -91,9 +99,9 @@ namespace jb
         //
         // provides O(1) search my mount path hash
         //
-        // the approach is to hold not paths but their hash values. That at the first reduces heap
-        // defragmentation, and moreover places the data nearly in memory, i.e. that looks more
-        // cache-friendly
+        // the approach is to hold paths not as string but as their hash values. That at the first
+        // reduces heapdefragmentation, and moreover places the data nearly in memory, i.e. that
+        // looks cache-friendly
         //
         using MountedPathCollection = std::unordered_multimap< KeyHashT, MountPointBacktraceP >;
         MountedPathCollection paths_;
@@ -139,7 +147,7 @@ namespace jb
         /* Finds nearest mounted path for 
         */
         [[nodiscard]]
-        auto find_nearest_mounted_path( const Key & logical_path ) const
+        auto find_nearest_mounted_path( const Key & logical_path ) const noexcept
         {
             using namespace std;
 
@@ -207,25 +215,6 @@ namespace jb
 
 
 
-        auto unmount( const MountPoint & mp )
-        {
-        }
-
-
-    public:
-
-        VirtualVolumeImpl( ) : mounts_guard_( )
-            , uids_( MountLimit )
-            , mounts_( MountLimit )
-            , paths_( MountLimit )
-            , dependencies_( MountLimit )
-        {
-        }
-
-
-        VirtualVolumeImpl( VirtualVolumeImpl&& ) = delete;
-
-
         template < typename M, typename F >
         [ [ nodiscard ] ]
         auto run_parallel( const M & mounts, F f )
@@ -267,7 +256,7 @@ namespace jb
             }
 
             // let the 1st routine to DO IT
-            connectors.front().second.store( true, memory_order_release );
+            connectors.front( ).second.store( true, memory_order_release );
 
             // wait for all futures
             for ( auto & future : futures ) { future.wait( ); }
@@ -275,6 +264,20 @@ namespace jb
             // return futures
             return futures;
         }
+
+
+    public:
+
+        VirtualVolumeImpl( ) : mounts_guard_( )
+            , uids_( MountLimit )
+            , mounts_( MountLimit )
+            , paths_( MountLimit )
+            , dependencies_( MountLimit )
+        {
+        }
+
+
+        VirtualVolumeImpl( VirtualVolumeImpl&& ) = delete;
 
 
         [[ nodiscard ]]
@@ -462,10 +465,17 @@ namespace jb
         }
 
 
-        /**
+        /** Mounts given physical path from given physical volume at a logical path with givel alias
+
+        @param [in] physical_volume - physical volume to be mounted
+        @param [in] physical_path - physical path to be mounted
+        @param [in] logical_path - physical volume to be mounted
+        @retval RetCode - operation status
+        @retval MountPoint - if operation succeeded contains valid handle of mounting 
+        @throw nothing
         */
         [[ nodiscard ]]
-        std::tuple< RetCode, MountPoint > mount (   PhysicalVolumeImplP physical_volume, 
+        std::tuple< RetCode, MountPointImplP > mount (   PhysicalVolumeImplP physical_volume, 
                                                     const Key & physical_path,
                                                     const Key & logical_path,
                                                     const Key & alias   ) noexcept
@@ -486,21 +496,21 @@ namespace jb
                 // if maximum number of mounts reached?
                 if ( mounts_.size() >= MountLimit)
                 {
-                    return { RetCode::LimitReached, MountPoint{} };
+                    return { RetCode::LimitReached, MountPointImplP{} };
                 }
 
                 // prevent mouting of the same physical volume at a logicap path
                 auto uid = misc::variadic_hash< Policies, Pad >( logical_path, physical_volume );
                 if ( uids_.find( uid ) != uids_.end() )
                 {
-                    return { RetCode::VolumeAlreadyMounted, MountPoint() };
+                    return { RetCode::VolumeAlreadyMounted, MountPointImplP() };
                 }
 
                 // check that iterators won't be invalidated on insertion
                 if ( !check_rehash() )
                 {
                     assert( false ); // that's unexpected
-                    return { RetCode::UnknownError, MountPoint() };
+                    return { RetCode::UnknownError, MountPointImplP() };
                 }
 
                 // will lock path to mount
@@ -551,7 +561,7 @@ namespace jb
                     // unable to lock physical path
                     if ( RetCode::Ok != overall_status )
                     {
-                        return { overall_status, MountPoint{} };
+                        return { overall_status, MountPointImplP{} };
                     }
                 }
 
@@ -561,7 +571,7 @@ namespace jb
                 // if mounting successful
                 if ( mp->status() != RetCode::Ok )
                 {
-                    return { mp->status(), MountPoint{} };
+                    return { mp->status(), MountPointImplP{} };
                 }
 
                 // create backtrace record
@@ -577,17 +587,102 @@ namespace jb
                 backtrace_ptr->dependency_ = parent_path ? dependencies_.insert( { parent_hash, mounted_hash } ) : dependencies_.end();
 
                 // done
-                return { RetCode::Ok, MountPoint{ mp } };
+                return { RetCode::Ok, mp };
             }
             catch ( const bad_alloc & )
             {
-                return { RetCode::InsufficientMemory, MountPoint{} };
+                return { RetCode::InsufficientMemory, MountPointImplP{} };
             }
             catch ( ... )
             {
             }
 
-            return { RetCode::UnknownError, MountPoint{} };
+            return { RetCode::UnknownError, MountPointImplP{} };
+        }
+
+
+        /** Unmount given mount point
+
+        @param [in] mp - mount point
+        @param [in] force - unmount underlaying mounts
+        @retval RetCode - operation status
+        @throw nothing
+        */
+        std::tuple< RetCode > unmount( const MountPoint & mp, bool force ) noexcept
+        {
+            using namespace std;
+
+            // lock over all mounts
+            unique_lock l( mounts_guard_ );
+
+            if ( auto mp_impl = mp.impl_.lock( ) )
+            {
+                std::function< tuple< RetCode >( const MountPointImplP &, bool ) > rec = [&] ( const auto & mp_impl, auto force )
+                {
+                    if ( auto impl_it = mounts_.find( mp_impl ); impl_it != mounts_.end( ) )
+                    {
+                        // check if used
+                        if ( mp_impl.use_count( ) - 1 > 1 && !force )
+                        {
+                            return tuple{ RetCode::InUse };
+                        }
+
+                        // get backtrace
+                        auto backtrace = impl_it->second;
+                        assert( backtrace );
+
+                        // check for dependent mounts
+                        auto path = backtrace->path_->first;
+                        if ( dependencies_.count( path ) && !force )
+                        {
+                            return tuple{ RetCode::HasDependentMounts };
+                        }
+
+                        // throught all dependent mounts
+                        auto[ from, to ] = dependencies_.equal_range( path );
+                        for( auto it = from; it != to; )
+                        {
+                            // get dependent mount path and forward iterator cuz it will be invalidated by erase()
+                            auto & dependent = it->second; 
+                            it++;
+
+                            // get dependent mount backtrace
+                            auto dependent_path_it = paths_.find( dependent );
+                            assert( dependent_path_it != paths_.end( ) );
+                            auto dependent_backtrace = dependent_path_it->second;
+                            assert( dependent_backtrace );
+
+                            // get dependent mount and release it recursively
+                            auto dependent_mount = dependent_backtrace->mount_->first;
+                            assert( dependent_mount );
+                            auto[ ret ] = rec( dependent_mount, force );
+                            assert( RetCode::Ok == ret );
+                        }
+
+                        assert( !dependencies_.count( path ) );
+
+                        // delete related items from all the collections
+                        uids_.erase( backtrace->uid_ );
+                        mounts_.erase( backtrace->mount_ );
+                        paths_.erase( backtrace->path_ );
+                        if ( backtrace->dependency_ != dependencies_.end( ) )
+                        {
+                            dependencies_.erase( backtrace->dependency_ );
+                        }
+
+                        // done
+                        return tuple{ RetCode::Ok };
+                    }
+
+                    return tuple{ RetCode::InvalidHandle };
+                };
+
+                return rec( mp_impl, force );
+            }
+            else
+            {
+                return { RetCode::InvalidHandle };
+            }
         }
     };
 }
