@@ -3,8 +3,9 @@
 
 
 #include <memory>
-#include <assert.h>
+#include <utility>
 #include <atomic>
+#include <assert.h>
 
 
 namespace jb
@@ -26,7 +27,7 @@ namespace jb
         using PhysicalVolumeImplP = std::shared_ptr< PhysicalVolumeImpl >;
         using NodeLock = typename PhysicalVolumeImpl::NodeLock;
         using NodeUid = typename PhysicalVolumeImpl::NodeUid;
-        using execution_connector = typename PhysicalVolumeImpl::execution_connector;
+        //using execution_connector = typename PhysicalVolumeImpl::execution_connector;
 
         MountPointImpl( ) = delete;
         MountPointImpl( MountPointImpl &&) = delete;
@@ -40,8 +41,8 @@ namespace jb
 
             assert( physical_volume_ );
 
-            execution_connector in{ false, true };
-            execution_connector out{};
+            pair< atomic_bool, atomic_bool > in{ false, true };
+            pair< atomic_bool, atomic_bool > out{};
 
             tuple< RetCode, NodeUid, NodeLock > res = physical_volume_->lock_path( 0, Key{}, physical_path, in, out );
             
@@ -50,22 +51,29 @@ namespace jb
             locks_ << move( std::get< NodeLock >( res ) );
         }
 
-        auto status() const noexcept
-        {
-            return status_;
-        }
+        auto status() const noexcept { return status_; }
+        auto physical_volume() const noexcept { return physical_volume_; }
 
-        auto physical_volume() const noexcept
-        {
-            return physical_volume_;
-        }
         
-        std::tuple< RetCode, NodeUid, NodeLock >lock_path(
-            const Key & relative_path, 
-            const std::pair< std::atomic_bool, std::atomic_bool > & in,
-            std::pair< std::atomic_bool, std::atomic_bool > & out )
+        std::tuple <
+            RetCode, 
+            NodeUid, 
+            NodeLock
+        > lock_path(    const Key & relative_path, 
+                        const std::pair< std::atomic_bool, std::atomic_bool > & in,
+                        std::pair< std::atomic_bool, std::atomic_bool > & out   ) noexcept
         {
-            return physical_volume_->lock_path( entry_node_uid_, Key{ entry_path_ }, relative_path, in, out );
+            assert( relative_path );
+
+            try
+            {
+                return physical_volume_->lock_path( entry_node_uid_, Key{ entry_path_ }, relative_path, in, out );
+            }
+            catch ( ... )
+            {
+            }
+
+            return { RetCode::UnknownError, NodeUid{}, NodeLock{} };
         }
 
         auto insert( const Key & relative_path, const Key & subkey, Value && value, Timestamp && good_before, std::atomic_bool & cancel, std::atomic_bool & doit )
@@ -78,9 +86,20 @@ namespace jb
             return physical_volume_->get( entry_node_uid_, entry_path_, relative_path, cancel, doit );
         }
 
-        auto erase( const Key & relative_path, std::atomic_bool & cancel, std::atomic_bool & doit )
+
+        std::tuple< RetCode > erase(    const Key & relative_path,
+                                        const std::pair< std::atomic_bool, std::atomic_bool > & in,
+                                        std::pair< std::atomic_bool, std::atomic_bool > & out   ) noexcept
         {
-            return physical_volume_->erase( entry_node_uid_, entry_path_, relative_path, cancel, doit );
+            try
+            {
+                return physical_volume_->erase( entry_node_uid_, Key{ entry_path_ }, relative_path, in, out );
+            }
+            catch ( ... )
+            {
+            }
+
+            return { RetCode::UnknownError };
         }
 
     private:

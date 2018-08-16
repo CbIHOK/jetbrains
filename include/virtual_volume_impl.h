@@ -35,7 +35,7 @@ namespace jb
         using MountPointImplP = std::shared_ptr< MountPointImpl >;
         using MountPointImplWeakP = std::weak_ptr< MountPointImpl >;
         using NodeUid = typename PhysicalVolumeImpl::NodeUid;
-        using execution_connector = typename MountPointImpl::execution_connector;
+        //using execution_connector = typename MountPointImpl::execution_connector;
        
         using Key = typename Storage::Key;
         using KeyValue = typename Storage::KeyValue;
@@ -63,7 +63,7 @@ namespace jb
         //   dependency     path <--> backtrace <--> mount     mount uid
         //       ^________________________|________________________^
         //
-        // a forwarding declaration, see below for details
+        // a forwarding declaration, see below for definition
         //
         struct MountPointBacktrace;
         using MountPointBacktraceP = std::shared_ptr< MountPointBacktrace >;
@@ -91,16 +91,17 @@ namespace jb
         //
         // provides O(1) search my mount path hash
         //
-        // the approach is to hold not paths but their hashes. That at first reduces heap
-        // defragmentation, and at second places the keys nearly in memory, i.e. looks
-        // more cach-friendly
+        // the approach is to hold not paths but their hash values. That at the first reduces heap
+        // defragmentation, and moreover places the data nearly in memory, i.e. that looks more
+        // cache-friendly
         //
         using MountedPathCollection = std::unordered_multimap< KeyHashT, MountPointBacktraceP >;
         MountedPathCollection paths_;
 
 
         //
-        // provides O(1) search from a mount point to upper mount point
+        // provides O(1) search from a mount point to underlaying mount points, i.e. preserves
+        // dismounting a mount points that has dependent mount points
         //
         using MountDependecyCollection = std::unordered_multimap< KeyHashT, KeyHashT >;
         MountDependecyCollection dependencies_;
@@ -225,6 +226,57 @@ namespace jb
         VirtualVolumeImpl( VirtualVolumeImpl&& ) = delete;
 
 
+        template < typename M, typename F >
+        [ [ nodiscard ] ]
+        auto run_parallel( const M & mounts, F f )
+        {
+            using namespace std;
+            using namespace boost::container;
+
+            using ContractT = decltype( f( MountPointImplP{}, pair< atomic_bool, atomic_bool >{}, pair< atomic_bool, atomic_bool >{} ) );
+            using FutureT = future< ContractT >;
+
+            // futures, one per mount
+            static_vector< FutureT, MountLimit > futures;
+            futures.resize( mounts.size( ) );
+
+            // execution connectors are pairs of < cancel, do_it > flags
+            static_vector< pair< atomic_bool, atomic_bool >, MountLimit > connectors;
+            connectors.resize( mounts.size( ) + 1 );
+
+            // through all mounts: connect the routines and start them asynchronuosly
+            for ( auto mp_it = begin( mounts ); mp_it != end( mounts ); ++mp_it )
+            {
+                // ordinal number of mount
+                auto d = static_cast< size_t >( distance( begin( mounts ), mp_it ) );
+
+                // get mount implementation ptr
+                auto mp = *mp_it;
+
+                // assign future
+                assert( d < futures.size( ) );
+                auto & future = futures[ d ];
+
+                // assign the connectors
+                assert( d < connectors.size( ) && d + 1 < connectors.size( ) );
+                auto & in = connectors[ d ];
+                auto & out = connectors[ d + 1 ];
+
+                // start routine
+                future = async( launch::async, [&] ( ) noexcept { return f( mp, in, out ); } );
+            }
+
+            // let the 1st routine to DO IT
+            connectors[ 0 ].second.store( true, memory_order_release );
+
+            // wait for all futures
+            for ( auto & future : futures ) { future.wait( ); }
+
+            // return futures
+            return futures;
+        }
+
+
         [[ nodiscard ]]
         auto insert( const Key & path, const Key & subkey, Value && value, Timestamp && good_before, bool overwrite )
         {
@@ -293,20 +345,49 @@ namespace jb
         std::tuple< RetCode > erase( const Key & key, bool force ) noexcept
         {
             using namespace std;
+            using namespace boost::container;
 
             assert( key.is_path( ) );
 
             try
             {
-                // TODO: consider locing only for collection mount points
+                // TODO: consider locking only for collection mount points
                 shared_lock l( mounts_guard_ );
 
-                if ( auto[ mount_path, mount_path_hash ] = find_nearest_mounted_path( key ); mount_path )
+                if ( auto[ mount_path, mount_hash ] = find_nearest_mounted_path( key ); mount_path )
                 {
-                    auto mount_points = move( get_mount_points( mount_path_hash ) );
-                    assert( mount_points.size() );
+                    auto mounts = move( get_mount_points( mount_hash ) );
+                    assert( mounts.size() );
 
-                    return { RetCode::NotImplementedYet };
+                    // get physical path as a rest from mount point
+                    auto[ is_superkey, relative_path ] = mount_path.is_superkey( key );
+                    assert( is_superkey );
+
+                    // run erase() for all mounts in parallel
+                    auto futures = move( run_parallel( mounts, [=] ( const auto & mount, const auto & in, auto & out ) noexcept {
+                        return mount->erase( relative_path, in, out );
+                    } ) );
+
+                    // through all futures
+                    for ( auto & future : futures )
+                    {
+                        // get result
+                        auto[ ret ] = future.get( );
+
+                        if ( RetCode::Ok == ret )
+                        {
+                            // done
+                            return { RetCode::Ok };
+                        }
+                        else if ( RetCode::NotFound != ret )
+                        {
+                            // something happened on physical level
+                            return { ret };
+                        }
+                    }
+
+                    // key not found
+                    return { RetCode::NotFound };
                 }
                 else
                 {
@@ -321,14 +402,13 @@ namespace jb
         }
 
 
+        /**
+        */
         [[ nodiscard ]]
-        std::tuple <
-            RetCode,
-            MountPoint
-        > mount (   PhysicalVolumeImplP physical_volume, 
-                    const Key & physical_path,
-                    const Key & logical_path,
-                    const Key & alias ) noexcept
+        std::tuple< RetCode, MountPoint > mount (   PhysicalVolumeImplP physical_volume, 
+                                                    const Key & physical_path,
+                                                    const Key & logical_path,
+                                                    const Key & alias   ) noexcept
         {
             using namespace std;
             using namespace boost::container;
@@ -380,37 +460,12 @@ namespace jb
                     auto[ is_superkey, relative_path ] = parent_path.is_superkey( logical_path );
                     assert( is_superkey );
 
-                    // futures, one per mount
-                    static_vector< future< tuple< RetCode, NodeUid, NodeLock > >, MountLimit > futures;
-                    futures.resize( parent_mounts.size() );
+                    // run lock_path() for all parent mounts in parallel
+                    auto futures = move( run_parallel( parent_mounts, [=] ( const auto & mount, const auto & in, auto & out ) noexcept {
+                        return mount->lock_path( relative_path, in, out );
+                    } ) );
 
-                    // execution connectors are pairs of < cancel, do_it > flags
-                    static_vector< pair< atomic_bool, atomic_bool >, MountLimit > connectors;
-                    connectors.resize( parent_mounts.size() + 1 );
-
-                    // through all mounts: connect locking routines and start them asynchronuosly
-                    for ( auto mp_it = begin( parent_mounts ); mp_it != end( parent_mounts ); ++mp_it )
-                    {
-                        auto d = static_cast< size_t >( distance( begin( parent_mounts ), mp_it ) );
-                         
-                        auto mp = *mp_it;
-                        
-                        assert( d < futures.size() );
-                        auto & future = futures[ d ];
-
-                        assert( d < connectors.size() && d + 1 < connectors.size() );
-                        auto & in = connectors[ d ];
-                        auto & out = connectors[ d + 1 ];
-
-                        future = async( launch::async, [&] { return mp->lock_path( relative_path, in, out ); } );
-                    }
-
-                    // enable applying chain
-                    connectors.front().second.store( true, memory_order_release );
-
-                    // wait for all futures
-                    for ( auto & future : futures ) { future.wait(); }
-
+                    // init overall status as NotFound
                     auto overall_status = RetCode::NotFound;
 
                     // through all futures
@@ -428,12 +483,12 @@ namespace jb
                         }
                         else if ( RetCode::NotFound != ret )
                         {
-                            // something happened on physical level
+                            // something terrible happened on physical level
                             overall_status = ret;
                         }
                     }
 
-                    // unable to lock
+                    // unable to lock physical path
                     if ( RetCode::Ok != overall_status )
                     {
                         return { overall_status, MountPoint{} };

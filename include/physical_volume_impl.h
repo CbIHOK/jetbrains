@@ -75,12 +75,12 @@ namespace jb
 
 
         [[nodiscard]]
-        std::tuple< RetCode, NodeUid, NodeLock > lock_path( 
-            NodeUid entry_node_uid_,
-            const Key & entry_path_,
-            const Key & relative_path,
-            const execution_connector & in,
-            execution_connector & out )
+        std::tuple < RetCode, NodeUid, NodeLock > lock_path (
+                    NodeUid entry_node_uid_,
+                    const Key & entry_path_,
+                    const Key & relative_path,
+                    const std::pair< std::atomic_bool, std::atomic_bool > & in,
+                    std::pair< std::atomic_bool, std::atomic_bool > & out   )
         {
             using namespace std;
 
@@ -93,6 +93,31 @@ namespace jb
                 else if ( check_for_cancel( in, out ) )
                 {
                     return { RetCode::Ok, NodeUid{ 0 }, NodeLock{} };
+
+                }
+                this_thread::sleep_for( 1ms );
+            }
+        }
+
+        [[nodiscard]]
+        std::tuple< RetCode > erase(
+                    NodeUid entry_node_uid_,
+                    const Key & entry_path_,
+                    const Key & relative_path,
+                    const std::pair< std::atomic_bool, std::atomic_bool > & in,
+                    std::pair< std::atomic_bool, std::atomic_bool > & out )
+        {
+            using namespace std;
+
+            while ( true )
+            {
+                if ( check_for_doit( in, out ) )
+                {
+                    return { RetCode::NotImplementedYet };
+                }
+                else if ( check_for_cancel( in, out ) )
+                {
+                    return { RetCode::Ok };
 
                 }
                 this_thread::sleep_for( 1ms );
