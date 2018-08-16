@@ -31,7 +31,7 @@ namespace jb
 
     public:
 
-        typedef size_t NodeUid;
+        typedef unsigned long long NodeUid;
         using NodeLock = typename NodeLocker::NodeLock;
         
         PhysicalVolumeImpl( ) = default;
