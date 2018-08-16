@@ -42,10 +42,12 @@ namespace jb
         {
             using namespace std;
 
-            if ( auto cancel = incoming.cancel_.load( memory_order_acquire ) )
-            {
-                outgoing.cancel_.store( true, memory_order_release );
+            const atomic_bool & in_cancel = in.first;
+            atomic_bool & out_cancel = out.first;
 
+            if ( in_cancel.load( memory_order_acquire ) )
+            {
+                out_cancel.store( true, memory_order_release );
                 return true;
             }
 
@@ -58,10 +60,11 @@ namespace jb
         {
             using namespace std;
             
+            const atomic_bool & in_cancel = in.first;
             const atomic_bool & in_do_it = in.second;
             atomic_bool & out_cancel = out.first;
 
-            if ( auto doit = in_do_it.load( memory_order_acquire ) )
+            if ( in_do_it.load( memory_order_acquire ) )
             {
                 out_cancel.store( true, memory_order_release );
                 return true;
@@ -81,12 +84,19 @@ namespace jb
         {
             using namespace std;
 
-            while ( !check_for_doit( in, out ) )
+            while ( true )
             {
+                if ( check_for_doit( in, out ) )
+                {
+                    return { RetCode::Ok, NodeUid{ 0 }, NodeLock{} };
+                }
+                else if ( check_for_cancel( in, out ) )
+                {
+                    return { RetCode::Ok, NodeUid{ 0 }, NodeLock{} };
+
+                }
                 this_thread::sleep_for( 1ms );
             }
-
-            return { RetCode::Ok, NodeUid{ 0 }, NodeLock{} };
         }
 
 

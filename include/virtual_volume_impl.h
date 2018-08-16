@@ -88,7 +88,7 @@ namespace jb
         // provides O(1) search my mount path, cover most of scenario
         //
         using MountedPathCollection = std::unordered_multimap< typename KeyValue, MountPointBacktraceP >;
-        MountedPathCollection mounted_paths_;
+        MountedPathCollection paths_;
 
 
         //
@@ -115,7 +115,7 @@ namespace jb
             auto check = [] ( auto hash ) {
                 return hash.size() + 1 <= hash.max_load_factor() * hash.bucket_count();
             };
-            return check( uids_ ) & check( mounts_ ) & check( mounted_paths_ );
+            return check( uids_ ) & check( mounts_ ) & check( paths_ );
         }
 
 
@@ -130,7 +130,7 @@ namespace jb
 
             while ( current != Key{} )
             {
-                if ( mounted_paths_.count( current ) )
+                if ( paths_.count( current ) )
                 {
                     break;
                 }
@@ -160,7 +160,7 @@ namespace jb
             auto lesser_pv = Storage::get_lesser_priority();
 
             // get mount points by logical path
-            auto[ from, to ] = mounted_paths_.equal_range( logical_path );
+            auto[ from, to ] = paths_.equal_range( logical_path );
 
             // vector on stack
             static_vector< MountPointImplP, MountLimit > mount_points;
@@ -196,7 +196,7 @@ namespace jb
         VirtualVolumeImpl( ) : mounts_guard_( )
             , uids_( MountLimit )
             , mounts_( MountLimit )
-            , mounted_paths_( MountLimit )
+            , paths_( MountLimit )
         {
         }
 
@@ -293,13 +293,13 @@ namespace jb
 
 
         [[ nodiscard ]]
-        std::tuple< RetCode, MountPoint > mount
-        (
-            PhysicalVolumeImplP physical_volume, 
-            const Key & physical_path,
-            const Key & logical_path,
-            const Key & alias
-        ) noexcept
+        std::tuple <
+            RetCode,
+            MountPoint
+        > mount (   PhysicalVolumeImplP physical_volume, 
+                    const Key & physical_path,
+                    const Key & logical_path,
+                    const Key & alias ) noexcept
         {
             using namespace std;
             using namespace boost::container;
@@ -359,12 +359,12 @@ namespace jb
                     static_vector< pair< atomic_bool, atomic_bool >, MountLimit > connectors;
                     connectors.resize( mount_points.size() + 1 );
 
-                    // through all mounts: start locking routine
+                    // through all mounts: connect locking routines and start them asynchronuosly
                     for ( auto mp_it = begin( mount_points ); mp_it != end( mount_points ); ++mp_it )
                     {
                         auto d = static_cast< size_t >( distance( begin( mount_points ), mp_it ) );
                          
-                        MountPointImplP mp = *mp_it;
+                        auto mp = *mp_it;
                         
                         assert( d < futures.size() );
                         auto & future = futures[ d ];
@@ -373,7 +373,7 @@ namespace jb
                         auto & in = connectors[ d ];
                         auto & out = connectors[ d + 1 ];
 
-                        future = async( std::launch::async, [&] { return mp->lock_path( relative_path, in, out ); } );
+                        future = async( launch::async, [&] { return mp->lock_path( relative_path, in, out ); } );
                     }
 
                     // enable applying chain
@@ -412,7 +412,7 @@ namespace jb
                 }
 
                 // create mounting point
-                MountPointImplP mp = make_shared< MountPointImpl >( physical_volume, physical_path, move( lock_mount_to ) );
+                auto mp = make_shared< MountPointImpl >( physical_volume, physical_path, move( lock_mount_to ) );
 
                 // if mounting successful
                 if ( mp->status() != RetCode::Ok )
@@ -421,15 +421,15 @@ namespace jb
                 }
 
                 // create backtrace record
-                MountPointBacktraceP backtrace_ptr = make_shared< MountPointBacktrace >();
+                auto backtrace_ptr = make_shared< MountPointBacktrace >();
 
                 // combine logical path for new mount
-                KeyValue mounted_path = logical_path / alias;
+                auto mounted_path = logical_path / alias;
 
                 // insert all the keys and fill backtrace
                 backtrace_ptr->uid_ = uids_.insert( { uid, backtrace_ptr } ).first;
                 backtrace_ptr->mount_ = mounts_.insert( { mp, backtrace_ptr } ).first;
-                backtrace_ptr->path_ = mounted_paths_.insert( { mounted_path, backtrace_ptr } );
+                backtrace_ptr->path_ = paths_.insert( { mounted_path, backtrace_ptr } );
 
                 // done
                 return { RetCode::Ok, MountPoint{ mp } };
