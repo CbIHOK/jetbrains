@@ -278,7 +278,7 @@ namespace jb
 
 
         [[ nodiscard ]]
-        auto insert( const Key & path, const Key & subkey, Value && value, Timestamp && good_before, bool overwrite )
+        std::tuple< RetCode > insert( const Key & path, const Key & subkey, Value && value, Timestamp && good_before, bool overwrite )
         {
             using namespace std;
 
@@ -287,18 +287,48 @@ namespace jb
 
             try
             {
+                // TODO: consider locking only for collection mount points
                 shared_lock l( mounts_guard_ );
 
-                if ( auto[ mp_path, mp_path_hash ] = find_nearest_mounted_path( path ); mp_path )
+                if ( auto[ mount_path, mount_hash ] = find_nearest_mounted_path( path ); mount_path )
                 {
-                    auto mount_points = move( get_mount_points( mp_path_hash ) );
-                    assert( mount_points.size( ) );
+                    // get mounts for the key
+                    auto mounts = move( get_mount_points( mount_hash ) );
+                    assert( mounts.size( ) );
 
-                    return tuple{ RetCode::NotImplementedYet };
+                    // get relative path as a rest from mount point
+                    auto[ is_superkey, relative_path ] = mount_path.is_superkey( path );
+                    assert( is_superkey );
+
+                    // run insert() for all mounts in parallel
+                    auto futures = move( run_parallel( mounts, [&] ( const auto & mount, const auto & in, auto & out ) noexcept {
+                        return mount->insert( relative_path, subkey, move( value ), move( good_before ), overwrite, in, out );
+                    } ) );
+
+                    // through all futures
+                    for ( auto & future : futures )
+                    {
+                        // get result
+                        auto[ ret ] = future.get( );
+
+                        if ( RetCode::Ok == ret )
+                        {
+                            // done
+                            return { RetCode::Ok };
+                        }
+                        else if ( RetCode::NotFound != ret )
+                        {
+                            // something happened on physical level
+                            return { ret };
+                        }
+                    }
+
+                    // key not found
+                    return { RetCode::NotFound };
                 }
                 else
                 {
-                    return tuple{ RetCode::InvalidLogicalPath };
+                    return { RetCode::InvalidLogicalPath };
                 }
             }
             catch(...)
@@ -332,7 +362,7 @@ namespace jb
                     assert( is_superkey );
 
                     // run get() for all mounts in parallel
-                    auto futures = move( run_parallel( mounts, [=] ( const auto & mount, const auto & in, auto & out ) noexcept {
+                    auto futures = move( run_parallel( mounts, [&] ( const auto & mount, const auto & in, auto & out ) noexcept {
                         return mount->get( relative_path, in, out );
                     } ) );
 
@@ -394,7 +424,7 @@ namespace jb
                     assert( is_superkey );
 
                     // run erase() for all mounts in parallel
-                    auto futures = move( run_parallel( mounts, [=] ( const auto & mount, const auto & in, auto & out ) noexcept {
+                    auto futures = move( run_parallel( mounts, [&] ( const auto & mount, const auto & in, auto & out ) noexcept {
                         return mount->erase( relative_path, in, out );
                     } ) );
 
@@ -491,7 +521,7 @@ namespace jb
                     assert( is_superkey );
 
                     // run lock_path() for all parent mounts in parallel
-                    auto futures = move( run_parallel( parent_mounts, [=] ( const auto & mount, const auto & in, auto & out ) noexcept {
+                    auto futures = move( run_parallel( parent_mounts, [&] ( const auto & mount, const auto & in, auto & out ) noexcept {
                         return mount->lock_path( relative_path, in, out );
                     } ) );
 

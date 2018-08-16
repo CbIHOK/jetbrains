@@ -72,9 +72,10 @@ namespace jb
         }
 
 
-        auto insert( const Key & relative_path, const Key & subkey, Value && value, Timestamp && good_before, std::atomic_bool & cancel, std::atomic_bool & doit )
+        [[ nodiscard ]]
+        std::tuple< RetCode > insert( const Key & relative_path, const Key & subkey, Value && value, Timestamp && good_before, bool overwrite, const execution_connector & in, execution_connector & out ) noexcept
         {
-            return physical_volume_->insert( entry_node_uid_, entry_path_, relative_path, subkey, move( value ), move( good_before ), cancel, doit );
+            return physical_volume_->insert( entry_node_uid_, Key{ entry_path_ }, relative_path, subkey, move( value ), move( good_before ), overwrite, in, out );
         }
 
 

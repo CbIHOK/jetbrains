@@ -38,9 +38,9 @@ namespace jb
         InvalidKey,             ///< Invalid key value
         InvalidSubkey,          ///< Invalid subkey value
         InvalidLogicalPath,     ///< Given logical path cannot be mapped onto a physical one
-        NotFound     ,          ///< Such path does not exist
+        NotFound,               ///< Such path does not have a physical representation
         ///
-        NotImplementedYet,
+        NotImplementedYet
     };
 
 
@@ -86,6 +86,7 @@ namespace jb
         class VirtualVolume;
         class PhysicalVolume;
         class MountPoint;
+
 
     private:
 

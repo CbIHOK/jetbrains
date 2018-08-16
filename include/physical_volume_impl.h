@@ -21,6 +21,8 @@ namespace jb
 
         using Storage = ::jb::Storage< Policies, Pad >;
         using Key = typename Storage::Key;
+        using Value = typename Storage::Value;
+        using Timestamp = typename Storage::Timestamp;
         using PhysicalVolume = typename Storage::PhysicalVolume;
         using MountPointImpl = typename Storage::MountPointImpl;
 
@@ -93,6 +95,34 @@ namespace jb
                 {
                     return { RetCode::Ok, NodeUid{ 0 }, NodeLock{} };
 
+                }
+                this_thread::sleep_for( 1ms );
+            }
+        }
+
+
+        [[ nodiscard ]]
+        std::tuple< RetCode > insert (   NodeUid entry_node_uid_,
+                                         const Key & entry_path_,
+                                         const Key & relative_path,
+                                         const Key & subkey,
+                                         Value && value,
+                                         Timestamp && good_before,
+                                         bool overwrite,
+                                         const execution_connector & in,
+                                         execution_connector & out  )
+        {
+            using namespace std;
+
+            while ( true )
+            {
+                if ( check_for_doit( in, out ) )
+                {
+                    return { RetCode::NotImplementedYet };
+                }
+                else if ( check_for_cancel( in, out ) )
+                {
+                    return { RetCode::Ok };
                 }
                 this_thread::sleep_for( 1ms );
             }
