@@ -71,6 +71,7 @@ namespace jb
         operator ValueT() const { return ValueT{ cbegin( view_ ), cend( view_ ) }; }
         operator ViewT( ) const { return view_; }
 
+        operator bool( ) const noexcept { return view_.size( ) > 0; }
         auto is_valid( ) const noexcept { return view_.size() > 0; }
         auto is_path( ) const noexcept { return view_.size( ) > 0 && view_.front() == separator; }
         auto is_leaf( ) const noexcept { return view_.size( ) > 0 && view_.front() != separator; }
@@ -208,6 +209,20 @@ namespace jb
         {
             static constexpr std::hash< Key::ViewT > hasher{};
             return hasher( key.view_ );
+        }
+    };
+
+
+    template < typename Policies, typename Pad >
+    struct Hash< Policies, Pad, typename Storage< Policies, Pad >::Key::ValueT >
+    {
+        static constexpr bool enabled = true;
+        using ValueT = typename Storage< Policies, Pad >::Key::ValueT;
+
+        size_t operator() ( const ValueT & value ) const noexcept
+        {
+            static constexpr std::hash< ValueT > hasher{};
+            return hasher( value );
         }
     };
 }

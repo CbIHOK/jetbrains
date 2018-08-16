@@ -41,8 +41,9 @@ namespace jb
         using KeyValue = typename Storage::KeyValue;
         using Value = typename Storage::Value;
         using Timestamp = typename Storage::Timestamp;
+        using KeyHashT = decltype( Hash< Policies, Pad, Key >{}( Key{} ) );
 
-        static constexpr size_t MountLimit = Policies::VirtualVolumePolicy::MountPointLimit;
+        static constexpr auto MountLimit = Policies::VirtualVolumePolicy::MountPointLimit;
 
 
         //
@@ -59,7 +60,10 @@ namespace jb
         // stays valid after insert()/erase() operations until rehashing routine, and we can simply
         // pre-allocate the arrays with maximum number of buckets to avoid iterator invalidation
         //
-        // a forwarding declaration, see below fro details
+        //   dependency     path <--> backtrace <--> mount     mount uid
+        //       ^________________________|________________________^
+        //
+        // a forwarding declaration, see below for details
         //
         struct MountPointBacktrace;
         using MountPointBacktraceP = std::shared_ptr< MountPointBacktrace >;
@@ -70,7 +74,7 @@ namespace jb
         // physical path. Let us to avoid identical mounts with O(1) complexity
         //
         using MountUid = size_t;
-        using MountUidCollection = std::unordered_map< MountUid, MountPointBacktraceP >;
+        using MountUidCollection = std::unordered_set< MountUid >;
         MountUidCollection uids_;
 
 
@@ -85,10 +89,21 @@ namespace jb
 
 
         //
-        // provides O(1) search my mount path, cover most of scenario
+        // provides O(1) search my mount path hash
         //
-        using MountedPathCollection = std::unordered_multimap< typename KeyValue, MountPointBacktraceP >;
+        // the approach is to hold not paths but their hashes. That at first reduces heap
+        // defragmentation, and at second places the keys nearly in memory, i.e. looks
+        // more cach-friendly
+        //
+        using MountedPathCollection = std::unordered_multimap< KeyHashT, MountPointBacktraceP >;
         MountedPathCollection paths_;
+
+
+        //
+        // provides O(1) search from a mount point to upper mount point
+        //
+        using MountDependecyCollection = std::unordered_multimap< KeyHashT, KeyHashT >;
+        MountDependecyCollection dependencies_;
 
 
         //
@@ -99,6 +114,7 @@ namespace jb
             typename MountUidCollection::const_iterator uid_;
             typename MountPointImplCollection::const_iterator mount_;
             typename MountedPathCollection::const_iterator path_;
+            typename MountDependecyCollection::const_iterator dependency_;
         };
 
 
@@ -115,7 +131,7 @@ namespace jb
             auto check = [] ( auto hash ) {
                 return hash.size() + 1 <= hash.max_load_factor() * hash.bucket_count();
             };
-            return check( uids_ ) & check( mounts_ ) & check( paths_ );
+            return check( uids_ ) && check( mounts_ ) && check( paths_ ) && check( dependencies_ );
         }
 
 
@@ -130,9 +146,13 @@ namespace jb
 
             while ( current != Key{} )
             {
-                if ( paths_.count( current ) )
+                static Hash< Policies, Pad, Key > hasher{};
+
+                auto current_hash = hasher( current );
+
+                if ( paths_.count( current_hash ) )
                 {
-                    break;
+                    return tuple{ current, current_hash };
                 }
 
                 auto [ ret, superkey, subkey ] = current.split_at_tile( );
@@ -141,7 +161,7 @@ namespace jb
                 current = move( superkey );
             }
 
-            return tuple{ current };
+            return tuple{ Key{}, KeyHashT{} };
         }
 
 
@@ -151,7 +171,7 @@ namespace jb
         @return vector< MountPointImplP > sorted in priority of their Physical Volumes
         */
         [[nodiscard]]
-        auto get_mount_points( const Key & logical_path ) const
+        auto get_mount_points( KeyHashT & mp_path_hash ) const
         {
             using namespace std;
             using namespace boost::container;
@@ -160,7 +180,7 @@ namespace jb
             auto lesser_pv = Storage::get_lesser_priority();
 
             // get mount points by logical path
-            auto[ from, to ] = paths_.equal_range( logical_path );
+            auto[ from, to ] = paths_.equal_range( mp_path_hash );
 
             // vector on stack
             static_vector< MountPointImplP, MountLimit > mount_points;
@@ -197,6 +217,7 @@ namespace jb
             , uids_( MountLimit )
             , mounts_( MountLimit )
             , paths_( MountLimit )
+            , dependencies_( MountLimit )
         {
         }
 
@@ -216,15 +237,17 @@ namespace jb
             {
                 shared_lock l( mounts_guard_ );
 
-                auto[ mp_path ] = find_nearest_mounted_path( path );
-                auto mount_points = move( get_mount_points( mp_path ) );
+                if ( auto[ mp_path, mp_path_hash ] = find_nearest_mounted_path( path ); mp_path )
+                {
+                    auto mount_points = move( get_mount_points( mp_path_hash ) );
+                    assert( mount_points.size( ) );
 
-                if ( mount_points.empty() )
+                    return tuple{ RetCode::NotImplementedYet };
+                }
+                else
                 {
                     return tuple{ RetCode::InvalidLogicalPath };
                 }
-
-                return tuple{ RetCode::NotImplementedYet };
             }
             catch(...)
             {
@@ -243,17 +266,20 @@ namespace jb
 
             try
             {
+                // TODO: consider locing only for collection mount points
                 shared_lock l( mounts_guard_ );
 
-                auto[ mp_path ] = find_nearest_mounted_path( key );
-                auto mount_points = move( get_mount_points( mp_path ) );
+                if ( auto[ mount_path, mount_path_hash ] = find_nearest_mounted_path( key ); mount_path )
+                {
+                    auto mount_points = move( get_mount_points( mount_path_hash ) );
+                    assert( mount_points.size( ) );
 
-                if ( mount_points.empty( ) )
+                    return { RetCode::NotImplementedYet, Value{} };
+                }
+                else
                 {
                     return { RetCode::InvalidLogicalPath, Value{} };
                 }
-
-                return { RetCode::NotImplementedYet, Value{} };
             }
             catch ( ... )
             {
@@ -268,21 +294,24 @@ namespace jb
         {
             using namespace std;
 
+            assert( key.is_path( ) );
+
             try
             {
-                assert( key.is_path() );
-
+                // TODO: consider locing only for collection mount points
                 shared_lock l( mounts_guard_ );
 
-                auto[ mp_path ] = find_nearest_mounted_path( key );
-                auto mount_points = move( get_mount_points( mp_path ) );
-
-                if ( mount_points.empty( ) )
+                if ( auto[ mount_path, mount_path_hash ] = find_nearest_mounted_path( key ); mount_path )
                 {
-                    return { RetCode::InvalidLogicalPath, };
-                }
+                    auto mount_points = move( get_mount_points( mount_path_hash ) );
+                    assert( mount_points.size() );
 
-                return { RetCode::NotImplementedYet };
+                    return { RetCode::NotImplementedYet };
+                }
+                else
+                {
+                    return { RetCode::InvalidLogicalPath };
+                }
             }
             catch ( ... )
             {
@@ -304,13 +333,13 @@ namespace jb
             using namespace std;
             using namespace boost::container;
 
+            assert( physical_volume );
+            assert( physical_path.is_path( ) );
+            assert( logical_path.is_path( ) );
+            assert( alias.is_leaf( ) );
+
             try
             {
-                assert( physical_volume );
-                assert( physical_path.is_path( ) );
-                assert( logical_path.is_path( ) );
-                assert( alias.is_leaf( ) );
-
                 // lock over all mounts
                 unique_lock< shared_mutex > write_lock( mounts_guard_ );
 
@@ -334,35 +363,35 @@ namespace jb
                     return { RetCode::UnknownError, MountPoint() };
                 }
 
-                // find nearest mount point for logical path
-                auto mp_path = std::get< Key >( find_nearest_mounted_path( logical_path ) );
-
                 // will lock path to mount
                 NodeLock lock_mount_to;
 
+                // find nearest upper mount point
+                auto[ parent_path, parent_hash ] = find_nearest_mounted_path( logical_path );
+
                 // if we're mounting under another mount we need to lock corresponding path on physical level
-                if ( mp_path != Key{} )
+                if ( parent_path )
                 {
                     // get mount points for logical path
-                    auto mount_points = move( get_mount_points( mp_path ) );
-                    assert( mount_points.size() );
+                    auto parent_mounts = move( get_mount_points( parent_hash ) );
+                    assert( parent_mounts.size() );
 
                     // get physical path as a rest from mount point
-                    auto[ is_superkey, relative_path ] = mp_path.is_superkey( logical_path );
+                    auto[ is_superkey, relative_path ] = parent_path.is_superkey( logical_path );
                     assert( is_superkey );
 
                     // futures, one per mount
                     static_vector< future< tuple< RetCode, NodeUid, NodeLock > >, MountLimit > futures;
-                    futures.resize( mount_points.size() );
+                    futures.resize( parent_mounts.size() );
 
                     // execution connectors are pairs of < cancel, do_it > flags
                     static_vector< pair< atomic_bool, atomic_bool >, MountLimit > connectors;
-                    connectors.resize( mount_points.size() + 1 );
+                    connectors.resize( parent_mounts.size() + 1 );
 
                     // through all mounts: connect locking routines and start them asynchronuosly
-                    for ( auto mp_it = begin( mount_points ); mp_it != end( mount_points ); ++mp_it )
+                    for ( auto mp_it = begin( parent_mounts ); mp_it != end( parent_mounts ); ++mp_it )
                     {
-                        auto d = static_cast< size_t >( distance( begin( mount_points ), mp_it ) );
+                        auto d = static_cast< size_t >( distance( begin( parent_mounts ), mp_it ) );
                          
                         auto mp = *mp_it;
                         
@@ -392,7 +421,7 @@ namespace jb
 
                         if ( RetCode::Ok == ret )
                         {
-                            // get lock over the path we're going mount to
+                            // get lock over logical path we're going mount to
                             lock_mount_to = move( lock );
                             overall_status = RetCode::Ok;
                             break;
@@ -424,12 +453,13 @@ namespace jb
                 auto backtrace_ptr = make_shared< MountPointBacktrace >();
 
                 // combine logical path for new mount
-                auto mounted_path = logical_path / alias;
+                auto mounted_hash = Hash< Policies, Pad, KeyValue >{}( logical_path / alias );
 
                 // insert all the keys and fill backtrace
-                backtrace_ptr->uid_ = uids_.insert( { uid, backtrace_ptr } ).first;
+                backtrace_ptr->uid_ = uids_.insert( uid ).first;
                 backtrace_ptr->mount_ = mounts_.insert( { mp, backtrace_ptr } ).first;
-                backtrace_ptr->path_ = paths_.insert( { mounted_path, backtrace_ptr } );
+                backtrace_ptr->path_ = paths_.insert( { mounted_hash, backtrace_ptr } );
+                backtrace_ptr->dependency_ = parent_path ? dependencies_.insert( { parent_hash, mounted_hash } ) : dependencies_.end();
 
                 // done
                 return { RetCode::Ok, MountPoint{ mp } };
