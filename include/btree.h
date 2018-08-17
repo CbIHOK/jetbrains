@@ -6,7 +6,7 @@
 #include <boost/container/static_vector.hpp>
 
 
-template < typename Policies >
+template < typename Policies, typename Pad >
 class BTreeNode
 {
 };

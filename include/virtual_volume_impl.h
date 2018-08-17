@@ -504,9 +504,9 @@ namespace jb
         */
         [[ nodiscard ]]
         std::tuple< RetCode, MountPointImplP > mount (   PhysicalVolumeImplP physical_volume, 
-                                                    const Key & physical_path,
-                                                    const Key & logical_path,
-                                                    const Key & alias   ) noexcept
+                                                        const Key & physical_path,
+                                                        const Key & logical_path,
+                                                        const Key & alias   ) noexcept
         {
             using namespace std;
             using namespace boost::container;
@@ -520,6 +520,8 @@ namespace jb
             {
                 // lock over all mounts
                 unique_lock< shared_mutex > write_lock( mounts_guard_ );
+
+                auto physical_volume_lock = move( physical_volume->get_shared_lock() );
 
                 // if maximum number of mounts reached?
                 if ( mounts_.size() >= MountLimit)
@@ -670,7 +672,7 @@ namespace jb
                         auto[ from, to ] = dependencies_.equal_range( path );
                         for( auto it = from; it != to; )
                         {
-                            // get dependent mount path and forward iterator cuz it will be invalidated by erase()
+                            // get dependent mount path and forward iterator cuz later it will be invalidated by erase()
                             auto & dependent = it->second; 
                             it++;
 

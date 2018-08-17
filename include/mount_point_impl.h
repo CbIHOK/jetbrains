@@ -44,6 +44,7 @@ namespace jb
         KeyValue entry_path_;
         NodeLock locks_;
         RetCode status_;
+        std::shared_lock< std::shared_mutex > volume_locker_;
 
 
     public:

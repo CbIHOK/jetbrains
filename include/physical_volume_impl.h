@@ -5,6 +5,7 @@
 #include <atomic>
 #include <thread>
 #include <chrono>
+#include <shared_mutex>
 
 
 class TestNodeLocker;
@@ -28,6 +29,11 @@ namespace jb
 
         class NodeLocker;
         class Bloom;
+
+        //
+        // manage volume access mode between shared ( regular operations ) and exclusive ( cleanup )
+        //
+        mutable std::shared_mutex volume_lock_;
 
     public:
 
@@ -73,6 +79,15 @@ namespace jb
             }
 
             return false;
+        }
+
+
+        /** Locks volume in shared mode
+        */
+        [[nodiscard]]
+        std::shared_lock< std::shared_mutex > get_shared_lock() const
+        {
+            return std::shared_lock< std::shared_mutex >( volume_lock_ );
         }
 
 
