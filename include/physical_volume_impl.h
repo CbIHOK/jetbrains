@@ -34,7 +34,7 @@ namespace jb
         using MountPointImpl = typename Storage::MountPointImpl;
         using execution_connector = std::pair< std::atomic_bool, std::atomic_bool >;
         using b_tree_node = jb::b_tree_node< Policies, Pad >;
-        using NodeUid = typename b_tree_node::BTreeNodeUid;
+        using NodeUid = typename b_tree_node::NodeUid;
 
         static constexpr auto RootNodeUid = b_tree_node::RootNodeUid;
         static constexpr auto InvalidNodeUid = b_tree_node::InvalidNodeUid;
@@ -68,7 +68,7 @@ namespace jb
         static constexpr size_t node_locker_size = 41; // 41 looks as good hasher
         static std::array< std::shared_mutex, node_locker_size > node_locker_;
         
-        auto & get_node_locker( NodeUid uid ) { return node_locker_[ uid / node_locker_size ]; }
+        //auto & get_node_locker( NodeUid uid ) { return node_locker_[ uid / node_locker_size ]; }
 
 
         /* Controls execution chain
@@ -292,26 +292,8 @@ namespace jb
                 //    return wait_and_do_it( in, out, [] { return tuple{ RetCode::NotFound, Value{} }; } );
                 //}
 
-                shared_lock< shared_mutex > lock_node( NodeUid );
 
-                b_tree_node node{}; // = Storage::get( entry_node_uid );
 
-                auto [ split_ok, prefix, suffix ] = relative_path.split_at_head( );
-                assert( split_ok );
-                
-                auto [ cut_ok, key ] = prefix.cut_lead_separator( );
-                assert( key.is_leaf( ) );
-
-                auto[ pos, link ] = node.find( key );
-                while ( pos == b_tree_node::Npos )
-                {
-                    if ( link_ == InvalidNodeUid )
-                    {
-
-                    }
-                }
-                
-                
                 return wait_and_do_it( in, out, [] { return tuple{ RetCode::NotImplementedYet, Value{} }; } );
             }
             catch ( ... )

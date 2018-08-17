@@ -41,7 +41,7 @@ namespace jb
         {
         }
         
-        Key & operator = ( const Key & )
+        Key & operator = ( const Key & o )
         {
             view_ = o.view_;
             return *this;
