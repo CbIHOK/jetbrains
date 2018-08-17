@@ -32,7 +32,7 @@ namespace jb
         using Storage = ::jb::Storage< Policies, Pad >;
         using PhysicalVolumeImpl = typename Storage::PhysicalVolumeImpl;
         using PhysicalVolumeImplP = std::shared_ptr< PhysicalVolumeImpl >;
-        using NodeLock = typename PhysicalVolumeImpl::NodeLock;
+        using PathLock = typename PhysicalVolumeImpl::PathLock;
         using MountPoint = typename Storage::MountPoint;
         using MountPointImpl = typename Storage::MountPointImpl;
         using MountPointImplP = std::shared_ptr< MountPointImpl >;
@@ -223,13 +223,13 @@ namespace jb
         /* Runs the same request on whole collection of mounts in parallel
 
         Takes care about applying of request in proper order as well as about canceling senseless
-        operation
+        of operations
 
         @tparam - type of mount collection
         @tparam - type of request
         @param [in] mounts - mount collection
         @param [in] f - request
-        @retval vector< MountPointImplP > sorted in priority of corresponding Physical Volumes
+        @retval vector< future > - commulative request result
         @throw may throw std::exception for some reasons
         */
         template < typename M, typename F >
@@ -380,6 +380,7 @@ namespace jb
             try
             {
                 // TODO: consider locking only for collection mount points
+                // TODO: add check for a logical path
                 shared_lock l( mounts_guard_ );
 
                 if ( auto[ mount_path, mount_hash ] = find_nearest_mounted_path( key ); mount_path )
@@ -442,6 +443,7 @@ namespace jb
             try
             {
                 // TODO: consider locking only for collection mount points
+                // TODO: add check for a logical path
                 shared_lock l( mounts_guard_ );
 
                 if ( auto[ mount_path, mount_hash ] = find_nearest_mounted_path( key ); mount_path )
@@ -544,7 +546,7 @@ namespace jb
                 }
 
                 // will lock path to mount at physical level
-                NodeLock lock_mount_to;
+                PathLock lock_mount_to;
 
                 // find nearest upper mount point
                 auto[ parent_path, parent_hash ] = find_nearest_mounted_path( logical_path );
@@ -707,6 +709,7 @@ namespace jb
                     return tuple{ RetCode::InvalidHandle };
                 };
 
+                // run the recursion
                 return rec( mp_impl, force );
             }
             else

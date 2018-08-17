@@ -264,3 +264,17 @@ TEST_F( TestVirtualVolume, Unmount_DependentMounts_Force )
 
     EXPECT_EQ( RetCode::Ok, std::get< RetCode >( mount.Close( true ) ) );
 }
+
+TEST_F( TestVirtualVolume, Get )
+{
+    auto vv = std::get< VirtualVolume >( Storage::OpenVirtualVolume( ) );
+    ASSERT_TRUE( vv );
+
+    auto pv = std::get< PhysicalVolume >( Storage::OpenPhysicalVolume( "foo" ) );
+    ASSERT_TRUE( pv );
+
+    auto[ ret, mount ] = vv.Mount( pv, "/", "/", "mount" );
+    ASSERT_EQ( RetCode::Ok, ret );
+
+    EXPECT_EQ( RetCode::Ok, std::get< RetCode >( vv.Get( "/mount/foo" ) ) );
+}

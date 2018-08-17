@@ -196,6 +196,19 @@ namespace jb
             return subkey.is_subkey( *this );
         }
 
+
+        auto cut_lead_separator()
+        {
+            using namespace std;
+
+            if ( is_path( ) )
+            {
+                return tuple{ true, Key{ view_.substr( 1 ) } };
+            }
+
+            return tuple{ false, Key{} };
+        }
+
     };
 
 

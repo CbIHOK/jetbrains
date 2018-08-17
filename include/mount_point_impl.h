@@ -32,7 +32,7 @@ namespace jb
         using VirtualVolumeImpl = typename Storage::VirtualVolumeImpl;
         using PhysicalVolumeImpl = typename Storage::PhysicalVolumeImpl;
         using PhysicalVolumeImplP = std::shared_ptr< PhysicalVolumeImpl >;
-        using NodeLock = typename PhysicalVolumeImpl::NodeLock;
+        using PathLock = typename PhysicalVolumeImpl::PathLock;
         using NodeUid = typename PhysicalVolumeImpl::NodeUid;
         using execution_connector = typename PhysicalVolumeImpl::execution_connector;
 
@@ -42,7 +42,7 @@ namespace jb
         std::shared_ptr< PhysicalVolumeImpl > physical_volume_;
         NodeUid entry_node_uid_;
         KeyValue entry_path_;
-        NodeLock locks_;
+        PathLock locks_;
         RetCode status_;
         std::shared_lock< std::shared_mutex > volume_locker_;
 
@@ -61,7 +61,7 @@ namespace jb
         @param [in] physical_path - physical path to be connected
         @param [in] mounted_to_lock - lock object that prevents removing a physical node in whose space we're mounting
         */
-        explicit MountPointImpl( PhysicalVolumeImplP physical_volume, const Key & physical_path, NodeLock && mounted_to_lock )
+        explicit MountPointImpl( PhysicalVolumeImplP physical_volume, const Key & physical_path, PathLock && mounted_to_lock )
             : physical_volume_{ physical_volume }
             , entry_path_{ physical_path }
             , locks_{ std::move( mounted_to_lock ) }
@@ -78,7 +78,7 @@ namespace jb
             
             status_ = std::get< RetCode >( res );
             entry_node_uid_ = std::get< NodeUid >( res );
-            locks_ << move( std::get< NodeLock >( res ) );
+            locks_ << move( std::get< PathLock >( res ) );
         }
 
 
@@ -105,11 +105,11 @@ namespace jb
         @param [out] out - outgoing execution events
         @retval RetCode - operation status
         @retval NodeUid - internal UID of a node by path
-        @retval NodeLock - lock object that prevents erasing of any node laying on relative path
+        @retval PathLock - lock object that prevents erasing of any node laying on relative path
         @throw nothing
         */
         [[ nodiscard ]]
-        std::tuple < RetCode, NodeUid, NodeLock > lock_path( const Key & relative_path, const execution_connector & in, execution_connector & out ) noexcept
+        std::tuple < RetCode, NodeUid, PathLock > lock_path( const Key & relative_path, const execution_connector & in, execution_connector & out ) noexcept
         {
             assert( relative_path );
 
@@ -120,7 +120,7 @@ namespace jb
             catch ( ... )
             {}
 
-            return { RetCode::UnknownError, NodeUid{}, NodeLock{} };
+            return { RetCode::UnknownError, NodeUid{}, PathLock{} };
         }
 
 

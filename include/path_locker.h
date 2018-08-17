@@ -11,7 +11,7 @@
 namespace jb
 {
     template < typename Policies, typename Pad >
-    class Storage< Policies, Pad >::PhysicalVolumeImpl::NodeLocker
+    class Storage< Policies, Pad >::PhysicalVolumeImpl::PathLocker
     {
         using NodeUid = typename PhysicalVolumeImpl::NodeUid;
         std::shared_mutex guard_;
@@ -19,11 +19,11 @@ namespace jb
         
     public:
 
-        class NodeLock;
+        class PathLock;
 
-        NodeLocker( ) : locked_nodes_( Policies::PhysicalVolumePolicy::MountPointLimit ) {}
+        PathLocker( ) : locked_nodes_( Policies::PhysicalVolumePolicy::MountPointLimit ) {}
 
-        NodeLock lock_node( NodeUid node )
+        PathLock lock_node( NodeUid node )
         {
             std::unique_lock l{ guard_ };
 
@@ -43,7 +43,7 @@ namespace jb
                 }
             };
 
-            return NodeLock( unlock );
+            return PathLock( unlock );
         }
 
         bool is_removable( NodeUid node )
@@ -55,13 +55,13 @@ namespace jb
 
 
     template < typename Policies, typename Pad >
-    class Storage< Policies, Pad >::PhysicalVolumeImpl::NodeLocker::NodeLock
+    class Storage< Policies, Pad >::PhysicalVolumeImpl::PathLocker::PathLock
     {
         std::list< std::function< void( ) > > unlocks_;
 
-        friend class NodeLocker;
+        friend class PathLocker;
 
-        NodeLock( std::function< void( ) > && unlock ) noexcept
+        PathLock( std::function< void( ) > && unlock ) noexcept
         {
             assert( unlock );
             unlocks_.push_back( unlock );
@@ -79,30 +79,30 @@ namespace jb
 
     public:
 
-        NodeLock( ) = default;
-        NodeLock( const NodeLock & ) = delete;
-        NodeLock& operator = ( const NodeLock & ) = delete;
+        PathLock( ) = default;
+        PathLock( const PathLock & ) = delete;
+        PathLock& operator = ( const PathLock & ) = delete;
 
-        NodeLock( NodeLock&& o )
+        PathLock( PathLock&& o )
         {
             unlock_all( );
             unlocks_ = move( o.unlocks_ );
         }
 
-        NodeLock& operator = ( NodeLock&& o )
+        PathLock& operator = ( PathLock&& o )
         {
             unlock_all( );
             unlocks_ = move( o.unlocks_ );
             return *this;
         }
 
-        NodeLock & operator << ( NodeLock && other )
+        PathLock & operator << ( PathLock && other )
         {
             unlocks_.splice( end( unlocks_ ), other.unlocks_ );
             return *this;
         }
 
-        ~NodeLock( )
+        ~PathLock( )
         {
             unlock_all( );
         }
