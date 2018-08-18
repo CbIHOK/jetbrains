@@ -27,6 +27,7 @@ namespace jb
         {
             static constexpr size_t VolumeLimit = 64;
             static constexpr size_t MountPointLimit = (1 << 10);
+            static constexpr size_t ExpectedTreeDepth = 10;
 
             static constexpr size_t BloomSize = 16 * ( 1 << 20 ); // 16 Mb
             static constexpr size_t BloomFnCount = 16;
