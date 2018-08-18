@@ -150,7 +150,7 @@ namespace jb
             template< typename ...Arg >
             static constexpr auto CreatorF( Arg&&... args )
             {
-                return std::make_shared< ImplT >( std::forward( args )... );
+                return std::make_shared< ImplT >( move(args)... );
             }
 
             static constexpr auto InserterF = []( CollectionT & collection, const ImplP & item )
@@ -207,7 +207,7 @@ namespace jb
                 }
 
                 // create new item and add it into collection
-                auto item = SingletonPolicy::CreatorF( std::forward(args)... );
+                auto item = SingletonPolicy::CreatorF( args... );
                 
                 if ( SingletonPolicy::InserterF( collection, item ) )
                 {
@@ -559,7 +559,7 @@ namespace jb
                 static mutex mtx;
                 scoped_lock lock( mtx );
 
-                if ( auto[ ret, volume ] = open< PhysicalVolume >( );  RetCode::Ok == ret )
+                if ( auto[ ret, volume ] = open< PhysicalVolume >( move( path ) );  RetCode::Ok == ret )
                 {
                     assert( volume );
 

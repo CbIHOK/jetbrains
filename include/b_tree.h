@@ -4,9 +4,9 @@
 
 #include <tuple>
 #include <algorithm>
+#include <mutex>
+#include <limits>
 #include <boost/container/static_vector.hpp>
-#include <boost/thread/shared_mutex.hpp>
-#include <boost/thread/lock_types.hpp>
 
 
 namespace jb
@@ -14,6 +14,8 @@ namespace jb
     template < typename Policies, typename Pad >
     class Storage< Policies, Pad >::PhysicalVolumeImpl::PhysicalStorage::BTree
     {
+    public:
+
         using Storage = Storage< Policies, Pad >;
         using Key = typename Storage::Key;
         using Value = typename Storage::Value;
@@ -24,13 +26,18 @@ namespace jb
         static constexpr auto RootNodeUid = PhysicalStorage::RootNodeUid;
         static constexpr auto InvalidNodeUid = PhysicalStorage::InvalidNodeUid;
 
+        typedef size_t Pos;
+        static constexpr auto Npos = Pos{ std::numeric_limits< size_t >::max() };
+
+    private:
+
         static constexpr auto BTreePower = Policies::PhysicalVolumePolicy::BTreePower;
         static_assert( BTreePower >= 2, "B-tree power must be >1" );
         static_assert( BTreePower + 1 < std::numeric_limits< ptrdiff_t >::max( ), "B-tree power is too great" );
-
+        
         PhysicalStorage * storage_;
         NodeUid parent_;
-        mutable boost::shared_mutex guard_;
+        mutable std::shared_mutex guard_;
         boost::container::static_vector< KeyHashT, BTreePower> hashes_;
         boost::container::static_vector< Value, BTreePower > values_;
         boost::container::static_vector< Timestamp, BTreePower > expirations_;
@@ -51,9 +58,10 @@ namespace jb
             links_.push_back( InvalidNodeUid );
         }
 
-        boost::shared_lock< boost::shared_mutex > get_shared_lock( )
+        template < typename Locktype >
+        Locktype get_lock( )
         {
-            return boost::shared_lock< boost::shared_mutex >{ guard_ };
+            return Locktype{ guard_ };
         }
 
         Value value( size_t ndx ) const
@@ -62,16 +70,9 @@ namespace jb
             return move( values_[ ndx ] );
         }
 
-        RetCode set_value( size_t ndx, Value&& value, boost::shared_lock<boost::shared_mutex> && read_lock )
+        RetCode set_value( size_t ndx, Value&& value )
         {
             assert( ndx < values_.size( ) );
-
-            boost::upgrade_lock upgrade_lock{ guard_ };
-            {
-                auto consume_read_lock = move( read_lock );
-            }
-
-            boost::upgrade_to_unique_lock write_lock{ upgrade_lock };
             values_[ ndx ] = move( value );
         }
 
@@ -96,21 +97,18 @@ namespace jb
         void set_erased( size_t ndx ) const
         {
             assert( ndx < values_.size( ) );
-
-            boost::upgrade_lock upgrade_lock{ guard_ };
-            {
-                auto consume_read_lock = move( read_lock );
-            }
-
-            boost::upgrade_to_unique_lock write_lock{ upgrade_lock };
             erased_marks_[ ndx ] = true;
         }
 
         /** Checks if key presents in the node
 
         If key presents returns 
+
+        @retval Pos - position of the key in the B-tree node or Npos if key is not in the node
+        @retval NodeUid - B-tree node to search
+        @throw may cause std::exception for some reasons
         */
-        std::tuple< size_t, NodeUid > find_key( const Key & key ) const
+        std::tuple< Pos, NodeUid > find_key( const Key & key ) const
         {
             using namespace std;
 
@@ -125,22 +123,23 @@ namespace jb
             static constexpr Hash< Policies, Pad, Key > hasher;
             auto hash = hasher( key );
 
-            if ( auto lower = lower_bound( begin( hashes_ ), end( hashes_ ) ); lower == hashes_.end() )
+            if ( auto lower = lower_bound( begin( hashes_ ), end( hashes_ ), hash ); lower == hashes_.end() )
             {
                 return tuple{ Npos, links_.back() };
             }
             else
             {
-                assert( 0 <= distance( begin( hashes_ ), lower ) && distance < hashes_.size() );
-                auto d = static_cast< size_t >( distance( begin( hashes_ ), lower ) );
+                assert( 0 <= distance( begin( hashes_ ), lower ) );
+                auto pos = static_cast< Pos >( distance( begin( hashes_ ), lower ) );
+                assert( pos < hashes_.size() );
                 
                 if ( *lower == hash )
                 {
-                    return tuple{ d, InvalidNodeUid };
+                    return tuple{ pos, InvalidNodeUid };
                 }
                 else
                 {
-                    return tuple{ Npos, links_[ d ] };
+                    return tuple{ Npos, links_[ pos ] };
                 }
             }
         }

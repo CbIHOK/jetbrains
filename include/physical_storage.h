@@ -8,8 +8,9 @@
 #include <list>
 #include <filesystem>
 #include <exception>
-
 #include <boost/thread/shared_mutex.hpp>
+#include <boost/thread/locks.hpp>
+#include <boost/thread/lock_types.hpp>
 
 
 namespace jb
@@ -47,7 +48,7 @@ namespace jb
         using MruOrder = std::list< NodeUid >;
         using MruItems = std::unordered_map< NodeUid, std::pair< BTreeP, MruOrder::const_iterator > >;
 
-        boost::shared_mutex mru_mutex_;
+        boost::upgrade_mutex mru_mutex_;
         MruOrder mru_order_;
         MruItems mru_items_;
         static constexpr auto CacheSize = Policies::PhysicalVolumePolicy::BTreeCacheSize;
@@ -55,18 +56,31 @@ namespace jb
 
     public:
 
+        /** The class is not default constructible
+        */
         PhysicalStorage( ) = delete;
+
+
+        /** The class is not copyable/movable
+        */
         PhysicalStorage( PhysicalStorage&& ) = delete;
 
-        PhysicalStorage( const std::filesystem::path & file ) noexcept try
-            : mru_order_{ CacheSize, InvalidNodeUid }
-            , mru_items_{ CacheSize }
+
+        /** Constructs physical storage
+
+        @param [in] path - file name
+        @throw nothing
+        @note check object validity by creation_status()
+        */
+        explicit PhysicalStorage( const std::filesystem::path && file ) try
+            : mru_order_( CacheSize, InvalidNodeUid )
+            , mru_items_( CacheSize )
         {
 
         }
         catch ( const std::bad_alloc & )
         {
-            creation_status_ = RetCode::InsuficcientMemory;
+            creation_status_ = RetCode::InsufficientMemory;
         }
         catch ( ... )
         {
@@ -75,31 +89,33 @@ namespace jb
 
 
         /** Provides creation status
+
+        @retval RetCode - contains Ok if object was successfully created and an error code otherwise
+        @throw nothing
         */
         RetCode creation_status( ) const noexcept { return creation_status_; }
 
 
-        /** Provides requested B tree node
+        /** Provides requested B-tree node from MRU cache
 
         @param [in] uid - node UID
         @retval RetCode - operation status
         @retval BTreeP - if operation succeeds holds shared pointer to requested item
-        @throw 
+        @throw nothing
         */
         std::tuple< RetCode, BTreeP > get_node( NodeUid uid ) noexcept
         {
-            using namespace std;
+            using namespace boost;
 
             try
             {
                 // shared lock over the cache
-                boost::shared_lock read_lock{ mru_mutex_ };
+                upgrade_lock< upgrade_mutex > shared_lock{ mru_mutex_ };
 
                 if ( auto item_it = mru_items_.find( uid ); item_it != mru_items_.end( ) )
                 {
                     // get exclusive lock over the cache
-                    boost::upgrade_lock upgrade_lock{ mru_mutex_ };
-                    boost::upgrade_to_unique_lock write_lock{ upgrade_lock };
+                    upgrade_to_unique_lock< upgrade_mutex > exclusive_lock{ shared_lock };
 
                     // mark the item as MRU
                     mru_order_.splice( end( mru_order_ ), mru_order_, item_it->second.second );
@@ -111,12 +127,17 @@ namespace jb
                     // through the order list
                     for ( auto order_it = begin( mru_order_ ); order_it != end( mru_order_ ); ++order_it )
                     {
+                        // is free?
+                        if ( InvalidNodeUid == *order_it )
+                        {
+                            break;
+                        }
+
                         // if item is not used anymore
                         if ( auto item_it = mru_items_.find( *order_it ); item_it->second.first.use_count( ) == 1 )
                         {
                             // get exclusive lock over the cache
-                            boost::upgrade_lock upgrade_lock{ mru_mutex_ };
-                            boost::upgrade_to_unique_lock write_lock{ upgrade_lock };
+                            upgrade_to_unique_lock< upgrade_mutex > exclusive_lock{ shared_lock };
 
                             // drop the item from cache
                             mru_items_.erase( item_it );
@@ -133,6 +154,18 @@ namespace jb
                     if ( mru_order_.back( ) != InvalidNodeUid )
                     {
                         return { RetCode::TooManyConcurrentOps, BTreeP{} };
+                    }
+
+                    if ( uid == RootNodeUid )
+                    {
+                        // get exclusive lock over the cache
+                        upgrade_to_unique_lock< upgrade_mutex > exclusive_lock{ shared_lock };
+
+                        auto root = std::make_shared< BTree >();
+                        mru_order_.front() = RootNodeUid;
+                        mru_items_.emplace( RootNodeUid, std::move( std::pair{ root, mru_order_.begin() } ) );
+
+                        return { RetCode::Ok, root };
                     }
                 }
             }

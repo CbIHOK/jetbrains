@@ -3,10 +3,10 @@
 
 
 #include <atomic>
-#include <shared_mutex>
 #include <thread>
 #include <chrono>
-#include <boost/thread/shared_mutex.hpp>
+#include <filesystem>
+#include <shared_mutex>
 
 
 class TestNodeLocker;
@@ -34,6 +34,8 @@ namespace jb
         using PhysicalVolume = typename Storage::PhysicalVolume;
         using MountPointImpl = typename Storage::MountPointImpl;
         using execution_connector = std::pair< std::atomic_bool, std::atomic_bool >;
+        using BTree = typename PhysicalStorage::BTree;
+        using BTreeP = typename PhysicalStorage::BTreeP;
         using NodeUid = typename PhysicalStorage::NodeUid;
 
         static constexpr auto RootNodeUid = PhysicalStorage::RootNodeUid;
@@ -44,10 +46,13 @@ namespace jb
 
     private:
 
+        RetCode creation_status_;
+
+
         //
         // manage volume access mode between shared ( regular operations ) and exclusive ( cleanup )
         //
-        mutable boost::shared_mutex clean_lock_;
+        std::shared_mutex cleanup_lock_;
 
 
         //
@@ -63,46 +68,144 @@ namespace jb
 
 
         //
-        // let us to lock a node temporary with specified access type. Since collisions are possible
-        // we cannot get exclusive lock over a mutex during search cuz that may cause deadlock, so we
-        // need upgradable lock. That is the reason to use boost::shared_mutex 
         //
-        static constexpr size_t node_locker_size = 41; // 42 is the answer but it's not prime to be good hasher
-        std::array< boost::shared_mutex, node_locker_size > node_locker_;
-        auto & get_node_locker( NodeUid uid ) { return node_locker_[ uid / node_locker_size ]; }
+        //
+        PhysicalStorage physical_storage_;
 
 
-        auto find_key( NodeUid uid, const Key & key )
+        /* Search for key starting from given B-tree node
+
+        @param [in] node - B-tree node
+        @param [in] key - key to be found
+        @param [in] in - incoming execution events
+        @retval BTreeP - B-tree node containing the key
+        @retval BTree::Pos - position of the key in B-tree node
+        @throw may throw std::exception for some reason
+        */
+        auto find_key( BTreeP node, const Key & key, const execution_connector & in )
         {
             using namespace std;
 
-            // get shared lock over uid
-            boost::shared_lock lock{ get_node_locker( uid ) };
-
-            while ( true )
+            while ( !cancelled( in ) )
             {
-                // get node by uid
-                b_tree_node_p node; // storage::get()
-
                 // try find the key
-                auto f = node->find( key );
+                auto f = node->find_key( key );
 
                 // if key found
-                if ( auto pos = get< diffptr_t >( f ); pos != b_tree_node::Npos )
+                if ( auto pos = std::get< 0 >( f ); pos != BTree::Npos )
                 {
-                    return { lock, node, pos };
+                    return tuple{ RetCode::Ok, node, pos };
                 }
-                // key does not exists
-                else if ( ( uid = get< NodeUid >( f ) ) == InvalidNodeUid )
+                // if there is another B-tree node for search
+                else if ( auto uid = std::get< 1 >( f ); uid != InvalidNodeUid )
                 {
-                    return { Lock{}, b_tree_node_p{}, b_tree_node::Npos };
+                    // continue for next B-tree node
+                    auto[ ret, next ]= physical_storage_.get_node( uid );
+                    if ( ret != RetCode::Ok )
+                    {
+                        return tuple{ ret, BTreeP{}, BTree::Npos };
+                    }
+                    assert( node );
+
+                    node = next;
+                    continue;
+                }
+                // such key does not exist
+                else
+                {
+                    break;
+                }
+            }
+
+            return tuple{ RetCode::NotFound, BTreeP{}, BTree::Npos };
+        }
+
+
+        /* Navigates throght the tree searching for given key and locks found B-tree node with requested
+
+        requested lock type
+
+        @tparam Locktype - type of lock to be given over found B-tree node
+        @param [in] uid - start B-tree node uid
+        @param [in] path - relative path
+        @param [in] in - incoming execution events
+        @retval Locktype - lock of requested type over found B-tree node
+        @retval BTreeP - pointer to found B-tree node
+        @retval size_t - position of the key in B-tree node
+        @throw may throw std::exception for some reasons
+        */
+        template < typename Locktype >
+        auto navigate( NodeUid uid, const Key & key, const execution_connector & in )
+        {
+            using namespace std;
+
+            assert( uid != InvalidNodeUid );
+            assert( key.is_path() );
+            auto subkey = key;
+
+            // get start node by uid
+            auto [ ret, node ] = physical_storage_.get_node( uid );
+            if ( ret != RetCode::Ok )
+            {
+                return tuple{ ret, Locktype{}, BTreeP{}, BTree::Npos };
+            }
+            assert( node );
+
+            // get lock over start key (it is protected by path locker and always stays valid)
+            auto lock = node->get_lock< Locktype >();
+
+            // while not cacelled
+            while ( !cancelled( in ) )
+            {
+                // split path by the end of the 1st segment
+                auto split = subkey.split_at_head();
+                assert( std::get< bool >( split ) );
+                auto segment = std::get< 1 >( split );
+                subkey = std::get< 2 >( split );
+
+                // cut lead separator
+                auto cut = segment.cut_lead_separator();
+                assert( std::get< bool >( cut ) );
+                auto stem = std::get< Key >( cut );
+
+                // search for the key starting from uid
+                auto [ ret, subnode, pos ] = find_key( node, stem, in );
+
+                if ( ret != RetCode::Ok )
+                {
+                    return tuple{ ret, Locktype{}, BTreeP{}, BTree::Npos };
                 }
                 else
                 {
-                    // that is here collision would be possible if we used non-upgdarable std::shared_lock
-                    lock = move( boost::shared_lock{ get_node_locker( uid ) } );
+                    // release lock over key and get lock over subkey
+                    lock = move( subnode->get_lock< Locktype >() );
+
+                    // if nothing left to search
+                    if ( ! subkey.size() )
+                    {
+                        return tuple{ RetCode::Ok, move( lock ), node, pos };
+                    }
+                    else
+                    {
+                        // search deeper
+                        node = subnode;
+                        continue;
+                    }
                 }
             }
+
+            return tuple{ RetCode::NotFound, Locktype{}, BTreeP{}, BTree::Npos };
+        }
+
+
+        /* Checks if current operation is being cancelled
+
+        @retval true if the operation is being cancelled
+        @throw nothing
+        */
+        auto static cancelled( const execution_connector & in ) noexcept
+        {
+            return in.first.load( memory_order_acquire );
         }
 
 
@@ -121,7 +224,7 @@ namespace jb
         @throws nothing
         */
         template < typename F >
-        auto wait_and_do_it( const execution_connector & in, execution_connector & out, const F & f ) noexcept
+        auto static wait_and_do_it( const execution_connector & in, execution_connector & out, const F & f ) noexcept
         {
             using namespace std;
 
@@ -141,7 +244,7 @@ namespace jb
                         out_cancel.store( true, memory_order_release );
 
                         // return successful status
-                        decltype( f( ) ) result{};
+                        decltype( f() ) result{};
                         std::get< RetCode >( result ) = RetCode::Ok;
                         return result;
                     }
@@ -150,7 +253,7 @@ namespace jb
                     if ( in_do_it.load( memory_order_acquire ) )
                     {
                         // run operation
-                        auto result = f( );
+                        auto result = f();
 
                         // if operation supplied sucessfully
                         if ( RetCode::Ok == std::get< RetCode >( result ) )
@@ -181,7 +284,7 @@ namespace jb
             out_cancel.store( true, memory_order_release );
 
             // ...and return error
-            decltype( f( ) ) result{};
+            decltype( f() ) result{};
             std::get< RetCode >( result ) = RetCode::UnknownError;
             return result;
         }
@@ -189,7 +292,14 @@ namespace jb
 
     public:
 
-        PhysicalVolumeImpl( ) = default;
+        PhysicalVolumeImpl( std::filesystem::path && path ) try : physical_storage_{ std::move( path ) }
+        {
+            creation_status_ = physical_storage_.creation_status();
+        }
+        catch ( ... )
+        {
+            creation_status_ = RetCode::UnknownError;
+        }
 
 
         /** Locks specified path due to a mounting operation
@@ -203,28 +313,28 @@ namespace jb
         @retval NodeUid - UID of a node at the path
         @retval PathLock - lock over all nodes on the path begining from entry path
         */
-        [[nodiscard]]
-        std::tuple < RetCode, NodeUid, PathLock > lock_path (   NodeUid entry_node_uid,
-                                                                const Key & entry_path,
-                                                                const Key & relative_path,
-                                                                const execution_connector & in,
-                                                                execution_connector & out ) noexcept
+        [ [ nodiscard ] ]
+        std::tuple < RetCode, NodeUid, PathLock > lock_path( NodeUid entry_node_uid,
+            const Key & entry_path,
+            const Key & relative_path,
+            const execution_connector & in,
+            execution_connector & out ) noexcept
         {
             using namespace std;
 
             try
             {
                 // root node always exists
-                if ( Key{} == entry_path  && Key::root() == relative_path )
+                if ( Key{} == entry_path && Key::root() == relative_path )
                 {
                     return wait_and_do_it( in, out, [&] {
                         return tuple{ RetCode::Ok, RootNodeUid, path_locker_.lock_node( RootNodeUid ) };
                     } );
                 }
                 // check if path exists
-                else if ( ! filter_.test( entry_path, relative_path ) )
+                else if ( !filter_.test( entry_path, relative_path ) )
                 {
-                    return wait_and_do_it( in, out, [] { 
+                    return wait_and_do_it( in, out, [] {
                         return tuple{ RetCode::NotFound, InvalidNodeUid, PathLock{} };
                     } );
                 }
@@ -244,7 +354,7 @@ namespace jb
 
 
         /** Inserts subnode of a given name with given value and expidation timemark as specified
-        
+
         path. If the subnode already exists the behavior depends on ovwewrite flag
 
         @param [in] entry_node_uid - UID of entry that shall be used as search entry
@@ -258,16 +368,16 @@ namespace jb
         @param [out] in - outgoing execution events
         @retval RetCode - status of operation
         */
-        [[ nodiscard ]]
-        std::tuple< RetCode > insert (   NodeUid entry_node_uid,
-                                         const Key & entry_path,
-                                         const Key & relative_path,
-                                         const Key & subkey,
-                                         Value && value,
-                                         Timestamp && good_before,
-                                         bool overwrite,
-                                         const execution_connector & in,
-                                         execution_connector & out  )
+        [ [ nodiscard ] ]
+        std::tuple< RetCode > insert( NodeUid entry_node_uid,
+            const Key & entry_path,
+            const Key & relative_path,
+            const Key & subkey,
+            Value && value,
+            Timestamp && good_before,
+            bool overwrite,
+            const execution_connector & in,
+            execution_connector & out )
         {
             using namespace std;
 
@@ -299,12 +409,12 @@ namespace jb
         @retval RetCode - status of operation
         @retvel Value - if operation succeeded contains the value
         */
-        [[ nodiscard ]]
-        std::tuple< RetCode, Value > get(   NodeUid entry_node_uid,
-                                            const Key & entry_path,
-                                            const Key & relative_path,
-                                            const execution_connector & in,
-                                            execution_connector & out )
+        [ [ nodiscard ] ]
+        std::tuple< RetCode, Value > get( NodeUid entry_node_uid,
+            const Key & entry_path,
+            const Key & relative_path,
+            const execution_connector & in,
+            execution_connector & out )
         {
             using namespace std;
 
@@ -315,7 +425,22 @@ namespace jb
                 //    return wait_and_do_it( in, out, [] { return tuple{ RetCode::NotFound, Value{} }; } );
                 //} 
 
-                return wait_and_do_it( in, out, [] { return tuple{ RetCode::NotImplementedYet, Value{} }; } );
+                auto [ ret, lock, btree, pos ] = navigate< shared_lock< shared_mutex > >( entry_node_uid, relative_path, in );
+
+                if ( RetCode::Ok == ret )
+                {
+                    return wait_and_do_it( in, out, [=] {
+                        auto value = btree->value( pos );
+                        return tuple{ RetCode::Ok, move( value ) };
+                    } );
+                }
+                else
+                {
+                    return wait_and_do_it( in, out, [=] {
+                        return tuple{ ret, Value{} };
+                    } );
+
+                }
             }
             catch ( ... )
             {
@@ -327,7 +452,7 @@ namespace jb
 
 
         /** Performs erasing of a given node at physical level simply marking it as erased
-        
+
         Physical erasing of related data and releasing of allocated space in physical storage will
         be done upon cleanup routine
 
@@ -338,12 +463,12 @@ namespace jb
         @param [out] in - outgoing execution events
         @retval RetCode - status of operation
         */
-        [[nodiscard]]
-        std::tuple< RetCode > erase(    NodeUid entry_node_uid,
-                                        const Key & entry_path,
-                                        const Key & relative_path,
-                                        const execution_connector & in,
-                                        execution_connector & out ) noexcept
+        [ [ nodiscard ] ]
+        std::tuple< RetCode > erase( NodeUid entry_node_uid,
+            const Key & entry_path,
+            const Key & relative_path,
+            const execution_connector & in,
+            execution_connector & out ) noexcept
         {
             using namespace std;
 

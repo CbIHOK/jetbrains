@@ -276,5 +276,5 @@ TEST_F( TestVirtualVolume, Get )
     auto[ ret, mount ] = vv.Mount( pv, "/", "/", "mount" );
     ASSERT_EQ( RetCode::Ok, ret );
 
-    EXPECT_EQ( RetCode::Ok, std::get< RetCode >( vv.Get( "/mount/foo" ) ) );
+    EXPECT_EQ( RetCode::NotFound, std::get< RetCode >( vv.Get( "/mount/foo" ) ) );
 }
