@@ -20,20 +20,22 @@ namespace jb
     class Storage< Policies, Pad >::VirtualVolume
     {
         friend typename Pad;
-        template < typename Policies, typename Pad, typename T > friend struct Hash;
-        friend class Storage;
         friend class TestVirtualVolume;
+        template < typename Policies, typename Pad, typename T > friend struct Hash;
+
+        using Storage = ::jb::Storage< Policies, Pad >;
+        friend class Storage;
 
         //
         // Few aliases
         //
-        using Storage = ::jb::Storage< Policies, Pad >;
-        using Value = typename Storage::Value;
+        using RetCode = typename Storage::RetCode;
         using Key = typename Storage::Key;
         using KeyValue = typename Storage::KeyValue;
+        using Value = typename Storage::Value;
+        using Timestamp = typename Storage::Timestamp;
         using PhysicalVolume = typename Storage::PhysicalVolume;
         using MountPoint = typename Storage::MountPoint;
-        using Timestamp = typename Storage::Timestamp;
 
         //
         // PIMP

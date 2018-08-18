@@ -25,27 +25,6 @@ class TestBloom;
 namespace jb
 {
 
-    /** Enumerates all possible return codes
-    */
-    enum class RetCode
-    {
-        Ok,                     ///< Operation succedded
-        UnknownError,           ///< Something wrong happened
-        InsufficientMemory,     ///< Operation failed due to low memory
-        InvalidHandle,          ///< Given handle does not address valid object
-        LimitReached,           ///< All handles of a type are alreay exhausted
-        VolumeAlreadyMounted,   ///< Attempt to mount the same physical volume at the same logical path
-        InvalidKey,             ///< Invalid key value
-        InvalidSubkey,          ///< Invalid subkey value
-        InvalidLogicalPath,     ///< Given logical path cannot be mapped onto a physical one
-        NotFound,               ///< Such path does not have a physical representation
-        InUse,                  ///< The handler is currently used by concurrent operation and cannot be closed
-        HasDependentMounts,     ///< There are underlaying mount
-        ///
-        NotImplementedYet
-    };
-
-
     struct DefaultPad {};
 
 
@@ -78,6 +57,27 @@ namespace jb
 
 
     public:
+
+        /** Enumerates all possible return codes
+        */
+        enum class RetCode
+        {
+            Ok,                     ///< Operation succedded
+            UnknownError,           ///< Something wrong happened
+            InsufficientMemory,     ///< Operation failed due to low memory
+            InvalidHandle,          ///< Given handle does not address valid object
+            LimitReached,           ///< All handles of a type are alreay exhausted
+            VolumeAlreadyMounted,   ///< Attempt to mount the same physical volume at the same logical path
+            InvalidKey,             ///< Invalid key value
+            InvalidSubkey,          ///< Invalid subkey value
+            InvalidLogicalPath,     ///< Given logical path cannot be mapped onto a physical one
+            NotFound,               ///< Such path does not have a physical representation
+            InUse,                  ///< The handler is currently used by concurrent operation and cannot be closed
+            HasDependentMounts,     ///< There are underlaying mount
+            TooManyConcurrentOps,   ///< The limit of concurent operations over physical volume is reached
+            ///
+            NotImplementedYet
+        };
 
         class Key;
 

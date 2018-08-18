@@ -7,10 +7,10 @@ class TestVirtualVolume : public ::testing::Test
 
 protected:
 
-    using RetCode = ::jb::RetCode;
-    using Storage = ::jb::Storage<>;
     using Policies = ::jb::DefaultPolicies;
     using Pad = ::jb::DefaultPad;
+    using Storage = ::jb::Storage<Policies, Pad>;
+    using RetCode = typename Storage::RetCode;
     using VirtualVolume = typename Storage::VirtualVolume;
     using PhysicalVolume = typename Storage::PhysicalVolume;
     using MountPoint = typename Storage::MountPoint;

@@ -24,8 +24,8 @@ namespace jb
         //
         // short aliases
         //
-        using RetCode = ::jb::RetCode;
-        using Key = Storage::Key;
+        using RetCode = typename Storage::RetCode;
+        using Key = typename Storage::Key;
         using KeyValue = typename Key::ValueT;
         using Value = typename Storage::Value;
         using Timestamp = typename Storage::Timestamp;

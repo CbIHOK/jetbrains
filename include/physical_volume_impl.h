@@ -6,7 +6,7 @@
 #include <shared_mutex>
 #include <thread>
 #include <chrono>
-#include "btree.h"
+#include <boost/thread/shared_mutex.hpp>
 
 
 class TestNodeLocker;
@@ -23,21 +23,21 @@ namespace jb
 
         class PathLocker;
         class Bloom;
+        class PhysicalStorage;
 
     public:
 
-        using Storage = ::jb::Storage< Policies, Pad >;
+        using RetCode = typename Storage::RetCode;
         using Key = typename Storage::Key;
         using Value = typename Storage::Value;
         using Timestamp = typename Storage::Timestamp;
         using PhysicalVolume = typename Storage::PhysicalVolume;
         using MountPointImpl = typename Storage::MountPointImpl;
         using execution_connector = std::pair< std::atomic_bool, std::atomic_bool >;
-        using b_tree_node = jb::b_tree_node< Policies, Pad >;
-        using NodeUid = typename b_tree_node::NodeUid;
+        using NodeUid = typename PhysicalStorage::NodeUid;
 
-        static constexpr auto RootNodeUid = b_tree_node::RootNodeUid;
-        static constexpr auto InvalidNodeUid = b_tree_node::InvalidNodeUid;
+        static constexpr auto RootNodeUid = PhysicalStorage::RootNodeUid;
+        static constexpr auto InvalidNodeUid = PhysicalStorage::InvalidNodeUid;
 
         using PathLock = typename PathLocker::PathLock;
 
@@ -47,7 +47,7 @@ namespace jb
         //
         // manage volume access mode between shared ( regular operations ) and exclusive ( cleanup )
         //
-        mutable std::shared_mutex volume_lock_;
+        mutable boost::shared_mutex clean_lock_;
 
 
         //
@@ -63,12 +63,47 @@ namespace jb
 
 
         //
-        // let us to lock a node temporary with specified access type
+        // let us to lock a node temporary with specified access type. Since collisions are possible
+        // we cannot get exclusive lock over a mutex during search cuz that may cause deadlock, so we
+        // need upgradable lock. That is the reason to use boost::shared_mutex 
         //
-        static constexpr size_t node_locker_size = 41; // 41 looks as good hasher
-        static std::array< std::shared_mutex, node_locker_size > node_locker_;
-        
-        //auto & get_node_locker( NodeUid uid ) { return node_locker_[ uid / node_locker_size ]; }
+        static constexpr size_t node_locker_size = 41; // 42 is the answer but it's not prime to be good hasher
+        std::array< boost::shared_mutex, node_locker_size > node_locker_;
+        auto & get_node_locker( NodeUid uid ) { return node_locker_[ uid / node_locker_size ]; }
+
+
+        auto find_key( NodeUid uid, const Key & key )
+        {
+            using namespace std;
+
+            // get shared lock over uid
+            boost::shared_lock lock{ get_node_locker( uid ) };
+
+            while ( true )
+            {
+                // get node by uid
+                b_tree_node_p node; // storage::get()
+
+                // try find the key
+                auto f = node->find( key );
+
+                // if key found
+                if ( auto pos = get< diffptr_t >( f ); pos != b_tree_node::Npos )
+                {
+                    return { lock, node, pos };
+                }
+                // key does not exists
+                else if ( ( uid = get< NodeUid >( f ) ) == InvalidNodeUid )
+                {
+                    return { Lock{}, b_tree_node_p{}, b_tree_node::Npos };
+                }
+                else
+                {
+                    // that is here collision would be possible if we used non-upgdarable std::shared_lock
+                    lock = move( boost::shared_lock{ get_node_locker( uid ) } );
+                }
+            }
+        }
 
 
         /* Controls execution chain
@@ -155,18 +190,6 @@ namespace jb
     public:
 
         PhysicalVolumeImpl( ) = default;
-
-
-        /** Locks volume in shared mode, i.e. prevents cleanup operation if the volume is mounted
-
-        @return 
-        @throw may throw std::exception for some reason
-        */
-        [[nodiscard]]
-        std::shared_lock< std::shared_mutex > get_shared_lock() const
-        {
-            return std::shared_lock< std::shared_mutex >( volume_lock_ );
-        }
 
 
         /** Locks specified path due to a mounting operation
@@ -290,9 +313,7 @@ namespace jb
                 //if ( !filter_.test( entry_path, relative_path ) )
                 //{
                 //    return wait_and_do_it( in, out, [] { return tuple{ RetCode::NotFound, Value{} }; } );
-                //}
-
-
+                //} 
 
                 return wait_and_do_it( in, out, [] { return tuple{ RetCode::NotImplementedYet, Value{} }; } );
             }
@@ -348,6 +369,7 @@ namespace jb
 
 #include "path_locker.h"
 #include "bloom.h"
+#include "physical_storage.h"
 
 
 #endif

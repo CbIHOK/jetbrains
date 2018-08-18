@@ -33,6 +33,7 @@ namespace jb
             static constexpr size_t BloomPrecision = 4096;
 
             static constexpr size_t BTreePower = 1024;
+            static constexpr size_t BTreeCacheSize = 1024;
         };
     };
 }

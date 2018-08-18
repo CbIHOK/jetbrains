@@ -30,6 +30,12 @@ namespace jb
         // Short aliases
         //
         using Storage = ::jb::Storage< Policies, Pad >;
+        using RetCode = typename Storage::RetCode;
+        using Key = typename Storage::Key;
+        using KeyValue = typename Storage::KeyValue;
+        using Value = typename Storage::Value;
+        using Timestamp = typename Storage::Timestamp;
+        using KeyHashT = decltype( Hash< Policies, Pad, Key >{}( Key{} ) );
         using PhysicalVolumeImpl = typename Storage::PhysicalVolumeImpl;
         using PhysicalVolumeImplP = std::shared_ptr< PhysicalVolumeImpl >;
         using PathLock = typename PhysicalVolumeImpl::PathLock;
@@ -40,12 +46,6 @@ namespace jb
         using NodeUid = typename PhysicalVolumeImpl::NodeUid;
         using execution_connector = typename MountPointImpl::execution_connector;
        
-        using Key = typename Storage::Key;
-        using KeyValue = typename Storage::KeyValue;
-        using Value = typename Storage::Value;
-        using Timestamp = typename Storage::Timestamp;
-        using KeyHashT = decltype( Hash< Policies, Pad, Key >{}( Key{} ) );
-
         static constexpr auto MountLimit = Policies::VirtualVolumePolicy::MountPointLimit;
 
 
@@ -522,8 +522,6 @@ namespace jb
             {
                 // lock over all mounts
                 unique_lock< shared_mutex > write_lock( mounts_guard_ );
-
-                auto physical_volume_lock = move( physical_volume->get_shared_lock() );
 
                 // if maximum number of mounts reached?
                 if ( mounts_.size() >= MountLimit)

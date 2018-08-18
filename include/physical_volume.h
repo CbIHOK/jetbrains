@@ -11,6 +11,7 @@ namespace jb
     class Storage< Policies, Pad >::PhysicalVolume
     {
         using Storage = ::jb::Storage< Policies, Pad >;
+        using RetCode = typename Storage::RetCode;
 
         friend typename Pad;
         friend class TestStorage;
