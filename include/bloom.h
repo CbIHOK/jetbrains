@@ -17,6 +17,7 @@ namespace jb
     {
         using Key = typename PhysicalVolumeImpl::Key;
         using KeyCharT = typename Key::CharT;
+        using KeyHashT = decltype( Hash< Policies, Pad, Key >{}( Key{} ) );
 
         static constexpr auto BloomSize = Policies::PhysicalVolumePolicy::BloomSize;
         static constexpr auto BloomFnCount = Policies::PhysicalVolumePolicy::BloomFnCount;
@@ -47,20 +48,38 @@ namespace jb
         static auto get_digest( const Key & prefix, const Key & suffix )
         {
             using namespace std;
-            using namespace boost::container;
 
-            // merge keys on stack
-            array< KeyCharT, BloomPrecision > combined;
+            assert( prefix.is_path() );
+            assert( suffix.is_path() );
 
-            auto sz_1 = std::min( prefix.size( ), BloomPrecision );
-            copy_n( execution::par, begin( prefix ), sz_1, begin( combined ) );
+            array< KeyHashT, BloomPrecision > chunks;
+            fill( begin( chunks ), end( chunks ), KeyHashT{} );
+            auto chunk_it = begin( chunks );
 
-            auto sz_2 = std::min( suffix.size(), BloomPrecision - sz_1);
-            copy_n( execution::par, begin( suffix ), sz_2, begin( combined ) + sz_1 );
+            auto get_chunk_hahses = [&] ( const auto & v ) {
+                auto key = v;
+
+                while ( key.size() && chunk_it != end( chunks ) )
+                {
+                    auto[ split_ok, chunk, rest ] = key.split_at_head();
+                    assert( split_ok );
+                    key = rest;
+
+                    auto[ stem_ok, stem ] = chunk.cut_lead_separator();
+                    assert( stem_ok );
+
+                    static constexpr Hash< Policies, Pad, Key > hasher{};
+                    *chunk_it = hasher( stem );
+                    ++chunk_it;
+                };
+            };
+
+            if ( Key::root() != prefix ) get_chunk_hahses( prefix );
+            if ( Key::root() != suffix )get_chunk_hahses( suffix );
 
             // calculate SHA-512
             SHAtwo sha512{};
-            sha512.HashData( reinterpret_cast< uint8_t * >( combined.data( ) ), static_cast< uint32_t >(combined.size( ) * sizeof( KeyCharT ) ) );
+            sha512.HashData( reinterpret_cast< uint8_t * >( chunks.data( ) ), static_cast< uint32_t >( chunks.size( ) * sizeof( KeyHashT ) ) );
 
             // extract SHA-512 digest
             static constexpr size_t digets_placeholder_size = 20;

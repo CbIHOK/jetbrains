@@ -76,6 +76,8 @@ namespace jb
             HasDependentMounts,     ///< There are underlaying mount
             TooManyConcurrentOps,   ///< The limit of concurent operations over physical volume is reached
             MaxSearchDepthExceeded, ///< Cannot search such deep inside, consider additional mounting
+            AlreadyExpired,         ///< Given timestamp already in the past
+            AlreadyExists,          ///< Key already exists
             ///
             NotImplementedYet
         };

@@ -63,7 +63,7 @@ namespace jb
         */
         explicit MountPointImpl( PhysicalVolumeImplP physical_volume, const Key & physical_path, PathLock && mounted_to_lock )
             : physical_volume_{ physical_volume }
-            , entry_path_{ physical_path }
+            , entry_path_{ ( KeyValue )physical_path }
             , locks_{ std::move( mounted_to_lock ) }
         {
             using namespace std;
@@ -74,7 +74,7 @@ namespace jb
             // request physical volume for lock physical of path and entry point UID
             execution_connector in{ false, true };
             execution_connector out{};
-            auto res = physical_volume_->lock_path( 0, Key{}, physical_path, in, out );
+            auto res = physical_volume_->lock_path( 0, Key::root(), physical_path, in, out );
             
             status_ = std::get< RetCode >( res );
             entry_node_uid_ = std::get< NodeUid >( res );

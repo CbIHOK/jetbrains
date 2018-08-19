@@ -32,17 +32,24 @@ protected:
         using namespace std;
 
         auto distr = uniform_int_distribution<>{};
-        std::mt19937 rand{};
+        static std::mt19937 rand{};
 
-        auto r = static_cast< size_t >( distr( rand ) );
-        auto length = max( min( Policies::PhysicalVolumePolicy::BloomPrecision, r ), size_t{ 2 } );
-        basic_string< KeyCharT > s( length, KeyCharT{ '0' } );
+        basic_string< KeyCharT > s( 100, KeyCharT{ '0' } );
         
-        static const auto alpha = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789_"s;
+        static const auto alpha = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz"s;
 
-        for_each( execution::par, begin( s ), end( s ), [&]( auto & ch ){
-            ch =  static_cast< KeyCharT >( alpha[ distr( rand ) % alpha.size( ) ] );
-        } );
+        for ( size_t i = 0; i < 100; i++ )
+        {
+            if ( i % 5 == 0 )
+            {
+                s[ i ] = '/';
+            }
+            else
+            {
+                auto ch = static_cast< KeyCharT >( alpha[ distr( rand ) % alpha.size() ] );
+                s[ i ] = ch;
+            }
+        };
 
         return s;
     }
@@ -52,13 +59,24 @@ protected:
     {
         using namespace std;
 
-        assert( str.size( ) >= 2 );
+        Key key( str );
 
         auto distr = uniform_int_distribution<>{};
-        std::mt19937 rand{};
-        auto r = static_cast< size_t >( distr( rand ) );
-        auto pos = min( max( size_t{ 1 }, r % str.size( ) ), str.size( ) - 1 );
-        return tuple{ Key{ str.substr( 0, pos ) }, Key{ str.substr( pos ) } };
+        static std::mt19937 rand{};
+        auto r = static_cast< size_t >( distr( rand ) ) % 10 + 1;
+
+        auto rest = key;
+        for ( size_t i = 0; i < r; i++ )
+        {
+            auto[ ok, prefix, suffix ] = rest.split_at_tile();
+            assert( ok );
+            rest = prefix;
+        }
+        
+        auto[ superkey_ok, subkey ] = rest.is_superkey( key );
+        assert( superkey_ok );
+        
+        return tuple{ rest, subkey };
     }
 
 
@@ -74,14 +92,14 @@ protected:
             auto str{ move( generate( ) ) };
             auto[ k1, k2 ] = split_to_keys( str );
             filter_.add( k1, k2 );
-            present_.emplace( move( str ) );
+            present_.insert( move( str ) );
         }
 
         while ( absent_.size( ) < absent_number )
         {
             if ( auto str = move( generate( ) );  !present_.count( str ) )
             {
-                absent_.emplace( move( str ) );
+                absent_.insert( move( str ) );
             }
         }
     }

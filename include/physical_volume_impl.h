@@ -172,8 +172,9 @@ namespace jb
             while ( !cancelled( in ) )
             {
                 // split path by the end of the 1st segment
-                auto [ chunk_ok, chunk, subkey ] = subkey.split_at_head();
+                auto [ chunk_ok, chunk, rest ] = subkey.split_at_head();
                 assert( chunk_ok );
+                subkey = rest;
 
                 // cut lead separator
                 auto [ stem_ok, stem ] = chunk.cut_lead_separator();
@@ -371,11 +372,11 @@ namespace jb
 
             try
             {
-                // root node always exists
-                if ( Key{} == entry_path && Key::root() == relative_path )
+                // no reason to lock root path
+                if ( Key::root() == entry_path && Key::root() == relative_path )
                 {
                     return wait_and_do_it( in, out, [&] {
-                        return tuple{ RetCode::Ok, RootNodeUid, path_locker_.lock_node( RootNodeUid ) };
+                        return tuple{ RetCode::Ok, RootNodeUid, PathLock{} };
                     } );
                 }
                 // check if path exists
@@ -402,6 +403,12 @@ namespace jb
                     // return path lock object 
                     return wait_and_do_it( in, out, [&] {
                         return tuple{ RetCode::NotImplementedYet, InvalidNodeUid, std::move( mount_lock ) };
+                    } );
+                }
+                else
+                {
+                    return wait_and_do_it( in, out, [&] {
+                        return tuple{ ret, InvalidNodeUid, PathLock{} };
                     } );
                 }
             }
@@ -442,6 +449,8 @@ namespace jb
             execution_connector & out )
         {
             using namespace std;
+            using namespace boost;
+            using namespace boost::container;
 
             try
             {
@@ -450,7 +459,26 @@ namespace jb
                     return wait_and_do_it( in, out, [] { return tuple{ RetCode::NotFound }; } );
                 }
 
-                return wait_and_do_it( in, out, [] { return tuple{ RetCode::NotImplementedYet }; } );
+                static_vector< upgrade_lock< upgrade_mutex >, ExpectedTreeDepth > locks;
+
+                auto[ ret, btree, pos ] = navigate( entry_node_uid,
+                    relative_path,
+                    in,
+                    locks,
+                    [&] ( [[maybe_unused]] const auto & node ) {} );
+
+                if ( RetCode::Ok == ret )
+                {
+                    return wait_and_do_it( in, out, [=] {
+                        return tuple{ RetCode::NotImplementedYet };
+                    } );
+                }
+                else
+                {
+                    return wait_and_do_it( in, out, [=] {
+                        return tuple{ ret };
+                    } );
+                }
             }
             catch ( ... )
             {
@@ -484,10 +512,10 @@ namespace jb
 
             try
             {
-                //if ( !filter_.test( entry_path, relative_path ) )
-                //{
-                //    return wait_and_do_it( in, out, [] { return tuple{ RetCode::NotFound, Value{} }; } );
-                //} 
+                if ( !filter_.test( entry_path, relative_path ) )
+                {
+                    return wait_and_do_it( in, out, [] { return tuple{ RetCode::NotFound, Value{} }; } );
+                } 
                 
                 static_vector< upgrade_lock< upgrade_mutex >, ExpectedTreeDepth > locks;
 
@@ -509,7 +537,6 @@ namespace jb
                     return wait_and_do_it( in, out, [=] {
                         return tuple{ ret, Value{} };
                     } );
-
                 }
             }
             catch ( ... )

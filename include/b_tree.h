@@ -63,33 +63,96 @@ namespace jb
         auto uid() const noexcept { return uid_; }
         auto & guard( ) const noexcept { return guard_; }
 
-        Value value( size_t ndx ) const
+        Value value( size_t ndx ) const noexcept
         { 
             assert( ndx < values_.size( ) );
             return move( values_[ ndx ] );
         }
 
-        RetCode set_value( size_t ndx, Value&& value )
-        {
-            assert( ndx < values_.size( ) );
-            values_[ ndx ] = move( value );
-        }
-
-        Timestamp expiration( size_t ndx ) const
+        Timestamp expiration( size_t ndx ) const noexcept
         {
             assert( ndx < expirations_.size( ) );
             return move( expirations_[ ndx ] );
         }
 
-        NodeUid child( size_t ndx ) const
+        NodeUid child( size_t ndx ) const noexcept
         {
             assert( ndx < children_.size( ) );
             return move( children_[ ndx ] );
         }
 
-        RetCode erase( size_t ndx ) const
+        RetCode erase( size_t ndx ) noexcept
         {
             return RetCode::NotImplementedYet;
+        }
+
+        RetCode insert( const Key & key, Value && value, Timestamp && expiration, bool overwrite ) noexcept
+        {
+            using namespace std;
+
+            assert( key.is_leaf() );
+            assert( hashes_.size() == values_.size() );
+            assert( hashes_.size() == expirations_.size() );
+            assert( hashes_.size() == children_.size() );
+            assert( hashes_.size() + 1 == links_.size() );
+
+            try
+            {
+                if ( expiration != Timestamp{} && expiration < Timestamp::clock::now() )
+                {
+                    return RetCode::AlreadyExpired;
+                }
+
+                static constexpr Hash< Policies, Pad, Key > hasher;
+                auto hash = hasher( key );
+
+                if ( hashes_.size() < hashes_.capacity() )
+                {
+                    auto lower = lower_bound( begin( hashes_ ), end( hashes_ ), hash );
+
+                    if ( *lower != hash )
+                    {
+                        auto [ hash_ok, hash_it ] = hashes_.insert( lower, hash );
+                        assert( hash_ok );
+
+                        auto[ value_ok, value_it ] = values_.emplace( lower, move( value ) );
+                        assert( value_ok );
+
+                        auto [ expiration_ok, expiration_it ] = expirations_.emplace{ lower, move( expiration ) };
+                        assert( expiration_ok );
+
+                        auto[ child_ok, child_it ] = children_.insert( lower, InvalidNodeUid );
+                        assert( child_ok );
+
+                        if ( !( value_ok && value_ok  && expiration_ok &&  child_ok ) )
+                        {
+                            throw std::runtime_error( "Some shit happens" );
+                        }
+                    }
+                    else if ( overwrite )
+                    {
+                        assert( 0 <= distance( begin( hashes_ ), lower ) );
+                        auto pos = static_cast< Pos >( distance( begin( hashes_ ), lower ) );
+
+                        value_[ pos ] = value;
+                        if ( expiration != Timestamp{} ) expirations_[ pos ] = expiration;
+                    }
+                    else
+                    {
+                        return RetCode::AlreadyExists;
+                    }
+                }
+                else
+                {
+                    return RetCode::NotImplementedYet;
+                }
+
+            }
+            catch ( ... )
+            {
+            }
+
+            return RetCode::UnknownError;
         }
 
         /** Checks if key presents in the node
