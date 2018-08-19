@@ -7,6 +7,7 @@
 #include <mutex>
 #include <limits>
 #include <boost/container/static_vector.hpp>
+#include <boost/thread/shared_mutex.hpp>
 
 
 namespace jb
@@ -36,15 +37,16 @@ namespace jb
         static_assert( BTreePower + 1 < std::numeric_limits< ptrdiff_t >::max( ), "B-tree power is too great" );
         
         PhysicalStorage * storage_;
-        NodeUid parent_;
-        mutable std::shared_mutex guard_;
+        NodeUid parent_uid_;
+        NodeUid uid_;
+        mutable boost::upgrade_mutex guard_;
         boost::container::static_vector< KeyHashT, BTreePower> hashes_;
         boost::container::static_vector< Value, BTreePower > values_;
         boost::container::static_vector< Timestamp, BTreePower > expirations_;
         boost::container::static_vector< NodeUid, BTreePower > children_;
-        boost::container::static_vector< bool, BTreePower > erased_marks_;
         boost::container::static_vector< NodeUid, BTreePower + 1 > links_;
         bool changed = false;
+
 
     public:
 
@@ -58,11 +60,8 @@ namespace jb
             links_.push_back( InvalidNodeUid );
         }
 
-        template < typename Locktype >
-        Locktype get_lock( )
-        {
-            return Locktype{ guard_ };
-        }
+        auto uid() const noexcept { return uid_; }
+        auto & guard( ) const noexcept { return guard_; }
 
         Value value( size_t ndx ) const
         { 
@@ -88,16 +87,9 @@ namespace jb
             return move( children_[ ndx ] );
         }
 
-        bool erased( size_t ndx ) const
+        RetCode erase( size_t ndx ) const
         {
-            assert( ndx < erased_marks_.size( ) );
-            return erased_marks_[ ndx ];
-        }
-
-        void set_erased( size_t ndx ) const
-        {
-            assert( ndx < values_.size( ) );
-            erased_marks_[ ndx ] = true;
+            return RetCode::NotImplementedYet;
         }
 
         /** Checks if key presents in the node
@@ -117,7 +109,6 @@ namespace jb
             assert( hashes_.size() == values_.size() );
             assert( hashes_.size() == expirations_.size() );
             assert( hashes_.size() == children_.size() );
-            assert( hashes_.size() == erased_marks_.size() );
             assert( hashes_.size() + 1 == links_.size() );
 
             static constexpr Hash< Policies, Pad, Key > hasher;

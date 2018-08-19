@@ -72,7 +72,7 @@ namespace jb
         @throw nothing
         @note check object validity by creation_status()
         */
-        explicit PhysicalStorage( const std::filesystem::path && file ) try
+        explicit PhysicalStorage( const std::filesystem::path & file ) try
             : mru_order_( CacheSize, InvalidNodeUid )
             , mru_items_( CacheSize )
         {

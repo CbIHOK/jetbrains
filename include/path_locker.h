@@ -152,7 +152,8 @@ namespace jb
         /** Destructor, releases all held lock
 
         @throw nothing, actually unlock_all() may throw but in this certain case terminate() on
-        noexcept gurad looks as a sutable alternative
+        noexcept statement looks as a sutable alternative, cuz crash analysis is mush easier that
+        analysis of a deadlock
         */
         ~PathLock() noexcept
         {

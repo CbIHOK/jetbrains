@@ -75,6 +75,7 @@ namespace jb
             InUse,                  ///< The handler is currently used by concurrent operation and cannot be closed
             HasDependentMounts,     ///< There are underlaying mount
             TooManyConcurrentOps,   ///< The limit of concurent operations over physical volume is reached
+            MaxSearchDepthExceeded, ///< Cannot search such deep inside, consider additional mounting
             ///
             NotImplementedYet
         };
