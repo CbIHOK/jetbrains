@@ -10,6 +10,7 @@ add_executable( tests
     node_locker.cpp
     virtual_volume.cpp 
     storage.cpp
+    storage_file.cpp
     #bloom.cpp
     )
 

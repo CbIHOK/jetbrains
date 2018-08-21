@@ -216,6 +216,7 @@ namespace jb
     struct Hash< Policies, Pad, typename Storage< Policies, Pad >::Key >
     {
         static constexpr bool enabled = true;
+        using type = size_t;
         using Key = typename Storage< Policies, Pad >::Key;
 
         size_t operator() ( const Key & key ) const noexcept
@@ -230,6 +231,7 @@ namespace jb
     struct Hash< Policies, Pad, typename Storage< Policies, Pad >::Key::ValueT >
     {
         static constexpr bool enabled = true;
+        using type = size_t;
         using ValueT = typename Storage< Policies, Pad >::Key::ValueT;
 
         size_t operator() ( const ValueT & value ) const noexcept

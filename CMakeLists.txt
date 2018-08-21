@@ -5,6 +5,7 @@ set(CMAKE_CXX_STANDARD_REQUIRED ON)
 set(CMAKE_CXX_EXTENSIONS OFF)
 
 add_definitions( -D_SCL_SECURE_NO_WARNINGS )
+add_definitions( -D_GTEST_HAS_EXCEPTIONS=0 )
 
 set(BOOST_INC ../boost_1_67_0)
 set(BOOST_LINK ../boost_1_67_0/stage/lib)
@@ -15,5 +16,4 @@ include_directories( ./include ./3rdparty ${BOOST_INC} ${gtest_SOURCE_DIR}/inclu
 link_directories( ${BOOST_LINK} )
 
 add_subdirectory(3rdparty)
-#add_subdirectory(src)
 add_subdirectory(test)

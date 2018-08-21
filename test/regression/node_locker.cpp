@@ -1,5 +1,7 @@
 #include <gtest/gtest.h>
 #include <storage.h>
+#include <policies.h>
+
 
 class TestNodeLocker : public ::testing::Test
 {

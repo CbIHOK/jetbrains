@@ -17,7 +17,7 @@ namespace jb
     {
         using Key = typename PhysicalVolumeImpl::Key;
         using KeyCharT = typename Key::CharT;
-        using KeyHashT = decltype( Hash< Policies, Pad, Key >{}( Key{} ) );
+        using KeyHashT = typename Hash< Policies, Pad, Key >::type;
 
         static constexpr auto BloomSize = Policies::PhysicalVolumePolicy::BloomSize;
         static constexpr auto BloomFnCount = Policies::PhysicalVolumePolicy::BloomFnCount;
@@ -91,6 +91,8 @@ namespace jb
 
 
     public:
+
+        using Digest = std::array< uint32_t, 20 >;
 
         Bloom() = default;
         virtual ~Bloom() noexcept = default;

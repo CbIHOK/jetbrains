@@ -1,5 +1,6 @@
 #include <gtest/gtest.h>
 #include <storage.h>
+#include <policies.h>
 
 
 class TestVirtualVolume : public ::testing::Test

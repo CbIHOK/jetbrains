@@ -26,9 +26,9 @@ namespace jb
         std::unordered_map< NodeUid, std::atomic< size_t > > locked_nodes_;
         RetCode creation_status_ = RetCode::Ok;
 
-        static constexpr auto ExpectedTreeDepth = Policies::PhysicalVolumePolicy::ExpectedTreeDepth;
+        static constexpr auto MaxTreeDepth = Policies::PhysicalVolumePolicy::MaxTreeDepth;
         static constexpr auto MountPointLimit = Policies::PhysicalVolumePolicy::MountPointLimit;
-        static constexpr auto PreallocatedSize = ExpectedTreeDepth * MountPointLimit;
+        static constexpr auto PreallocatedSize = MaxTreeDepth * MountPointLimit;
         
     public:
 

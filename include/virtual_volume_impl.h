@@ -35,7 +35,7 @@ namespace jb
         using KeyValue = typename Storage::KeyValue;
         using Value = typename Storage::Value;
         using Timestamp = typename Storage::Timestamp;
-        using KeyHashT = decltype( Hash< Policies, Pad, Key >{}( Key{} ) );
+        using KeyHashT = typename Hash< Policies, Pad, Key >::type;
         using PhysicalVolumeImpl = typename Storage::PhysicalVolumeImpl;
         using PhysicalVolumeImplP = std::shared_ptr< PhysicalVolumeImpl >;
         using PathLock = typename PhysicalVolumeImpl::PathLock;

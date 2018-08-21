@@ -12,15 +12,15 @@
 #include <filesystem>
 #include <limits>
 #include <execution>
-
 #include <assert.h>
-#include <policies.h>
 
 
 class TestStorage;
 class TestKey;
 class TestNodeLocker;
 class TestBloom;
+class TestStorageFile;
+
 
 namespace jb
 {
@@ -37,7 +37,7 @@ namespace jb
 
     /**
     */
-    template < typename Policies = DefaultPolicies, typename Pad = DefaultPad >
+    template < typename Policies, typename Pad >
     class Storage
     {
 
@@ -46,6 +46,7 @@ namespace jb
         friend class TestKey;
         friend class TestNodeLocker;
         friend class TestBloom;
+        friend class TestStorageFile;
 
         friend class VirtualVolume;
         friend class PhysicalVolume;
@@ -77,7 +78,12 @@ namespace jb
             TooManyConcurrentOps,   ///< The limit of concurent operations over physical volume is reached
             MaxSearchDepthExceeded, ///< Cannot search such deep inside, consider additional mounting
             AlreadyExpired,         ///< Given timestamp already in the past
-            AlreadyExists,          ///< Key already exists
+            KeyAlreadyExists,       ///< Key already exists
+            AlreadyOpened,          ///< Physical file is already opened
+            UnableToOpen,           ///< Cannot open specified file
+            UnableToCreate,         ///< Unable to create file of a name
+            IoError,                ///< General I/O error
+            IncompatibleFile,       ///< File is incompatible
             ///
             NotImplementedYet
         };
@@ -86,7 +92,7 @@ namespace jb
 
         using KeyValue = typename Key::ValueT;
         using Value = typename Policies::ValueT;
-        using Timestamp = typename Policies::TimestampT;
+        using Timestamp = std::filesystem::file_time_type;
 
         class VirtualVolume;
         class PhysicalVolume;
@@ -553,7 +559,7 @@ namespace jb
         @todo implement
         */
         [[nodiscard]]
-        static auto OpenPhysicalVolume( std::filesystem::path && path ) noexcept
+        static auto OpenPhysicalVolume( const std::filesystem::path & path, bool create = false ) noexcept
         {
             using namespace std;
             try
@@ -562,7 +568,7 @@ namespace jb
                 static mutex mtx;
                 scoped_lock lock( mtx );
 
-                if ( auto[ ret, volume ] = open< PhysicalVolume >( move( path ) );  RetCode::Ok == ret )
+                if ( auto[ ret, volume ] = open< PhysicalVolume >( filesystem::absolute( path ), create );  RetCode::Ok == ret )
                 {
                     assert( volume );
 

@@ -13,6 +13,9 @@
 #include <boost/thread/lock_types.hpp>
 
 
+class TestStorageFile;
+
+
 namespace jb
 {
     /** Implements volume <--> file data exchange
@@ -27,6 +30,9 @@ namespace jb
     template < typename Policies, typename Pad >
     class Storage< Policies, Pad >::PhysicalVolumeImpl::PhysicalStorage
     {
+        friend class TestStorageFile;
+
+        class StorageFile;
 
     public:
 
@@ -44,6 +50,7 @@ namespace jb
     private:
 
         RetCode creation_status_ = RetCode::Ok;
+        StorageFile file_;
 
         using MruOrder = std::list< NodeUid >;
         using MruItems = std::unordered_map< NodeUid, std::pair< BTreeP, MruOrder::const_iterator > >;
@@ -69,14 +76,16 @@ namespace jb
         /** Constructs physical storage
 
         @param [in] path - file name
+        @param [in] create - create file if does not exist
         @throw nothing
         @note check object validity by creation_status()
         */
-        explicit PhysicalStorage( const std::filesystem::path & file ) try
-            : mru_order_( CacheSize, InvalidNodeUid )
+        explicit PhysicalStorage( const std::filesystem::path & file, bool create ) try
+            : file_( file, create )
+            , mru_order_( CacheSize, InvalidNodeUid )
             , mru_items_( CacheSize )
         {
-
+            creation_status_ = std::max( creation_status_, file_.creation_status() );
         }
         catch ( const std::bad_alloc & )
         {
@@ -87,13 +96,7 @@ namespace jb
             creation_status_ = RetCode::UnknownError;
         }
 
-
-        /** Provides creation status
-
-        @retval RetCode - contains Ok if object was successfully created and an error code otherwise
-        @throw nothing
-        */
-        RetCode creation_status( ) const noexcept { return creation_status_; }
+        auto creation_status() const noexcept { return creation_status_; }
 
 
         /** Provides requested B-tree node from MRU cache
@@ -156,7 +159,10 @@ namespace jb
                         return { RetCode::TooManyConcurrentOps, BTreeP{} };
                     }
 
-                    if ( uid == RootNodeUid )
+                    if ( uid == InvalidNodeUid )
+                    {
+
+                    }
                     {
                         // get exclusive lock over the cache
                         upgrade_to_unique_lock< upgrade_mutex > exclusive_lock{ shared_lock };
@@ -179,8 +185,7 @@ namespace jb
     };
 }
 
-
+#include "storage_file.h"
 #include "b_tree.h"
-
 
 #endif

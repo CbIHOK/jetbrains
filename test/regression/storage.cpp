@@ -1,5 +1,6 @@
 #include <gtest/gtest.h>
 #include <storage.h>
+#include <policies.h>
 #include <variadic_hash.h>
 
 
@@ -59,7 +60,7 @@ TEST_F( TestStorage, PhysicalVolume_Dummy )
 
 TEST_F( TestStorage, PhysicalVolume_Base )
 {
-    auto[ ret, v ] = Storage::OpenPhysicalVolume( "foo" );
+    auto[ ret, v ] = Storage::OpenPhysicalVolume( "foo", true );
     EXPECT_EQ( RetCode::Ok, ret );
     EXPECT_TRUE( v );
 
@@ -101,7 +102,7 @@ TEST_F( TestStorage, PhysicalVolume_Limit )
 
     for ( size_t i = 0; i < Policies::PhysicalVolumePolicy::VolumeLimit; ++i )
     {
-        auto[ ret, volume ] = Storage::OpenPhysicalVolume( "foo" );
+        auto[ ret, volume ] = Storage::OpenPhysicalVolume( "foo_" + std::to_string( i ) );
         EXPECT_EQ( RetCode::Ok, ret );
         set.insert( volume );
         hash.insert( volume );

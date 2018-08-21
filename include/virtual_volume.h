@@ -188,6 +188,11 @@ namespace jb
                     return { RetCode::InvalidSubkey };
                 }
 
+                if ( good_before != Timestamp{} && good_before < Timestamp::clock::now() )
+                {
+                    return { RetCode::AlreadyExpired };
+                }
+
                 if ( auto impl = impl_.lock( ) )
                 {
                     return impl->insert( key_, subkey_, move( value ), move( good_before ), overwrite );
