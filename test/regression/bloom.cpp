@@ -27,7 +27,7 @@ protected:
     std::mutex absent_mutex_;
     std::unordered_set< std::basic_string< KeyCharT > > absent_;
 
-    static constexpr size_t present_number = 100'000;
+    static constexpr size_t present_number = 1'000'000;
     static constexpr size_t absent_number = 100'000;
     static constexpr size_t BloomFnCount = Storage::PhysicalVolumeImpl::MaxTreeDepth;
 
@@ -90,12 +90,12 @@ protected:
 };
 
 
-TEST_F( TestBloom, Overall_Takes_Long_Lime )
+TEST_F( TestBloom, Long_long_test )
 {
     using namespace std;
 
     {
-        cout << endl << "WARNING: the test is run on over 1,000,000 random keys and may take up to 15 mins" << endl;
+        cout << endl << "WARNING: the test is run on over 1,000,000 random keys and may take up to 20 mins" << endl;
         cout << endl << "Generating keys..." << endl;
 
         vector< pair< mt19937, future< void > > > generators( 64 );

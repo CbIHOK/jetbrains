@@ -31,6 +31,7 @@ namespace jb
         RetCode creation_status_ = RetCode::Ok;
         PhysicalStorage * storage_ = nullptr;
         std::array< uint8_t, BloomSize > filter_;
+        mutable std::atomic_flag lock_ = ATOMIC_FLAG_INIT;
 
 
     public:
@@ -75,6 +76,12 @@ namespace jb
         using Digest = size_t;
 
 
+        /** Generate digest for a key considering level and stem
+
+        @param [in] level - key level
+        @param [in] key - stem of key's segment
+        @retval key's digest
+        */
         static Digest generate_digest( size_t level, const Key & key ) noexcept
         {
             assert( level < BloomFnCount );
@@ -96,10 +103,9 @@ namespace jb
             const auto bit_no = digest % 8;
 
             // update memory under spinlock
-            static atomic_flag lock = ATOMIC_FLAG_INIT;
-            while ( lock.test_and_set( std::memory_order_acquire ) );
+            while ( lock_.test_and_set( std::memory_order_acquire ) );
             filter_[ byte_no ] |= ( 1 << bit_no );
-            lock.clear( std::memory_order_release );
+            lock_.clear( std::memory_order_release );
 
             if ( storage_ && RetCode::Ok == storage_->creation_status() )
             {
@@ -171,7 +177,11 @@ namespace jb
                     const auto byte_no = ( digest / 8 ) % BloomSize;
                     const auto bit_no = digest % 8;
                     
-                    if ( ( filter_[ byte_no ] & ( 1 << bit_no ) ) == 0 )
+                    while ( lock_.test_and_set( std::memory_order_acquire ) );
+                    auto check = filter_[ byte_no ] & ( 1 << bit_no );
+                    lock_.clear( std::memory_order_release );
+
+                    if ( check == 0 )
                     {
                         result = false;
                         break;

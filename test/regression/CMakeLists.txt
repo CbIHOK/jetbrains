@@ -11,7 +11,7 @@ add_executable( tests
     virtual_volume.cpp 
     storage.cpp
     storage_file.cpp
-    bloom.cpp
+    #bloom.cpp
     )
 
 target_link_libraries( tests SHAtwo gtest gtest_main )
