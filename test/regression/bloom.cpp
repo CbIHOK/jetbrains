@@ -8,6 +8,7 @@
 #include <algorithm>
 #include <execution>
 
+
 class TestBloom : public ::testing::Test
 {
 
@@ -26,11 +27,6 @@ protected:
     std::unordered_set< std::basic_string< KeyCharT > > present_;
     std::mutex absent_mutex_;
     std::unordered_set< std::basic_string< KeyCharT > > absent_;
-
-    static constexpr size_t present_number = 1'000'000;
-    static constexpr size_t absent_number = 100'000;
-    static constexpr size_t BloomFnCount = Storage::PhysicalVolumeImpl::MaxTreeDepth;
-
 
     auto generate( std::mt19937 & rand ) const
     {
@@ -82,17 +78,20 @@ protected:
         
         return tuple{ rest, subkey };
     }
-
-
-    TestBloom()
-    {
-    }
 };
 
 
-TEST_F( TestBloom, Long_long_test )
+class DISABLED_TestBloom : public TestBloom
+{
+};
+
+
+TEST_F( DISABLED_TestBloom, Long_long_test )
 {
     using namespace std;
+
+    constexpr size_t PresentNumber = 1'000'000;
+    constexpr size_t AbsentNumber = 1'000'000;
 
     {
         cout << endl << "WARNING: the test is run on over 1,000,000 random keys and may take up to 20 mins" << endl;
@@ -112,9 +111,9 @@ TEST_F( TestBloom, Long_long_test )
 
                     scoped_lock l( present_mutex_ );
 
-                    if ( present_.size() < present_number )
+                    if ( present_.size() < PresentNumber )
                     {
-                        present_.insert( move( str ) );
+                        present_.emplace( move( str ) );
                     }
                     else
                     {
@@ -136,7 +135,7 @@ TEST_F( TestBloom, Long_long_test )
                     
                     scoped_lock l( absent_mutex_ );
 
-                    if ( absent_.size() < absent_number )
+                    if ( absent_.size() < AbsentNumber )
                     {
                         if ( !present_.count( str ) )
                         {
@@ -188,7 +187,7 @@ TEST_F( TestBloom, Long_long_test )
             }
         } );
 
-        cout << endl << "Checking keys 1st..." << endl;
+        cout << endl << "Checking keys..." << endl;
 
         // check positive
         atomic< size_t > positive_counter( 0 );
@@ -199,7 +198,7 @@ TEST_F( TestBloom, Long_long_test )
                 positive_counter++;
             }
         } );
-        EXPECT_LE( 0.99 * present_number, positive_counter.load() );
+        EXPECT_LE( 0.99 * PresentNumber, positive_counter.load() );
 
         // check negative
         atomic< size_t > negative_counter( 0 );
@@ -210,6 +209,100 @@ TEST_F( TestBloom, Long_long_test )
                 negative_counter++;
             }
         } );
-        EXPECT_EQ( absent_number, negative_counter.load() );
+        EXPECT_EQ( AbsentNumber, negative_counter.load() );
     }
+}
+
+
+TEST_F( TestBloom, Store_Restore )
+{
+    using namespace std;
+
+    constexpr size_t PresentNumber = 1'000;
+
+    {
+        PhysicalStorage storage( "TestBloom_Store_Restore.jb", true );
+        ASSERT_EQ( RetCode::Ok, storage.creation_status() );
+
+        auto bloom = make_shared< Bloom >( &storage );
+        ASSERT_EQ( RetCode::Ok, bloom->creation_status() );
+
+        vector< pair< mt19937, future< void > > > generators( 64 );
+
+        // generate present keys
+        unsigned seed = 0;
+        for ( auto & generator : generators )
+        {
+            generator.first.seed( seed++ );
+            generator.second = async( launch::async, [&] {
+                while ( true )
+                {
+                    auto str = move( generate( generator.first ) );
+
+                    scoped_lock l( present_mutex_ );
+
+                    if ( present_.size() < PresentNumber )
+                    {
+                        present_.emplace( move( str ) );
+                    }
+                    else
+                    {
+                        break;
+                    }
+                }
+            } );
+        }
+        for ( auto & generator : generators ) { generator.second.wait(); }
+
+        // through all the keys - berak them in digest and put into the filter
+        for_each( execution::par, begin( present_ ), end( present_ ), [&] ( const auto & key_str )
+        {
+            Key key( key_str );
+
+            size_t level = 0;
+
+            if ( Key::root() != key )
+            {
+                auto rest = key;
+
+                size_t level = 0;
+
+                while ( rest.size() )
+                {
+                    auto[ split_ok, prefix, suffix ] = rest.split_at_head();
+                    assert( split_ok );
+
+                    auto[ trunc_ok, stem ] = prefix.cut_lead_separator();
+                    assert( trunc_ok );
+
+                    auto digest = Bloom::generate_digest( level, stem );
+                    bloom->add_digest( digest );
+
+                    rest = suffix;
+                    level++;
+                }
+            }
+        } );
+    }
+    // reopen storage and retrieve filter data
+    {
+        PhysicalStorage storage( "TestBloom_Store_Restore.jb", true );
+        ASSERT_EQ( RetCode::Ok, storage.creation_status() );
+
+        auto bloom = make_shared< Bloom >( &storage );
+        ASSERT_EQ( RetCode::Ok, bloom->creation_status() );
+
+        atomic< size_t > positive_counter( 0 );
+        for_each( execution::par, begin( present_ ), end( present_ ), [&] ( const auto & str ) {
+            auto[ k1, k2 ] = split_to_keys( str );
+            if ( auto[ ret, digest_no, may_present ] = bloom->test( k1, k2 ); may_present )
+            {
+                positive_counter++;
+            }
+        } );
+        EXPECT_LE( 0.99 * PresentNumber, positive_counter.load() );
+    }
+
+    error_code ec;
+    filesystem::remove( "TestBloom_Store_Restore.jb", ec );
 }

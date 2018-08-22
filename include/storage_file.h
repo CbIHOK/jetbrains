@@ -155,7 +155,7 @@ namespace jb
         */
         auto check_compatibility() noexcept
         {
-            if ( std::get< bool> ( OsPolicy::seek_file( writer_, ( int64_t )Offset::of_CompatibilityStamp, OsPolicy::SeekMethod::Begin ) ) )
+            if ( std::get< bool> ( OsPolicy::seek_file( writer_, HeaderOffset::of_CompatibilityStamp, OsPolicy::SeekMethod::Begin ) ) )
             {
                 CompatibilityStamp stamp;
 
@@ -180,7 +180,7 @@ namespace jb
 
         /** Enumerates predefined offsets in data file
         */
-        enum Offset
+        enum HeaderOffset
         {
             of_CompatibilityStamp = 0,
             sz_CompatibilityStamp = sizeof( CompatibilityStamp ),
@@ -220,7 +220,7 @@ namespace jb
 
     public:
 
-        static constexpr NodeUid RootNodeUid = static_cast< NodeUid >( of_Root );
+        static constexpr NodeUid RootNodeUid = static_cast< NodeUid >( HeaderOffset::of_Root );
 
     private:
 
@@ -238,7 +238,7 @@ namespace jb
 
             // write compatibility stamp
             ce( [&] {
-                return std::get< bool >( OsPolicy::seek_file( writer_, of_CompatibilityStamp, OsPolicy::SeekMethod::Begin ) );
+                return std::get< bool >( OsPolicy::seek_file( writer_, HeaderOffset::of_CompatibilityStamp, OsPolicy::SeekMethod::Begin ) );
             } );
             ce( [&] {
                 CompatibilityStamp stamp = generate_compatibility_stamp();
@@ -247,16 +247,16 @@ namespace jb
 
             // write file size
             ce( [&] {
-                return std::get< bool >( OsPolicy::seek_file( writer_, of_FileSize, OsPolicy::SeekMethod::Begin ) );
+                return std::get< bool >( OsPolicy::seek_file( writer_, HeaderOffset::of_FileSize, OsPolicy::SeekMethod::Begin ) );
             } );
             ce( [&] {
-                boost::endian::big_uint64_t value = of_Root;
+                boost::endian::big_uint64_t value = HeaderOffset::of_Root;
                 return std::get< bool >( OsPolicy::write_file( writer_, &value, sizeof( value ) ) );
             } );
 
             // invalidate free space ptr
             ce( [&] {
-                return std::get< bool >( OsPolicy::seek_file( writer_, of_FreeSpacePtr, OsPolicy::SeekMethod::Begin ) );
+                return std::get< bool >( OsPolicy::seek_file( writer_, HeaderOffset::of_FreeSpacePtr, OsPolicy::SeekMethod::Begin ) );
             } );
             ce( [&] {
                 boost::endian::big_uint64_t value = InvalidNodeUid;
@@ -264,13 +264,13 @@ namespace jb
             } );
 
             // invalidate transaction
-            using transaction_t = array< uint8_t, sz_Transaction >;
+            using transaction_t = array< uint8_t, HeaderOffset::sz_Transaction >;
             transaction_t transaction;
             transaction.fill( 0 );
             uint64_t transaction_hash = boost::hash< transaction_t >{}( transaction );
 
             ce( [&] {
-                return std::get< bool >( OsPolicy::seek_file( writer_, of_Checksum, OsPolicy::SeekMethod::Begin ) );
+                return std::get< bool >( OsPolicy::seek_file( writer_, HeaderOffset::of_Checksum, OsPolicy::SeekMethod::Begin ) );
             } );
             ce( [&] {
                 boost::endian::big_uint64_t value = transaction_hash + 1;
@@ -440,7 +440,7 @@ namespace jb
 
                 // seek & read data
                 ce( [&] {
-                    return std::get< bool >( OsPolicy::seek_file( bloom_writer_, of_Bloom, OsPolicy::SeekMethod::Begin ) );
+                    return std::get< bool >( OsPolicy::seek_file( bloom_writer_, HeaderOffset::of_Bloom, OsPolicy::SeekMethod::Begin ) );
                 } );
                 ce( [&] {
                     return std::get< bool >( OsPolicy::read_file( bloom_writer_, bloom_buffer, BloomSize ) );
@@ -472,10 +472,10 @@ namespace jb
 
             // seek & read data
             ce( [&] {
-                return std::get< bool >( OsPolicy::seek_file( bloom_writer_, of_Bloom + byte_no , OsPolicy::SeekMethod::Begin ) );
+                return std::get< bool >( OsPolicy::seek_file( writer_, HeaderOffset::of_Bloom + byte_no , OsPolicy::SeekMethod::Begin ) );
             } );
             ce( [&] {
-                return std::get< bool >( OsPolicy::read_file( bloom_writer_, &byte, 1 ) );
+                return std::get< bool >( OsPolicy::write_file( writer_, &byte, 1 ) );
             } );
 
             return status ? RetCode::Ok : RetCode::IoError;
