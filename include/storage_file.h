@@ -13,8 +13,15 @@
 #include <boost/container/static_vector.hpp>
 #include <boost/interprocess/sync/named_mutex.hpp>
 #include <boost/interprocess/exceptions.hpp>
+#include <boost/container_hash/hash.hpp>
 
-#include "variadic_hash.h"
+#ifndef BOOST_ENDIAN_DEPRECATED_NAMES
+#define BOOST_ENDIAN_DEPRECATED_NAMES
+#include <boost/endian/endian.hpp>
+#undef BOOST_ENDIAN_DEPRECATED_NAMES
+#else
+#include <boost/endian/endian.hpp>
+#endif
 
 
 class TestStorageFile;
@@ -33,8 +40,7 @@ namespace jb
         using TimestampT = typename Storage::Timestamp;
         using OsPolicy = typename Policies::OSPolicy;
         using Handle = typename OsPolicy::HandleT;
-        using CompatibilityStamp = uint64_t;
-        using BloomDigest = typename Storage::PhysicalVolumeImpl::Bloom::Digest;
+        using CompatibilityStamp = boost::endian::big_uint64_t;
         
         inline static const auto InvalidHandle = OsPolicy::InvalidHandle;
 
@@ -48,7 +54,7 @@ namespace jb
     public:
 
         using NodeUid = uint64_t;
-        static constexpr auto InvalidNodeUid = std::numeric_limits< NodeUid >::max();
+        static constexpr NodeUid InvalidNodeUid = std::numeric_limits< NodeUid >::max();
 
     private:
 
@@ -58,20 +64,36 @@ namespace jb
         std::string file_lock_name_;
         std::shared_ptr< boost::interprocess::named_mutex > file_lock_;
 
+        mutable std::mutex writer_mutex_;
         Handle writer_ = InvalidHandle;
+
+        mutable std::mutex bloom_writer_mutex_;
+        Handle bloom_writer_ = InvalidHandle;
 
         std::mutex readers_mutex_;
         boost::container::static_vector< Handle, ReaderNumber > readers_;
         std::stack< Handle, boost::container::static_vector< Handle, ReaderNumber > > reader_stack_;
 
 
-        static constexpr auto little_endian() noexcept
-        {
-            static constexpr auto tester = 1U;
-            return *( reinterpret_cast< const uint8_t* >( &tester ) ) == 1;
-        }
+        ///** Let us know if the system uses Little Endian
+
+        //@retval true if the system uses Little Endian
+        //@throw nothing
+        //*/
+        //static constexpr auto little_endian() noexcept
+        //{
+        //    static constexpr auto tester = 1U;
+        //    return *( reinterpret_cast< const uint8_t* >( &tester ) ) == 1;
+        //}
 
 
+        /** Rounds given value up by the module
+
+        @tparam m - module
+        @param [in] v - value to be rounded
+        @return rounded value
+        @throw nothing
+        */
         template< size_t m >
         static constexpr auto round_up( size_t v ) noexcept
         {
@@ -79,37 +101,58 @@ namespace jb
         }
 
 
-        template < typename T >
-        static T normalize( T v ) noexcept
-        {
-            static_assert( std::is_integral<T>::value, "Only integral types are allowed" );
+        ///** If the sysytem uses Little Endian converts given value to Big Endian
 
-            if ( little_endian() )
-            {
-                T v_;
+        //else returns the value untouched
 
-                for ( uint8_t *s = reinterpret_cast< uint8_t* >( &v ), *d = reinterpret_cast< uint8_t* >( &v_ ) + sizeof( T ) - 1;
-                    s < reinterpret_cast< uint8_t* >( &v ) + sizeof( T );
-                    ++s, --d )
-                {
-                    *d = *s;
-                }
+        //TODO: consider using specialized C++ functions
 
-                return v_;
-            }
-            else
-            {
-                return v;
-            }
-        }
+        //@tparam T - integral type
+        //@param [in] v - value
+        //@retval the value in Big Endian form
+        //@throw nothing
+        //*/
+        //template < typename T >
+        //static T normalize( T v ) noexcept
+        //{
+        //    static_assert( std::is_integral<T>::value, "Only integral types are allowed" );
+
+        //    if ( little_endian() )
+        //    {
+        //        T v_;
+
+        //        for ( uint8_t *s = reinterpret_cast< uint8_t* >( &v ), *d = reinterpret_cast< uint8_t* >( &v_ ) + sizeof( T ) - 1;
+        //            s < reinterpret_cast< uint8_t* >( &v ) + sizeof( T );
+        //            ++s, --d )
+        //        {
+        //            std::swap( *d, *s );
+        //        }
+
+        //        return v_;
+        //    }
+        //    else
+        //    {
+        //        return v;
+        //    }
+        //}
 
 
+        /** Generates compatibility stamp
+
+        @retval unique stamp of software settings
+        @throw nothing
+        */
         static CompatibilityStamp generate_compatibility_stamp() noexcept
         {
-            return variadic_hash( KeyCharT{}, ValueT{}, BloomSize, MaxTreeDepth, BTreeMinPower, ChunkSize );
+            return CompatibilityStamp{ variadic_hash( Key{}, ValueT{}, BloomSize, MaxTreeDepth, BTreeMinPower, ChunkSize ) };
         }
 
 
+        /** Check software to file compatibility
+
+        @throws nothing
+        @warning  not thread safe
+        */
         auto check_compatibility() noexcept
         {
             if ( std::get< bool> ( OsPolicy::seek_file( writer_, ( int64_t )Offset::of_CompatibilityStamp, OsPolicy::SeekMethod::Begin ) ) )
@@ -118,7 +161,7 @@ namespace jb
 
                 if ( std::get< bool >( OsPolicy::read_file( writer_, &stamp, sizeof( stamp ) ) ) )
                 {
-                    if ( normalize( generate_compatibility_stamp() ) != stamp )
+                    if ( generate_compatibility_stamp() != stamp )
                     {
                         creation_status_ = RetCode::IncompatibleFile;
                     }
@@ -135,7 +178,9 @@ namespace jb
         }
 
 
-        enum class Offset
+        /** Enumerates predefined offsets in data file
+        */
+        enum Offset
         {
             of_CompatibilityStamp = 0,
             sz_CompatibilityStamp = sizeof( CompatibilityStamp ),
@@ -157,22 +202,33 @@ namespace jb
             of_FreeSpacePtrCopy = of_FileSizeCopy + sz_FileSizeCopy,
             sz_FreeSpacePtrCopy = sz_FreeSpacePtr,
 
-            of_Checksum_1 = of_FreeSpacePtrCopy + sz_FreeSpacePtrCopy,
-            sz_Checksum_1 = sizeof( uint64_t ),
+            of_PreservedChunkUid = of_FreeSpacePtrCopy + sz_FreeSpacePtrCopy,
+            sz_PreservedChunkUid = sizeof( NodeUid ),
 
-            of_PreservedChunk = round_up< SectorSize >( of_Checksum_1 + sz_Checksum_1 ),
+            of_PreservedChunk = of_PreservedChunkUid + sz_PreservedChunkUid,
             sz_PreservedChunk = ChunkSize,
 
-            of_Checksum_2 = of_PreservedChunk + sz_PreservedChunk,
-            sz_Checksum_2 = sizeof( uint64_t ),
+            of_Checksum = of_PreservedChunk + sz_PreservedChunk,
+            sz_Checksum = sizeof( uint64_t ),
 
-            of_Root = round_up< SectorSize >( of_Checksum_2 + sz_Checksum_2 )
+            of_Transaction = of_FileSizeCopy,
+            sz_Transaction = of_Checksum - of_FileSizeCopy,
+
+            of_Root = round_up< SectorSize >( of_Checksum + sz_Checksum ),
         };
+
+
+    public:
+
+        static constexpr NodeUid RootNodeUid = static_cast< NodeUid >( of_Root );
+
+    private:
 
 
         /** Initialize newly create file
 
         @throw nothing
+        @warning not thread safe
         */
         auto deploy() noexcept
         {
@@ -182,37 +238,42 @@ namespace jb
 
             // write compatibility stamp
             ce( [&] {
-                return std::get< bool >( OsPolicy::seek_file( writer_, ( int64_t )Offset::of_CompatibilityStamp, OsPolicy::SeekMethod::Begin ) );
+                return std::get< bool >( OsPolicy::seek_file( writer_, of_CompatibilityStamp, OsPolicy::SeekMethod::Begin ) );
             } );
             ce( [&] {
-                CompatibilityStamp stamp = normalize( generate_compatibility_stamp() );
+                CompatibilityStamp stamp = generate_compatibility_stamp();
                 return std::get< bool >( OsPolicy::write_file( writer_, &stamp, sizeof( stamp ) ) );
             } );
 
             // write file size
             ce( [&] {
-                return std::get< bool >( OsPolicy::seek_file( writer_, ( int64_t )Offset::of_FileSize, OsPolicy::SeekMethod::Begin ) );
+                return std::get< bool >( OsPolicy::seek_file( writer_, of_FileSize, OsPolicy::SeekMethod::Begin ) );
             } );
             ce( [&] {
-                auto value = normalize( ( uint64_t )Offset::of_Root );
+                boost::endian::big_uint64_t value = of_Root;
                 return std::get< bool >( OsPolicy::write_file( writer_, &value, sizeof( value ) ) );
             } );
 
             // invalidate free space ptr
             ce( [&] {
-                return std::get< bool >( OsPolicy::seek_file( writer_, ( int64_t )Offset::of_FreeSpacePtr, OsPolicy::SeekMethod::Begin ) );
+                return std::get< bool >( OsPolicy::seek_file( writer_, of_FreeSpacePtr, OsPolicy::SeekMethod::Begin ) );
             } );
             ce( [&] {
-                auto value = normalize( InvalidNodeUid );
+                boost::endian::big_uint64_t value = InvalidNodeUid;
                 return std::get< bool >( OsPolicy::write_file( writer_, &value, sizeof( value ) ) );
             } );
 
-            // invalidate ( file size, free space ptr ) copy
+            // invalidate transaction
+            using transaction_t = array< uint8_t, sz_Transaction >;
+            transaction_t transaction;
+            transaction.fill( 0 );
+            uint64_t transaction_hash = boost::hash< transaction_t >{}( transaction );
+
             ce( [&] {
-                return std::get< bool >( OsPolicy::seek_file( writer_, ( int64_t )Offset::of_Checksum_1, OsPolicy::SeekMethod::Begin ) );
+                return std::get< bool >( OsPolicy::seek_file( writer_, of_Checksum, OsPolicy::SeekMethod::Begin ) );
             } );
             ce( [&] {
-                auto value = normalize( variadic_hash( ( uint64_t )Offset::of_Root, InvalidNodeUid ) + 1 );
+                boost::endian::big_uint64_t value = transaction_hash + 1;
                 return std::get< bool >( OsPolicy::write_file( writer_, &value, sizeof( value ) ) );
             } );
 
@@ -234,9 +295,11 @@ namespace jb
         {
             using namespace std;
 
-            assert( readers_.size() == ReaderNumber );
             if ( writer_ != InvalidHandle ) OsPolicy::close_file( writer_ );
-            for_each( execution::par, begin( readers_ ), end( readers_ ), [] ( auto h ) { 
+            if ( bloom_writer_ != InvalidHandle ) OsPolicy::close_file( bloom_writer_ );
+
+            assert( readers_.size() == ReaderNumber );
+            for_each( execution::par, begin( readers_ ), end( readers_ ), [] ( auto h ) {
                 if ( h != InvalidHandle ) OsPolicy::close_file( h ); 
             } );
 
@@ -247,6 +310,7 @@ namespace jb
                 boost::interprocess::named_mutex::remove( file_lock_name_.c_str() );
             }
         }
+
 
         /** Constructs an instance
 
@@ -304,6 +368,19 @@ namespace jb
                 }
             }
 
+            // open Bloom writer
+            if ( RetCode::Ok == creation_status_ )
+            {
+                if ( auto[ opened, tried_create, handle ] = OsPolicy::open_file( path, false ); !opened )
+                {
+                    creation_status_ = RetCode::UnableToOpen;
+                }
+                else
+                {
+                    bloom_writer_ = handle;
+                }
+            }
+
             // open readers
             for ( auto & reader : readers_ )
             {
@@ -350,27 +427,58 @@ namespace jb
 
         @param [out] bloom_buffer - target for Bloom data
         @return RetCode - status of operation
+        @throw nothing
+        @wraning not thread safe
         */
         RetCode read_bloom( uint8_t * bloom_buffer ) const noexcept
         {
-            return RetCode::NotImplementedYet;
+            if ( !newly_created_ )
+            {
+                bool status = true;
+
+                auto ce = [&] ( const auto & f ) noexcept { if ( status ) status = f(); };
+
+                // seek & read data
+                ce( [&] {
+                    return std::get< bool >( OsPolicy::seek_file( bloom_writer_, of_Bloom, OsPolicy::SeekMethod::Begin ) );
+                } );
+                ce( [&] {
+                    return std::get< bool >( OsPolicy::read_file( bloom_writer_, bloom_buffer, BloomSize ) );
+                } );
+
+                return status ? RetCode::Ok : RetCode::IoError;
+            }
+            else
+            {
+                std::fill( std::execution::par, bloom_buffer, bloom_buffer + BloomSize, 0 );
+                return RetCode::Ok;
+            }
         }
 
 
         /** Write changes from Bloom filter
         */
-        std::tuple< RetCode > add_bloom_digest( const BloomDigest & digest ) const noexcept
+        std::tuple< RetCode > add_bloom_digest( size_t byte_no, uint8_t byte ) const noexcept
         {
             using namespace std;
 
-            auto ret = RetCode::Ok;
+            assert( byte_no < BloomSize );
 
-            for_each( begin( digest ), begin( digest ) + BloomFnCount, [&] ( auto & fn ) {
-                auto byte_no = fn / 8;
-                auto bit_no = fn % 8;
+            scoped_lock l( bloom_writer_mutex_ );
 
-                if (  )e
+            bool status = true;
+
+            auto ce = [&] ( const auto & f ) noexcept { if ( status ) status = f(); };
+
+            // seek & read data
+            ce( [&] {
+                return std::get< bool >( OsPolicy::seek_file( bloom_writer_, of_Bloom + byte_no , OsPolicy::SeekMethod::Begin ) );
             } );
+            ce( [&] {
+                return std::get< bool >( OsPolicy::read_file( bloom_writer_, &byte, 1 ) );
+            } );
+
+            return status ? RetCode::Ok : RetCode::IoError;
         }
     };
 }

@@ -35,19 +35,26 @@ namespace jb
 
     public:
 
-        using Digest = size_t;
-
+        /** No default constructible/copyable/movable
+        */
         Bloom() = delete;
         Bloom( Bloom && ) = delete;
 
+
+        /** Constructor
+
+        @param [in] storage - associated physical storage
+        */
         explicit Bloom( PhysicalStorage * storage = nullptr ) try : storage_( storage )
         {
             if ( storage_ && RetCode::Ok == storage_->creation_status() )
             {
                 creation_status_ = storage_->read_bloom( filter_.data() );
             }
-
-            filter_.fill( 0 );
+            else
+            {
+                std::fill( std::execution::par, filter_.data(), filter_.data() + filter_.size(), 0 );
+            }
         }
         catch ( ... )
         {
@@ -55,25 +62,48 @@ namespace jb
         }
 
 
+        /** Provides creation status
+
+        @retval - creation status
+        @throw nothing
+        */
         auto creation_status() const noexcept { return creation_status_; }
 
 
-        /** Updates the filter adding another combinations of keys
-
-        @param [in] prefix - prefix key
-        @param [in] suffix - suffix key
+        /** Declaration of single digest that is actually just hash value of a key segment
         */
-        auto add_digest( Digest digest ) noexcept
+        using Digest = size_t;
+
+
+        static Digest generate_digest( size_t level, const Key & key ) noexcept
+        {
+            assert( level < BloomFnCount );
+            assert( key.is_leaf() );
+            return variadic_hash( level, key );
+        }
+
+
+        /** Updates the filter adding another segment digest
+
+        @param [in] digest - digest to be added
+        @throw nothing
+        */
+        RetCode add_digest( Digest digest ) noexcept
         {
             using namespace std;
 
             const auto byte_no = ( digest / 8 ) % BloomSize;
             const auto bit_no = digest % 8;
-            filter_[ byte_no ] |= ( 1 << bit_no );
 
-            if ( storage_ && RetCode::Ok == ->creation_status() )
+            // update memory under spinlock
+            static atomic_flag lock = ATOMIC_FLAG_INIT;
+            while ( lock.test_and_set( std::memory_order_acquire ) );
+            filter_[ byte_no ] |= ( 1 << bit_no );
+            lock.clear( std::memory_order_release );
+
+            if ( storage_ && RetCode::Ok == storage_->creation_status() )
             {
-                return storage_->update_bloom( byte_no, filter_[ byte_no ] );
+                return std::get< RetCode>( storage_->add_bloom_digest( byte_no, filter_[ byte_no ] ) );
             }
 
             return RetCode::Ok;
@@ -98,6 +128,8 @@ namespace jb
             boost::container::static_vector< Digest, BloomFnCount > digests;
             auto status = RetCode::Ok;
 
+            size_t level = 0;
+
             auto get_digests = [&] ( const auto & key ) noexcept {
                 
                 if ( Key::root() != key )
@@ -118,10 +150,11 @@ namespace jb
                         auto[ trunc_ok, stem ] = prefix.cut_lead_separator();
                         assert( trunc_ok );
 
-                        auto digest = Hash< Key >{}( stem );
+                        auto digest = generate_digest( level, stem );
                         digests.push_back( digest );
 
                         rest = suffix;
+                        level++;
                     }
                 }
             };

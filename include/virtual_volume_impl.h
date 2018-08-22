@@ -10,7 +10,6 @@
 #include <future>
 #include <functional>
 #include <boost/container/static_vector.hpp>
-#include "variadic_hash.h"
 
 
 class TestVirtualVolume;

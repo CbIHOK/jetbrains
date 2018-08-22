@@ -28,27 +28,7 @@ protected:
             }
         }
     }
-
-    static auto little_endian() { return StorageFile::little_endian(); }
-
-    template < typename T >
-    static auto normalize( T v ) { return StorageFile::normalize( v ); }
 };
-
-
-TEST_F( TestStorageFile, Normalize )
-{
-    if ( little_endian() )
-    {
-        EXPECT_EQ( 0xBBAA, normalize( ( unsigned short )0xAABB ) );
-        EXPECT_EQ( 0xDDCCBBAA, normalize( 0xAABBCCDD ) );
-    }
-    else
-    {
-        EXPECT_EQ( 0xAABB, normalize( 0xAABB ) );
-        EXPECT_EQ( 0xAABBCCDD, normalize( 0xAABBCCDD ) );
-    }
-}
 
 
 TEST_F( TestStorageFile, CreateNew )

@@ -1,5 +1,6 @@
 #include <gtest/gtest.h>
 #include <storage.h>
+#include <policies.h>
 #include <unordered_set>
 #include <random>
 #include <functional>
@@ -15,24 +16,27 @@ protected:
     using Policies = ::jb::DefaultPolicies;
     using Pad = ::jb::DefaultPad;
     using Storage = ::jb::Storage< Policies, Pad >;
+    using RetCode = typename Storage::RetCode;
     using Bloom = typename Storage::PhysicalVolumeImpl::Bloom;
+    using PhysicalStorage = Storage::PhysicalVolumeImpl::PhysicalStorage;
     using Key = typename Storage::Key;
     using KeyCharT = typename Key::CharT;
 
-    Bloom filter_;
+    std::mutex present_mutex_;
     std::unordered_set< std::basic_string< KeyCharT > > present_;
+    std::mutex absent_mutex_;
     std::unordered_set< std::basic_string< KeyCharT > > absent_;
 
-    static constexpr size_t present_number = 10'000;
-    static constexpr size_t absent_number = 1'000;
+    static constexpr size_t present_number = 100'000;
+    static constexpr size_t absent_number = 100'000;
+    static constexpr size_t BloomFnCount = Storage::PhysicalVolumeImpl::MaxTreeDepth;
 
 
-    auto generate( ) const
+    auto generate( std::mt19937 & rand ) const
     {
         using namespace std;
 
         auto distr = uniform_int_distribution<>{};
-        static std::mt19937 rand{};
 
         basic_string< KeyCharT > s( 100, KeyCharT{ '0' } );
         
@@ -82,26 +86,6 @@ protected:
 
     TestBloom()
     {
-        using namespace std;
-
-        auto distr = uniform_int_distribution<>{};
-        std::mt19937 rand{};
-
-        while ( present_.size( ) < present_number )
-        {
-            auto str{ move( generate( ) ) };
-            auto[ k1, k2 ] = split_to_keys( str );
-            filter_.add( k1, k2 );
-            present_.insert( move( str ) );
-        }
-
-        while ( absent_.size( ) < absent_number )
-        {
-            if ( auto str = move( generate( ) );  !present_.count( str ) )
-            {
-                absent_.insert( move( str ) );
-            }
-        }
     }
 };
 
@@ -110,27 +94,122 @@ TEST_F( TestBloom, Overall_Takes_Long_Lime )
 {
     using namespace std;
 
-    atomic< size_t > positive_counter(0);
+    {
+        cout << endl << "WARNING: the test is run on over 1,000,000 random keys and may take up to 15 mins" << endl;
+        cout << endl << "Generating keys..." << endl;
 
-    for_each( execution::par, begin( present_ ), end( present_ ), [&] ( const auto & str ) {
-        auto[ k1, k2 ] = split_to_keys( str );
-        if ( filter_.test( k1, k2 ) )
+        vector< pair< mt19937, future< void > > > generators( 64 );
+
+        // generate present keys
+        unsigned seed = 0;
+        for ( auto & generator : generators )
         {
-            positive_counter++;
+            generator.first.seed( seed++ );
+            generator.second = async( launch::async, [&] { 
+                while ( true )
+                {
+                    auto str = move( generate( generator.first ) );
+
+                    scoped_lock l( present_mutex_ );
+
+                    if ( present_.size() < present_number )
+                    {
+                        present_.insert( move( str ) );
+                    }
+                    else
+                    {
+                        break;
+                    }
+                }
+            } );
         }
-    } );
+        for ( auto & generator : generators ){ generator.second.wait(); }
 
-    EXPECT_LE( 0.99 * present_number, positive_counter.load() );
-
-    atomic< size_t > negative_counter( 0 );
-
-    for_each( execution::par, begin( absent_ ), end( absent_ ), [&] ( const auto & str ) {
-        auto[ k1, k2 ] = split_to_keys( str );
-        if ( !filter_.test( k1, k2 ) )
+        // generate absent keys
+        for ( auto & generator : generators )
         {
-            negative_counter++;
-        }
-    } );
+            generator.first.seed( seed++ );
+            generator.second = async( launch::async, [&] {
+                while ( true )
+                {
+                    auto str = move( generate( generator.first ) );
+                    
+                    scoped_lock l( absent_mutex_ );
 
-    EXPECT_EQ( absent_number, negative_counter.load() );
+                    if ( absent_.size() < absent_number )
+                    {
+                        if ( !present_.count( str ) )
+                        {
+                            absent_.emplace( move( str ) );
+                        }
+                    }
+                    else
+                    {
+                        break;
+                    }
+                }
+            } );
+        }
+        for ( auto & generator : generators ) { generator.second.wait(); }
+
+        cout << endl << "Processing keys..." << endl;
+
+        // create filter
+        auto bloom = make_shared< Bloom >( nullptr );
+        ASSERT_EQ( RetCode::Ok, bloom->creation_status() );
+
+        // through all the keys - berak them in digest and put into the filter
+        for_each( execution::par, begin( present_ ), end( present_ ), [&] ( const auto & key_str )
+        {
+            Key key( key_str );
+
+            size_t level = 0;
+
+            if ( Key::root() != key )
+            {
+                auto rest = key;
+
+                size_t level = 0;
+
+                while ( rest.size() )
+                {
+                    auto[ split_ok, prefix, suffix ] = rest.split_at_head();
+                    assert( split_ok );
+
+                    auto[ trunc_ok, stem ] = prefix.cut_lead_separator();
+                    assert( trunc_ok );
+
+                    auto digest = Bloom::generate_digest( level, stem );
+                    bloom->add_digest( digest );
+
+                    rest = suffix;
+                    level++;
+                }
+            }
+        } );
+
+        cout << endl << "Checking keys 1st..." << endl;
+
+        // check positive
+        atomic< size_t > positive_counter( 0 );
+        for_each( execution::par, begin( present_ ), end( present_ ), [&] ( const auto & str ) {
+            auto[ k1, k2 ] = split_to_keys( str );
+            if ( auto[ ret, digest_no, may_present ] = bloom->test( k1, k2 ); may_present )
+            {
+                positive_counter++;
+            }
+        } );
+        EXPECT_LE( 0.99 * present_number, positive_counter.load() );
+
+        // check negative
+        atomic< size_t > negative_counter( 0 );
+        for_each( execution::par, begin( absent_ ), end( absent_ ), [&] ( const auto & str ) {
+            auto[ k1, k2 ] = split_to_keys( str );
+            if ( auto[ ret, digest_no, may_present ] = bloom->test( k1, k2 ); !may_present )
+            {
+                negative_counter++;
+            }
+        } );
+        EXPECT_EQ( absent_number, negative_counter.load() );
+    }
 }

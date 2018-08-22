@@ -96,10 +96,32 @@ namespace jb
             creation_status_ = RetCode::UnknownError;
         }
 
+
+        /** Provides creation status
+
+        @retval RetCode - creation status
+        @throw nothing
+        */
         auto creation_status() const noexcept { return creation_status_; }
 
+
+        /** Reads Bloom filter data
+
+        @param [out] buffer - pointer Bloom filter data buffer
+        @retval RetCode - operation status
+        @throw nothing
+        */
         auto read_bloom( uint8_t * buffer ) const noexcept { return file_.read_bloom( buffer ); }
-        auto add_bloom_digest( size_t byte_no, uint8_t byte ) { return file_.write_bloom(); }
+
+
+        /** Writes changes of Bloom filter data
+
+        @param [in] byte_no - offset inside Bloom data
+        @param [in] byte - value to be allpied
+        @retval RetCode - operation status
+        @throw nothing
+        */
+        auto add_bloom_digest( size_t byte_no, uint8_t byte ) { return file_.add_bloom_digest( byte_no, byte ); }
 
 
         /** Provides requested B-tree node from MRU cache
