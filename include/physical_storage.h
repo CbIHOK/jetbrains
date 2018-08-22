@@ -98,6 +98,9 @@ namespace jb
 
         auto creation_status() const noexcept { return creation_status_; }
 
+        auto read_bloom( uint8_t * buffer ) const noexcept { return file_.read_bloom( buffer ); }
+        auto add_bloom_digest( size_t byte_no, uint8_t byte ) { return file_.write_bloom(); }
+
 
         /** Provides requested B-tree node from MRU cache
 

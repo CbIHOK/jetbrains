@@ -1,13 +1,11 @@
 #ifndef __JB__BLOOM__H__
 #define __JB__BLOOM__H__
 
-#include <shared_mutex>
-#include <bitset>
+
 #include <array>
+#include <atomic>
 #include <execution>
 #include <boost/container/static_vector.hpp>
-#include <storage.h>
-#include <SHAtwo/SHAtwo.h>
 
 
 namespace jb
@@ -15,13 +13,12 @@ namespace jb
     template < typename Policies, typename Pad >
     class Storage< Policies, Pad >::PhysicalVolumeImpl::Bloom
     {
-        using Key = typename PhysicalVolumeImpl::Key;
-        using KeyCharT = typename Key::CharT;
-        using KeyHashT = typename Hash< Policies, Pad, Key >::type;
+        using RetCode = typename Storage::RetCode;
+        using Key = typename Storage::Key;
+        using PhysicalStorage = typename PhysicalVolumeImpl::PhysicalStorage;
 
         static constexpr auto BloomSize = Policies::PhysicalVolumePolicy::BloomSize;
-        static constexpr auto BloomFnCount = Policies::PhysicalVolumePolicy::BloomFnCount;
-        static constexpr auto BloomPrecision = Policies::PhysicalVolumePolicy::BloomPrecision;
+        static constexpr auto BloomFnCount = Policies::PhysicalVolumePolicy::MaxTreeDepth;
 
         static bool constexpr power_of_2( size_t value )
         {
@@ -29,79 +26,36 @@ namespace jb
         }
 
         static_assert( power_of_2( BloomSize ), "Should be power of 2" );
-        static_assert( BloomFnCount <= 16, "Number of Bloom functions Must be in range [1,16]" );
+        static_assert( BloomFnCount > 0, "Invalid number of Bloom functions" );
 
-        static constexpr size_t bits_in_byte = 8;
-        static constexpr size_t filter_size = bits_in_byte * Policies::PhysicalVolumePolicy::BloomSize;
-
-
-        mutable std::shared_mutex guard_;
-        std::bitset< filter_size > filter_;
-
-
-        /* Provides Bloom functions for combination of given keys
-
-        @param [in] prefix - prefix key
-        @param [in] suffix - suffix key
-        @return std::array< uint32_t, 20 > holding Bloom functions for combined key
-        */
-        static auto get_digest( const Key & prefix, const Key & suffix )
-        {
-            using namespace std;
-
-            assert( prefix.is_path() );
-            assert( suffix.is_path() );
-
-            array< KeyHashT, BloomPrecision > chunks;
-            fill( begin( chunks ), end( chunks ), KeyHashT{} );
-            auto chunk_it = begin( chunks );
-
-            auto get_chunk_hahses = [&] ( const auto & v ) {
-                auto key = v;
-
-                while ( key.size() && chunk_it != end( chunks ) )
-                {
-                    auto[ split_ok, chunk, rest ] = key.split_at_head();
-                    assert( split_ok );
-                    key = rest;
-
-                    auto[ stem_ok, stem ] = chunk.cut_lead_separator();
-                    assert( stem_ok );
-
-                    static constexpr Hash< Policies, Pad, Key > hasher{};
-                    *chunk_it = hasher( stem );
-                    ++chunk_it;
-                };
-            };
-
-            if ( Key::root() != prefix ) get_chunk_hahses( prefix );
-            if ( Key::root() != suffix )get_chunk_hahses( suffix );
-
-            // calculate SHA-512
-            SHAtwo sha512{};
-            sha512.HashData( reinterpret_cast< uint8_t * >( chunks.data( ) ), static_cast< uint32_t >( chunks.size( ) * sizeof( KeyHashT ) ) );
-
-            // extract SHA-512 digest
-            static constexpr size_t digets_placeholder_size = 20;
-            array< uint32_t, digets_placeholder_size > digest;
-            sha512.GetDigest( reinterpret_cast< uint8_t *>( const_cast< uint32_t *>( digest.data() ) ) );
-
-            return digest;
-        }
+        RetCode creation_status_ = RetCode::Ok;
+        PhysicalStorage * storage_ = nullptr;
+        std::array< uint8_t, BloomSize > filter_;
 
 
     public:
 
-        using Digest = std::array< uint32_t, 20 >;
+        using Digest = size_t;
 
-        Bloom() = default;
-        virtual ~Bloom() noexcept = default;
+        Bloom() = delete;
+        Bloom( Bloom && ) = delete;
 
-        Bloom( const Bloom & ) = delete;
-        Bloom & operator = ( const Bloom & ) = delete;
+        explicit Bloom( PhysicalStorage * storage = nullptr ) try : storage_( storage )
+        {
+            if ( storage_ && RetCode::Ok == storage_->creation_status() )
+            {
+                creation_status_ = storage_->read_bloom( filter_.data() );
+            }
 
-        Bloom( Bloom && ) noexcept = default;
-        Bloom & operator = ( Bloom && ) noexcept = default;
+            filter_.fill( 0 );
+        }
+        catch ( ... )
+        {
+            creation_status_ = RetCode::UnknownError;
+        }
+
+
+        auto creation_status() const noexcept { return creation_status_; }
 
 
         /** Updates the filter adding another combinations of keys
@@ -109,44 +63,92 @@ namespace jb
         @param [in] prefix - prefix key
         @param [in] suffix - suffix key
         */
-        auto add( const Key & prefix, const Key & suffix )
+        auto add_digest( Digest digest ) noexcept
         {
             using namespace std;
 
-            auto digest{ move( get_digest( prefix, suffix ) ) };
+            const auto byte_no = ( digest / 8 ) % BloomSize;
+            const auto bit_no = digest % 8;
+            filter_[ byte_no ] |= ( 1 << bit_no );
 
-            unique_lock< shared_mutex > lock( guard_ );
-
-            for ( size_t i = 0; i < BloomFnCount; ++i )
+            if ( storage_ && RetCode::Ok == ->creation_status() )
             {
-                filter_.set( ( digest[ i ] % filter_size ) );
+                return storage_->update_bloom( byte_no, filter_[ byte_no ] );
             }
+
+            return RetCode::Ok;
         }
 
 
-        /** Checks if combination of given keys may be in a set
+        /** Checks if combination of given keys MAY present
 
         @param [in] prefix - prefix key
         @param [in] suffix - suffix key
-        @return false if the combination is not in set, true means that the combination MAY BE in a set
+        @retval RetCode - operation status
+        @retval size_t - number of generated digest
+        @retval bool - if combined key may present
+        @throw nothing
         */
-        auto test( const Key & prefix, const Key & suffix ) const
+        std::tuple< RetCode, size_t, bool > test( const Key & prefix, const Key & suffix ) const noexcept
         {
             using namespace std;
 
-            auto digest{ move( get_digest( prefix, suffix ) ) };
+            assert( prefix.is_path() && suffix.is_path() );
 
-            shared_lock< shared_mutex > lock( guard_ );
+            boost::container::static_vector< Digest, BloomFnCount > digests;
+            auto status = RetCode::Ok;
 
-            for ( size_t i = 0; i < BloomFnCount; ++i )
-            {
-                if ( ! filter_.test( ( digest[ i ] % filter_size ) ) )
+            auto get_digests = [&] ( const auto & key ) noexcept {
+                
+                if ( Key::root() != key )
                 {
-                    return false;
+                    auto rest = key;
+
+                    while ( rest.size() && RetCode::Ok == status )
+                    {
+                        if ( digests.size() == digests.capacity() )
+                        {
+                            status = RetCode::MaxTreeDepthExceeded;
+                            break;
+                        }
+
+                        auto[ split_ok, prefix, suffix ] = rest.split_at_head();
+                        assert( split_ok );
+
+                        auto[ trunc_ok, stem ] = prefix.cut_lead_separator();
+                        assert( trunc_ok );
+
+                        auto digest = Hash< Key >{}( stem );
+                        digests.push_back( digest );
+
+                        rest = suffix;
+                    }
                 }
+            };
+
+            get_digests( prefix );
+            get_digests( suffix );
+
+            if ( RetCode::Ok == status )
+            {
+                bool result = true;
+
+                for ( auto digest : digests )
+                {
+                    const auto byte_no = ( digest / 8 ) % BloomSize;
+                    const auto bit_no = digest % 8;
+                    
+                    if ( ( filter_[ byte_no ] & ( 1 << bit_no ) ) == 0 )
+                    {
+                        result = false;
+                        break;
+                    }
+                };
+
+                return { status, digests.size(), result };
             }
 
-            return true;
+            return { status, digests.size(), false };
         }
     };
 }

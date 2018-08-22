@@ -39,7 +39,7 @@ namespace jb
         inline static const auto InvalidHandle = OsPolicy::InvalidHandle;
 
         static constexpr auto BloomSize = Policies::PhysicalVolumePolicy::BloomSize;
-        static constexpr auto BloomFnCount = Policies::PhysicalVolumePolicy::BloomFnCount;
+        static constexpr auto MaxTreeDepth = Policies::PhysicalVolumePolicy::MaxTreeDepth;
         static constexpr auto ReaderNumber = Policies::PhysicalVolumePolicy::ReaderNumber;
         static constexpr auto BTreeMinPower = Policies::PhysicalVolumePolicy::BTreeMinPower;
         static constexpr auto ChunkSize = Policies::PhysicalVolumePolicy::ChunkSize;
@@ -106,14 +106,7 @@ namespace jb
 
         static CompatibilityStamp generate_compatibility_stamp() noexcept
         {
-            return misc::variadic_hash< Policies, Pad >(
-                KeyCharT{},
-                ValueT{},
-                BloomSize,
-                BloomFnCount,
-                BTreeMinPower,
-                ChunkSize
-            );
+            return variadic_hash( KeyCharT{}, ValueT{}, BloomSize, MaxTreeDepth, BTreeMinPower, ChunkSize );
         }
 
 
@@ -175,6 +168,56 @@ namespace jb
 
             of_Root = round_up< SectorSize >( of_Checksum_2 + sz_Checksum_2 )
         };
+
+
+        /** Initialize newly create file
+
+        @throw nothing
+        */
+        auto deploy() noexcept
+        {
+            bool status = true;
+
+            auto ce = [&] ( const auto & f ) noexcept { if ( status ) status = f(); };
+
+            // write compatibility stamp
+            ce( [&] {
+                return std::get< bool >( OsPolicy::seek_file( writer_, ( int64_t )Offset::of_CompatibilityStamp, OsPolicy::SeekMethod::Begin ) );
+            } );
+            ce( [&] {
+                CompatibilityStamp stamp = normalize( generate_compatibility_stamp() );
+                return std::get< bool >( OsPolicy::write_file( writer_, &stamp, sizeof( stamp ) ) );
+            } );
+
+            // write file size
+            ce( [&] {
+                return std::get< bool >( OsPolicy::seek_file( writer_, ( int64_t )Offset::of_FileSize, OsPolicy::SeekMethod::Begin ) );
+            } );
+            ce( [&] {
+                auto value = normalize( ( uint64_t )Offset::of_Root );
+                return std::get< bool >( OsPolicy::write_file( writer_, &value, sizeof( value ) ) );
+            } );
+
+            // invalidate free space ptr
+            ce( [&] {
+                return std::get< bool >( OsPolicy::seek_file( writer_, ( int64_t )Offset::of_FreeSpacePtr, OsPolicy::SeekMethod::Begin ) );
+            } );
+            ce( [&] {
+                auto value = normalize( InvalidNodeUid );
+                return std::get< bool >( OsPolicy::write_file( writer_, &value, sizeof( value ) ) );
+            } );
+
+            // invalidate ( file size, free space ptr ) copy
+            ce( [&] {
+                return std::get< bool >( OsPolicy::seek_file( writer_, ( int64_t )Offset::of_Checksum_1, OsPolicy::SeekMethod::Begin ) );
+            } );
+            ce( [&] {
+                auto value = normalize( variadic_hash( ( uint64_t )Offset::of_Root, InvalidNodeUid ) + 1 );
+                return std::get< bool >( OsPolicy::write_file( writer_, &value, sizeof( value ) ) );
+            } );
+
+            return status ? RetCode::Ok : RetCode::IoError;
+        }
 
 
     public:
@@ -303,71 +346,20 @@ namespace jb
         auto newly_created() const noexcept { return newly_created_; }
 
 
-        /** Initialize newly create file
-
-        @throw nothing
-        */
-        auto deploy() noexcept
-        {
-            auto ce = [&] ( const auto & f ) {
-                if ( RetCode::Ok == creation_status_ && ! f() )
-                {
-                    creation_status_ = RetCode::IoError;
-                }
-            };
-
-            // write compatibility stamp
-            ce( [&] {
-                return std::get< bool >( OsPolicy::seek_file( writer_, ( int64_t )Offset::of_CompatibilityStamp, OsPolicy::SeekMethod::Begin ) );
-            } );
-            ce( [&] {
-                CompatibilityStamp stamp = normalize( generate_compatibility_stamp() );
-                return std::get< bool >( OsPolicy::write_file( writer_, &stamp, sizeof( stamp ) ) );
-            } );
-
-            // write file size
-            ce( [&] {
-                return std::get< bool >( OsPolicy::seek_file( writer_, ( int64_t )Offset::of_FileSize, OsPolicy::SeekMethod::Begin ) );
-            } );
-            ce( [&] {
-                auto value = normalize( ( uint64_t )Offset::of_Root );
-                return std::get< bool >( OsPolicy::write_file( writer_, &value, sizeof( value ) ) );
-            } );
-
-            // invalidate free space ptr
-            ce( [&] {
-                return std::get< bool >( OsPolicy::seek_file( writer_, ( int64_t )Offset::of_FreeSpacePtr, OsPolicy::SeekMethod::Begin ) );
-            } );
-            ce( [&] {
-                auto value = normalize( InvalidNodeUid );
-                return std::get< bool >( OsPolicy::write_file( writer_, &value, sizeof( value ) ) );
-            } );
-
-            // invalidate ( file size, free space ptr ) copy
-            ce( [&] {
-                return std::get< bool >( OsPolicy::seek_file( writer_, ( int64_t )Offset::of_Checksum_1, OsPolicy::SeekMethod::Begin ) );
-            } );
-            ce( [&] {
-                auto value = normalize( misc::variadic_hash< Policies, Pad >( ( uint64_t )Offset::of_Root, InvalidNodeUid ) + 1 );
-                return std::get< bool >( OsPolicy::write_file( writer_, &value, sizeof( value ) ) );
-            } );
-        }
-
-
         /** Reads data for Bloom filter
 
         @param [out] bloom_buffer - target for Bloom data
         @return RetCode - status of operation
         */
-        std::tuple< RetCode > read_bloom( uint8_t * bloom_buffer ) const noexcept
+        RetCode read_bloom( uint8_t * bloom_buffer ) const noexcept
         {
-
+            return RetCode::NotImplementedYet;
         }
 
 
         /** Write changes from Bloom filter
         */
-        std::tuple< RetCode > write_bloom( const BloomDigest & digest ) const noexcept
+        std::tuple< RetCode > add_bloom_digest( const BloomDigest & digest ) const noexcept
         {
             using namespace std;
 
@@ -377,7 +369,7 @@ namespace jb
                 auto byte_no = fn / 8;
                 auto bit_no = fn % 8;
 
-                if (  )
+                if (  )e
             } );
         }
     };

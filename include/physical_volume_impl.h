@@ -61,12 +61,6 @@ namespace jb
 
 
         //
-        // filters incoming path for existance
-        //
-        Bloom filter_;
-
-
-        //
         // locks mounted path
         //
         PathLocker path_locker_;
@@ -76,6 +70,12 @@ namespace jb
         //
         //
         PhysicalStorage physical_storage_;
+
+
+        //
+        // filters incoming path for existance
+        //
+        Bloom filter_;
 
 
         /* Search for key starting from given B-tree node
@@ -166,7 +166,7 @@ namespace jb
             }
             else
             {
-                return std::tuple{ RetCode::MaxSearchDepthExceeded, BTreeP{}, BTree::Npos };
+                return std::tuple{ RetCode::MaxTreeDepthExceeded, BTreeP{}, BTree::Npos };
             }
 
             // while not cacelled
@@ -220,7 +220,7 @@ namespace jb
                     }
                     else
                     {
-                        return std::tuple{ RetCode::MaxSearchDepthExceeded, BTreeP{}, BTree::Npos };
+                        return std::tuple{ RetCode::MaxTreeDepthExceeded, BTreeP{}, BTree::Npos };
                     }
 
                     // apply action to the found key
@@ -340,9 +340,11 @@ namespace jb
 
         explicit PhysicalVolumeImpl( const std::filesystem::path & path, bool create ) try
             : physical_storage_{ path, create }
+            , filter_( &physical_storage_ )
         {
             creation_status_ = std::max( creation_status_, path_locker_.creation_status() );
             creation_status_ = std::max( creation_status_, physical_storage_.creation_status() );
+            creation_status_ = std::max( creation_status_, filter_.creation_status() );
         }
         catch ( ... )
         {
@@ -382,16 +384,20 @@ namespace jb
                     } );
                 }
                 // check if path exists
-                else if ( !filter_.test( entry_path, relative_path ) )
+                else if ( auto[ ret, digests_no, may_present ] = filter_.test( entry_path, relative_path ); RetCode::Ok != ret )
                 {
-                    return wait_and_do_it( in, out, [] {
-                        return std::tuple{ RetCode::NotFound, InvalidNodeUid, PathLock{} };
-                    } );
+                    return wait_and_do_it( in, out, [=] { return std::tuple{ ret, InvalidNodeUid, PathLock{} }; } );
+                }
+                else
+                {
+                    return wait_and_do_it( in, out, [] { return std::tuple{ RetCode::NotFound, InvalidNodeUid, PathLock{} }; } );
                 }
 
-                static_vector< upgrade_lock< upgrade_mutex >, MaxTreeDepth > locks;
                 PathLock mount_lock;
                 NodeUid mount_node_uid = InvalidNodeUid;
+
+                using upgrade_lock = boost::upgrade_lock< boost::upgrade_mutex >;
+                boost::container::static_vector< upgrade_lock, MaxTreeDepth > locks;
 
                 // navigate through to path and take lock over each node
                 auto[ ret, btree, pos ] = navigate( entry_node_uid, relative_path, in, locks, [&] ( const auto & node ) {
@@ -456,12 +462,21 @@ namespace jb
 
             try
             {
-                if ( !filter_.test( entry_path, relative_path ) )
+                if ( auto[ ret, digest_no, may_present ] = filter_.test( entry_path, relative_path ); RetCode::Ok != ret )
+                {
+                    return wait_and_do_it( in, out, [=] { return std::tuple{ ret }; } );
+                }
+                else if ( digest_no == MaxTreeDepth )
+                {
+                    return wait_and_do_it( in, out, [] { return std::tuple{ RetCode::MaxTreeDepthExceeded }; } );
+                }
+                else
                 {
                     return wait_and_do_it( in, out, [] { return std::tuple{ RetCode::NotFound }; } );
                 }
 
-                static_vector< upgrade_lock< upgrade_mutex >, MaxTreeDepth > locks;
+                using upgrade_lock = boost::upgrade_lock< boost::upgrade_mutex >;
+                boost::container::static_vector< upgrade_lock, MaxTreeDepth > locks;
 
                 auto[ ret, btree, pos ] = navigate( entry_node_uid,
                     relative_path,
@@ -484,9 +499,7 @@ namespace jb
                 }
                 else
                 {
-                    return wait_and_do_it( in, out, [=] {
-                        return std::tuple{ ret };
-                    } );
+                    return wait_and_do_it( in, out, [=] { return std::tuple{ ret }; } );
                 }
             }
             catch ( ... )
@@ -516,17 +529,20 @@ namespace jb
             execution_connector & out )
         {
             using namespace std;
-            using namespace boost;
-            using namespace boost::container;
 
             try
             {
-                if ( !filter_.test( entry_path, relative_path ) )
+                if ( auto[ ret, digests_no, may_present ] = filter_.test( entry_path, relative_path ); RetCode::Ok != ret )
                 {
-                    return wait_and_do_it( in, out, [] { return std::tuple{ RetCode::NotFound, Value{} }; } );
+                    return wait_and_do_it( in, out, [=] { return tuple{ ret, Value{} }; } );
+                }
+                else
+                {
+                    return wait_and_do_it( in, out, [] { return tuple{ RetCode::NotFound, Value{} }; } );
                 } 
                 
-                static_vector< upgrade_lock< upgrade_mutex >, MaxTreeDepth > locks;
+                using upgrade_lock = boost::upgrade_lock< boost::upgrade_mutex >;
+                boost::container::static_vector< upgrade_lock, MaxTreeDepth > locks;
 
                 auto[ ret, btree, pos ] = navigate( entry_node_uid, 
                     relative_path, 
@@ -537,15 +553,13 @@ namespace jb
                 if ( RetCode::Ok == ret )
                 {
                     return wait_and_do_it( in, out, [=] {
-                        auto value = btree->value( pos );
-                        return std::tuple{ RetCode::Ok, std::move( value ) };
+                        Value value = btree->value( pos );
+                        return tuple{ RetCode::Ok, std::move( value ) };
                     } );
                 }
                 else
                 {
-                    return wait_and_do_it( in, out, [=] {
-                        return std::tuple{ ret, Value{} };
-                    } );
+                    return wait_and_do_it( in, out, [=] { return tuple{ ret, Value{} }; } );
                 }
             }
             catch ( ... )
@@ -553,7 +567,7 @@ namespace jb
 
             }
 
-            return wait_and_do_it( in, out, [] { return std::tuple{ RetCode::UnknownError, Value{} }; } );
+            return wait_and_do_it( in, out, [] { return tuple{ RetCode::UnknownError, Value{} }; } );
         }
 
 
@@ -580,7 +594,11 @@ namespace jb
 
             try
             {
-                if ( !filter_.test( entry_path, relative_path ) )
+                if ( auto[ ret, digests_no, may_present ] = filter_.test( entry_path, relative_path ); RetCode::Ok != ret )
+                {
+                    return wait_and_do_it( in, out, [=] { return tuple{ ret }; } );
+                }
+                else if ( !may_present )
                 {
                     return wait_and_do_it( in, out, [] { return tuple{ RetCode::NotFound }; } );
                 }

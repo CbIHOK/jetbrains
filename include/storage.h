@@ -28,18 +28,22 @@ namespace jb
     struct DefaultPad {};
 
 
-    template < typename Policies, typename Pad, typename T > struct Hash
-    {
-        static constexpr bool enabled = false;
-        size_t operator() ( const T & ) const noexcept { return 0; }
-    };
-
-
     /**
     */
     template < typename Policies, typename Pad >
     class Storage
     {
+    public:
+
+        template < typename T >
+        struct Hash
+        {
+            size_t operator() ( const T & v ) const noexcept { return std::hash< T >{}( v ); }
+        };
+
+    private:
+
+        template < typename T > friend struct Hash;
 
         friend typename Pad;
         friend class TestStorage;
@@ -52,10 +56,12 @@ namespace jb
         friend class PhysicalVolume;
         friend class MountPoint;
 
+        class Key;
         class VirtualVolumeImpl;
         class PhysicalVolumeImpl;
         class MountPointImpl;
 
+        using KeyValue = typename Key::ValueT;
 
     public:
 
@@ -76,7 +82,7 @@ namespace jb
             InUse,                  ///< The handler is currently used by concurrent operation and cannot be closed
             HasDependentMounts,     ///< There are underlaying mount
             TooManyConcurrentOps,   ///< The limit of concurent operations over physical volume is reached
-            MaxSearchDepthExceeded, ///< Cannot search such deep inside, consider additional mounting
+            MaxTreeDepthExceeded,   ///< Cannot search such deep inside
             AlreadyExpired,         ///< Given timestamp already in the past
             KeyAlreadyExists,       ///< Key already exists
             AlreadyOpened,          ///< Physical file is already opened
@@ -88,15 +94,66 @@ namespace jb
             NotImplementedYet
         };
 
-        class Key;
-
-        using KeyValue = typename Key::ValueT;
         using Value = typename Policies::ValueT;
         using Timestamp = std::filesystem::file_time_type;
 
         class VirtualVolume;
         class PhysicalVolume;
         class MountPoint;
+
+
+        template <>
+        struct Hash< Key >
+        {
+            size_t operator() ( const Key & v ) const noexcept { return std::hash< typename Key::ViewT >{}( v.view_ ); }
+        };
+
+        template <>
+        struct Hash< PhysicalVolume >
+        {
+            size_t operator() ( const PhysicalVolume & v ) const noexcept
+            { 
+                return std::hash< std::shared_ptr< PhysicalVolumeImpl > >{}( v.impl_.lock() );
+            }
+        };
+
+        //
+        // Provides hash combining constant depending on size of size_t type
+        //
+        static constexpr size_t hash_constant() noexcept
+        {
+            static_assert( sizeof( size_t ) == 8 || sizeof( size_t ) == 4, "Cannot detect 32-bit or 64-bit platform" );
+
+            if constexpr ( sizeof( size_t ) == 8 )
+            {
+                return 0x9E3779B97F4A7C15ULL;
+            }
+            else
+            {
+                return 0x9e3779b9U;
+            }
+        }
+
+
+        //
+        // Provides comined hash value for a variadic sequence of agruments
+        //
+        template < typename T, typename... Args >
+        static auto variadic_hash( const T & v, const Args &... args ) noexcept
+        {
+            auto seed = variadic_hash( args... );
+            return Hash< T >{}( v ) + hash_constant() + ( seed << 6 ) + ( seed >> 2 );
+        }
+
+
+        //
+        // Just a terminal specialization of variadic template
+        //
+        template < typename T >
+        static auto variadic_hash( const T & v ) noexcept
+        {
+            return Hash< T >{}( v );
+        }
 
 
     private:

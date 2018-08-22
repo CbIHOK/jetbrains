@@ -28,10 +28,8 @@ namespace jb
             static constexpr size_t MountPointLimit = (1 << 10);
             static constexpr size_t ReaderNumber = 16;
 
-            static constexpr size_t BloomSize = 16 * ( 1 << 20 ); // 16 Mb
-            static constexpr size_t BloomFnCount = 16;
-            static constexpr size_t BloomPrecision = 16;
             static constexpr size_t MaxTreeDepth = 32;
+            static constexpr size_t BloomSize = 16 * ( 1 << 20 ); // 16 Mb
 
             static constexpr size_t BTreeMinPower = 1024;
             static constexpr size_t BTreeCacheSize = 1024;

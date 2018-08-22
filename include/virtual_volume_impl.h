@@ -35,7 +35,7 @@ namespace jb
         using KeyValue = typename Storage::KeyValue;
         using Value = typename Storage::Value;
         using Timestamp = typename Storage::Timestamp;
-        using KeyHashT = typename Hash< Policies, Pad, Key >::type;
+        using KeyHashT = size_t;
         using PhysicalVolumeImpl = typename Storage::PhysicalVolumeImpl;
         using PhysicalVolumeImplP = std::shared_ptr< PhysicalVolumeImpl >;
         using PathLock = typename PhysicalVolumeImpl::PathLock;
@@ -160,7 +160,7 @@ namespace jb
 
             while ( current != Key{} )
             {
-                static Hash< Policies, Pad, Key > hasher{};
+                static Hash< Key > hasher{};
 
                 auto current_hash = hasher( current );
 
@@ -530,7 +530,7 @@ namespace jb
                 }
 
                 // prevent mouting of the same physical volume at a logicap path
-                auto uid = misc::variadic_hash< Policies, Pad >( logical_path, physical_volume );
+                auto uid = variadic_hash( logical_path, physical_volume );
                 if ( uids_.find( uid ) != uids_.end() )
                 {
                     return { RetCode::VolumeAlreadyMounted, MountPointImplP() };
@@ -608,7 +608,7 @@ namespace jb
                 auto backtrace_ptr = make_shared< MountPointBacktrace >();
 
                 // combine logical path for new mount
-                auto mounted_hash = Hash< Policies, Pad, KeyValue >{}( logical_path / alias );
+                auto mounted_hash = Hash< KeyValue >{}( logical_path / alias );
 
                 // insert all the keys and fill backtrace
                 backtrace_ptr->uid_ = uids_.insert( uid ).first;

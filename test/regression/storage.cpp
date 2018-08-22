@@ -51,8 +51,8 @@ TEST_F( TestStorage, PhysicalVolume_Dummy )
         EXPECT_TRUE( v1 == v2 );
         EXPECT_FALSE( v1 != v2 );
 
-        size_t h1 = ::jb::misc::variadic_hash< ::jb::DefaultPolicies, ::jb::DefaultPad >( v1 );
-        size_t h2 = ::jb::misc::variadic_hash< ::jb::DefaultPolicies, ::jb::DefaultPad >( v2 );
+        size_t h1 = Storage::variadic_hash( v1 );
+        size_t h2 = Storage::variadic_hash( v2 );
         EXPECT_EQ( h1, h2 );
     }
 }
@@ -98,7 +98,7 @@ TEST_F( TestStorage, PhysicalVolume_Base )
 TEST_F( TestStorage, PhysicalVolume_Limit )
 {
     std::set< PhysicalVolume > set;
-    std::unordered_set< PhysicalVolume, jb::Hash< Policies, Pad, PhysicalVolume > > hash;
+    std::unordered_set< PhysicalVolume, Storage::Hash< PhysicalVolume > > hash;
 
     for ( size_t i = 0; i < Policies::PhysicalVolumePolicy::VolumeLimit; ++i )
     {

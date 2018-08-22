@@ -21,7 +21,7 @@ namespace jb
         using Key = typename Storage::Key;
         using Value = typename Storage::Value;
         using Timestamp = typename Storage::Timestamp;
-        using KeyHashT = typename Hash< Policies, Pad, Key >::type;
+        using KeyHashT = size_t;
         using BTreeP = std::shared_ptr< BTree >;
 
         using NodeUid = PhysicalStorage::NodeUid;
@@ -94,7 +94,7 @@ namespace jb
 
             assert( key.is_leaf() );
 
-            static constexpr Hash< Policies, Pad, Key > hasher;
+            static constexpr Hash< Key > hasher;
             auto hash = hasher( key );
 
             if ( auto lower = lower_bound( begin( elements_ ), end( elements_ ), hash ); lower == elements_.end() )

@@ -17,7 +17,6 @@ protected:
     using MountPoint = typename Storage::MountPoint;
     using Value = Storage::Value;
     using Timestamp = Storage::Timestamp;
-    using Hash = jb::Hash< Policies, Pad, VirtualVolume >;
 
 
     ~TestVirtualVolume( ) { Storage::CloseAll( ); }
@@ -38,7 +37,6 @@ TEST_F( TestVirtualVolume, Dummy )
         EXPECT_TRUE( v <= v1 );
         EXPECT_FALSE( v > v1 );
         EXPECT_TRUE( v >= v1 );
-        EXPECT_EQ( Hash{}( v ), Hash{}( v1 ) );
     }
 
     {
@@ -83,7 +81,6 @@ TEST_F( TestVirtualVolume, Base )
         EXPECT_TRUE( v != v1 );
         EXPECT_TRUE( v < v1 || v > v1 );
         EXPECT_TRUE( v <= v1 || v >= v1 );
-        EXPECT_NE( Hash{}( v ), Hash{}( v1 ) );
 
         v1.Close( );
         EXPECT_FALSE( v1 );
@@ -92,7 +89,6 @@ TEST_F( TestVirtualVolume, Base )
         EXPECT_TRUE( v != v1 );
         EXPECT_TRUE( v < v1 || v > v1 );
         EXPECT_TRUE( v <= v1 || v >= v1 );
-        EXPECT_NE( Hash{}( v ), Hash{}( v1 ) );
     }
 }
 

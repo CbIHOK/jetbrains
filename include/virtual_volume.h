@@ -21,7 +21,6 @@ namespace jb
     {
         friend typename Pad;
         friend class TestVirtualVolume;
-        template < typename Policies, typename Pad, typename T > friend struct Hash;
 
         using Storage = ::jb::Storage< Policies, Pad >;
         friend class Storage;
@@ -340,19 +339,5 @@ namespace jb
 
 #include "virtual_volume_impl.h"
 
-
-namespace jb
-{
-    template < typename Policies, typename Pad >
-    struct Hash< Policies, Pad, typename Storage< Policies, Pad >::VirtualVolume >
-    {
-        static constexpr bool enabled = true;
-
-        size_t operator () ( const typename Storage< Policies, Pad >::VirtualVolume & volume ) const noexcept
-        {
-            return std::hash< decltype( volume.impl_.lock() ) >{}( volume.impl_.lock() );
-        }
-    };
-}
 
 #endif

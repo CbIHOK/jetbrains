@@ -91,7 +91,7 @@ TEST_F( TestKey, Construction )
 
 TEST_F( TestKey, Compare )
 {
-    using Hash = ::jb::Hash< ::jb::DefaultPolicies, ::jb::DefaultPad, Key >;
+    using Hash = Storage::Hash< Key >;
 
     EXPECT_EQ( Key{ "boo"s }, Key{ "boo"s } );
     EXPECT_NE( Key{ "boo1"s }, Key{ "boo2"s } );

@@ -17,7 +17,7 @@ namespace jb
         friend class TestStorage;
         friend class Storage;
         friend typename Storage::VirtualVolume;
-        template < typename Policies, typename Pad, typename T > friend struct Hash;
+        template < typename T > friend struct Storage::Hash;
 
         using Impl = typename Storage::PhysicalVolumeImpl;
         std::weak_ptr< Impl > impl_;
@@ -92,18 +92,6 @@ namespace jb
         RetCode PrioritizeAfter( const PhysicalVolume & after ) const noexcept
         {
             return Storage::prioritize_after( *this, after );
-        }
-    };
-
-
-    template < typename Policies, typename Pad >
-    struct Hash< Policies, Pad, typename Storage< Policies, Pad >::PhysicalVolume >
-    {
-        static constexpr bool enabled = true;
-
-        size_t operator () ( const typename Storage< Policies, Pad >::PhysicalVolume & volume ) const noexcept
-        {
-            return std::hash< decltype( volume.impl_.lock( ) ) >{}( volume.impl_.lock( ) );
         }
     };
 }
