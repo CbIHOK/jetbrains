@@ -40,7 +40,9 @@ namespace jb
         using TimestampT = typename Storage::Timestamp;
         using OsPolicy = typename Policies::OSPolicy;
         using Handle = typename OsPolicy::HandleT;
-        using CompatibilityStamp = boost::endian::big_uint64_t;
+        using big_uint64_t = boost::endian::big_uint64_t;
+        using big_uint64_at = boost::endian::big_uint64_at;
+        using CompatibilityStamp = big_uint64_t;
         
         inline static const auto InvalidHandle = OsPolicy::InvalidHandle;
 
@@ -53,8 +55,12 @@ namespace jb
 
     public:
 
-        using NodeUid = uint64_t;
-        static constexpr NodeUid InvalidNodeUid = std::numeric_limits< NodeUid >::max();
+        using ChunkOffset = uint64_t;
+        static constexpr ChunkOffset InvalidChunkOffset = std::numeric_limits< ChunkOffset >::max();
+
+        class Transaction;
+        class ostreambuf;
+        class istreambuf;
 
     private:
 
@@ -64,7 +70,8 @@ namespace jb
         std::string file_lock_name_;
         std::shared_ptr< boost::interprocess::named_mutex > file_lock_;
 
-        mutable std::mutex writer_mutex_;
+        mutable std::mutex transaction_mutex_;
+
         Handle writer_ = InvalidHandle;
 
         mutable std::mutex bloom_writer_mutex_;
@@ -73,18 +80,6 @@ namespace jb
         std::mutex readers_mutex_;
         boost::container::static_vector< Handle, ReaderNumber > readers_;
         std::stack< Handle, boost::container::static_vector< Handle, ReaderNumber > > reader_stack_;
-
-
-        ///** Let us know if the system uses Little Endian
-
-        //@retval true if the system uses Little Endian
-        //@throw nothing
-        //*/
-        //static constexpr auto little_endian() noexcept
-        //{
-        //    static constexpr auto tester = 1U;
-        //    return *( reinterpret_cast< const uint8_t* >( &tester ) ) == 1;
-        //}
 
 
         /** Rounds given value up by the module
@@ -99,42 +94,6 @@ namespace jb
         {
             return m * ( v / m + ( v % m ? 1 : 0 ) );
         }
-
-
-        ///** If the sysytem uses Little Endian converts given value to Big Endian
-
-        //else returns the value untouched
-
-        //TODO: consider using specialized C++ functions
-
-        //@tparam T - integral type
-        //@param [in] v - value
-        //@retval the value in Big Endian form
-        //@throw nothing
-        //*/
-        //template < typename T >
-        //static T normalize( T v ) noexcept
-        //{
-        //    static_assert( std::is_integral<T>::value, "Only integral types are allowed" );
-
-        //    if ( little_endian() )
-        //    {
-        //        T v_;
-
-        //        for ( uint8_t *s = reinterpret_cast< uint8_t* >( &v ), *d = reinterpret_cast< uint8_t* >( &v_ ) + sizeof( T ) - 1;
-        //            s < reinterpret_cast< uint8_t* >( &v ) + sizeof( T );
-        //            ++s, --d )
-        //        {
-        //            std::swap( *d, *s );
-        //        }
-
-        //        return v_;
-        //    }
-        //    else
-        //    {
-        //        return v;
-        //    }
-        //}
 
 
         /** Generates compatibility stamp
@@ -155,7 +114,7 @@ namespace jb
         */
         auto check_compatibility() noexcept
         {
-            if ( std::get< bool> ( OsPolicy::seek_file( writer_, HeaderOffset::of_CompatibilityStamp, OsPolicy::SeekMethod::Begin ) ) )
+            if ( std::get< bool> ( OsPolicy::seek_file( writer_, HeaderOffsets::of_CompatibilityStamp ) ) )
             {
                 CompatibilityStamp stamp;
 
@@ -177,50 +136,106 @@ namespace jb
             }
         }
 
+        static_assert( ChunkSize - 3 * sizeof( big_uint64_at ) > 0, "Chunk size too small" );
+        static constexpr auto SpaceInChunk = ChunkSize - 3 * sizeof( big_uint64_at );
 
-        /** Enumerates predefined offsets in data file
-        */
-        enum HeaderOffset
+        struct chunk_t
         {
-            of_CompatibilityStamp = 0,
-            sz_CompatibilityStamp = sizeof( CompatibilityStamp ),
+            big_uint64_at next_used_;
+            big_uint64_at next_free_;
+            big_uint64_at used_size_;
+            std::array< uint8_t, SpaceInChunk > space_;
+        };
 
-            of_Bloom = of_CompatibilityStamp + sz_CompatibilityStamp,
-            sz_Bloom = BloomSize,
+        enum ChunkOffsets
+        {
+            of_NextUsed = offsetof( chunk_t, next_used_ ),
+            sz_NextUsed = sizeof( chunk_t::next_used_ ),
 
-            SectorSize = 4096,
+            of_NextFree = offsetof( chunk_t, next_free_ ),
+            sz_NextFree = sizeof( chunk_t::next_free_ ),
 
-            of_FileSize = round_up< SectorSize >( of_Bloom + sz_Bloom ),
-            sz_FileSize = sizeof( uint64_t ),
+            of_UsedSize = offsetof( chunk_t, used_size_ ),
+            sz_UsedSize = sizeof( chunk_t::used_size_ ),
 
-            of_FreeSpacePtr = of_FileSize + sz_FileSize,
-            sz_FreeSpacePtr = sizeof( NodeUid ),
+            of_Space = offsetof( chunk_t, space_ ),
+            sz_Space = sizeof( chunk_t::space_ ),
+        };
 
-            of_FileSizeCopy = round_up< SectorSize >( of_FreeSpacePtr + sz_FreeSpacePtr ),
-            sz_FileSizeCopy = sz_FileSize,
+        struct header_t
+        {
+            CompatibilityStamp compatibility_stamp;
 
-            of_FreeSpacePtrCopy = of_FileSizeCopy + sz_FileSizeCopy,
-            sz_FreeSpacePtrCopy = sz_FreeSpacePtr,
+            uint8_t bloom_[ BloomSize ];
 
-            of_PreservedChunkUid = of_FreeSpacePtrCopy + sz_FreeSpacePtrCopy,
-            sz_PreservedChunkUid = sizeof( NodeUid ),
+            struct transactional_data_t
+            {
+                big_uint64_at file_size_;
+                big_uint64_at free_space_;
+            };
 
-            of_PreservedChunk = of_PreservedChunkUid + sz_PreservedChunkUid,
-            sz_PreservedChunk = ChunkSize,
+            transactional_data_t transactional_data_;
 
-            of_Checksum = of_PreservedChunk + sz_PreservedChunk,
-            sz_Checksum = sizeof( uint64_t ),
+            transactional_data_t transaction_;
 
-            of_Transaction = of_FileSizeCopy,
-            sz_Transaction = of_Checksum - of_FileSizeCopy,
+            big_uint64_at transaction_crc_;
 
-            of_Root = round_up< SectorSize >( of_Checksum + sz_Checksum ),
+            struct preserved_chunk_t
+            {
+                big_uint64_at target_;
+                chunk_t chunk_;
+            };
+
+            preserved_chunk_t preserved_chunk_;
+        };
+
+        enum TransactionDataOffsets
+        {
+            of_FileSize = offsetof( header_t::transactional_data_t, file_size_ ),
+            sz_FileSize = sizeof( header_t::transactional_data_t::file_size_ ),
+
+            of_FreeSpace = offsetof( header_t::transactional_data_t, free_space_ ),
+            sz_FreeSpace = sizeof( header_t::transactional_data_t::free_space_ ),
+        };
+
+        enum PreservedChunkOffsets
+        {
+            of_Target = offsetof( header_t::preserved_chunk_t, target_ ),
+            sz_Target = sizeof( header_t::preserved_chunk_t::target_ ),
+
+            of_Chunk = offsetof( header_t::preserved_chunk_t, chunk_ ),
+            sz_Chunk = sizeof( header_t::preserved_chunk_t::chunk_ )
+        };
+
+        enum HeaderOffsets
+        {
+            // Compatibility
+            of_CompatibilityStamp = offsetof( header_t, compatibility_stamp ),
+            sz_CompatibilityStamp = sizeof( header_t::compatibility_stamp ),
+
+            // Bloom filter
+            of_Bloom = offsetof( header_t, bloom_ ),
+            sz_Bloom = sizeof( header_t::bloom_ ),
+
+            of_TransactionalData = offsetof( header_t, transactional_data_ ),
+            sz_TransactionalData = sizeof( header_t::transactional_data_ ),
+
+            of_Transaction = offsetof( header_t, transaction_ ),
+            sz_Transaction = sizeof( header_t::transaction_ ),
+
+            of_TransactionCrc = offsetof( header_t, transaction_crc_ ),
+            sz_TransactionCrc = sizeof( header_t::transaction_crc_ ),
+
+            of_PreservedChunk = offsetof( header_t, preserved_chunk_ ),
+            sz_PreservedChunk = sizeof( header_t::preserved_chunk_ ),
+
+            of_Root = sizeof( header_t )
         };
 
 
     public:
 
-        static constexpr NodeUid RootNodeUid = static_cast< NodeUid >( HeaderOffset::of_Root );
+        static constexpr ChunkOffset RootChunkOffset = static_cast< ChunkOffset >( HeaderOffsets::of_Root );
 
     private:
 
@@ -233,12 +248,11 @@ namespace jb
         auto deploy() noexcept
         {
             bool status = true;
-
             auto ce = [&] ( const auto & f ) noexcept { if ( status ) status = f(); };
 
             // write compatibility stamp
             ce( [&] {
-                return std::get< bool >( OsPolicy::seek_file( writer_, HeaderOffset::of_CompatibilityStamp, OsPolicy::SeekMethod::Begin ) );
+                return std::get< bool >( OsPolicy::seek_file( writer_, HeaderOffsets::of_CompatibilityStamp ) );
             } );
             ce( [&] {
                 CompatibilityStamp stamp = generate_compatibility_stamp();
@@ -247,34 +261,57 @@ namespace jb
 
             // write file size
             ce( [&] {
-                return std::get< bool >( OsPolicy::seek_file( writer_, HeaderOffset::of_FileSize, OsPolicy::SeekMethod::Begin ) );
+                return std::get< bool >( OsPolicy::seek_file( writer_, HeaderOffsets::of_TransactionalData + TransactionDataOffsets::of_FileSize ) );
             } );
             ce( [&] {
-                boost::endian::big_uint64_t value = HeaderOffset::of_Root;
+                boost::endian::big_uint64_t value = HeaderOffsets::of_Root;
                 return std::get< bool >( OsPolicy::write_file( writer_, &value, sizeof( value ) ) );
             } );
 
             // invalidate free space ptr
             ce( [&] {
-                return std::get< bool >( OsPolicy::seek_file( writer_, HeaderOffset::of_FreeSpacePtr, OsPolicy::SeekMethod::Begin ) );
+                return std::get< bool >( OsPolicy::seek_file( writer_, HeaderOffsets::of_TransactionalData + TransactionDataOffsets::of_FreeSpace ) );
             } );
             ce( [&] {
-                boost::endian::big_uint64_t value = InvalidNodeUid;
+                boost::endian::big_uint64_t value = InvalidChunkOffset;
                 return std::get< bool >( OsPolicy::write_file( writer_, &value, sizeof( value ) ) );
             } );
 
             // invalidate transaction
-            using transaction_t = array< uint8_t, HeaderOffset::sz_Transaction >;
-            transaction_t transaction;
-            transaction.fill( 0 );
-            uint64_t transaction_hash = boost::hash< transaction_t >{}( transaction );
+            ce( [&] {
+                return invalidate_transaction() == RetCode::Ok;
+            } );
+
+            return status ? RetCode::Ok : RetCode::IoError;
+        }
+
+
+        /** Invalidates current transaction
+
+        @throw nothing
+        @warning not thread safe
+        */
+        RetCode invalidate_transaction() const noexcept
+        {
+            using namespace std;
+
+            bool status = true;
+            auto ce = [&] ( const auto & f ) noexcept { if ( status ) status = f(); };
+
+            header_t::transactional_data_t transaction;
 
             ce( [&] {
-                return std::get< bool >( OsPolicy::seek_file( writer_, HeaderOffset::of_Checksum, OsPolicy::SeekMethod::Begin ) );
+                return std::get< bool >( OsPolicy::seek_file( writer_, HeaderOffsets::of_Transaction ) );
             } );
             ce( [&] {
-                boost::endian::big_uint64_t value = transaction_hash + 1;
-                return std::get< bool >( OsPolicy::write_file( writer_, &value, sizeof( value ) ) );
+                return std::get< bool >( OsPolicy::read_file( writer_, &transaction, sizeof( transaction ) ) );
+            } );
+            ce( [&] {
+                return std::get< bool >( OsPolicy::seek_file( writer_, HeaderOffsets::of_TransactionCrc ) );
+            } );
+            ce( [&] {
+                big_uint64_t trasaction_crc = variadic_hash( ( uint64_t )transaction.file_size_, ( uint64_t )transaction.free_space_ );
+                return std::get< bool >( OsPolicy::write_file( writer_, &trasaction_crc, sizeof( trasaction_crc ) ) );
             } );
 
             return status ? RetCode::Ok : RetCode::IoError;
@@ -440,7 +477,7 @@ namespace jb
 
                 // seek & read data
                 ce( [&] {
-                    return std::get< bool >( OsPolicy::seek_file( bloom_writer_, HeaderOffset::of_Bloom, OsPolicy::SeekMethod::Begin ) );
+                    return std::get< bool >( OsPolicy::seek_file( bloom_writer_, HeaderOffsets::of_Bloom ) );
                 } );
                 ce( [&] {
                     return std::get< bool >( OsPolicy::read_file( bloom_writer_, bloom_buffer, BloomSize ) );
@@ -457,8 +494,13 @@ namespace jb
 
 
         /** Write changes from Bloom filter
+
+        @param [in] byte_no - ordinal number of byte in the array
+        @param [in] byte - value to be written
+        @retval - operation status
+        @thrown nothing
         */
-        std::tuple< RetCode > add_bloom_digest( size_t byte_no, uint8_t byte ) const noexcept
+        RetCode add_bloom_digest( size_t byte_no, uint8_t byte ) const noexcept
         {
             using namespace std;
 
@@ -467,20 +509,179 @@ namespace jb
             scoped_lock l( bloom_writer_mutex_ );
 
             bool status = true;
-
             auto ce = [&] ( const auto & f ) noexcept { if ( status ) status = f(); };
 
-            // seek & read data
+            // seek & write data
             ce( [&] {
-                return std::get< bool >( OsPolicy::seek_file( writer_, HeaderOffset::of_Bloom + byte_no , OsPolicy::SeekMethod::Begin ) );
+                return std::get< bool >( OsPolicy::seek_file( bloom_writer_, HeaderOffsets::of_Bloom + byte_no ) );
             } );
             ce( [&] {
-                return std::get< bool >( OsPolicy::write_file( writer_, &byte, 1 ) );
+                return std::get< bool >( OsPolicy::write_file( bloom_writer_, &byte, 1 ) );
             } );
 
             return status ? RetCode::Ok : RetCode::IoError;
         }
+
+
+        /** Starts new transaction
+        */
+        std::tuple< RetCode, Transaction > open_transaction() const noexcept
+        {
+            using namespace std;
+
+            Transaction transaction{ const_cast< Storage* >( this ), move( scoped_lock{ write_mutex } ) };
+
+            // conditional execution
+            bool status = true;
+            auto ce = [&] ( const auto & f ) noexcept { if ( status ) status = f(); };
+
+            // read transactional data: file size...
+            boost::endian::big_uint64_t file_size;
+            ce( [&] {
+                return std::get< bool >( OsPolicy::seek_file( writer_, HeaderOffsets::of_FileSize ) );
+            } );
+            ce( [&] {
+                return std::get< bool >( OsPolicy::read_file( writer_, &file_size, sizeof( file_size ) ) );
+            } );
+            transaction.file_size_ = file_size;
+
+            // ... free space
+            boost::endian::big_uint64_t free_space;
+            ce( [&] {
+                return std::get< bool >( OsPolicy::seek_file( writer_, HeaderOffsets::of_FreeSpace ) );
+            } );
+            ce( [&] {
+                return std::get< bool >( OsPolicy::read_file( writer_, &free_space, sizeof( free_space ) ) );
+            } );
+
+
+            return status ? std::tuple{ RetCode::Ok, }
+        }
     };
+
+
+    /** Represents transaction to storage file
+
+    @tparam Policies - global setting
+    @tparam Pad - test stuff
+    */
+    template < typename Policies, typename Pad >
+    class Storage< Policies, Pad >::PhysicalVolumeImpl::PhysicalStorage::StorageFile::Transaction
+    {
+        friend class StorageFile;
+
+        StorageFile * file_ = nullptr;
+        std::scoped_lock< std::mutex > lock_;
+        Handle handle_ = InvalidHandle;
+        bool commited_ = false;
+        uint64_t file_size_;
+        ChunkOffset free_space_;
+        ChunkOffset released_head_ = InvalidChunkOffset, released_tile_ = InvalidChunkOffset;
+        bool status_ = false;
+
+
+        /* Constructor
+
+        @param [in] file - related file object
+        @param [in] lock - write lock
+        @throw nothing
+        */
+        explicit Transaction( StorageFile * file, Handle handle, std::scoped_lock< std::mutex > && lock ) noexcept try
+            : file_{ file }
+            , handle_{ handle }
+            , lock_{ move( lock ) }
+            , status_{ true }
+        {
+            assert( file_ );
+            assert( hadle_ != InvalidHandle );
+        }
+
+
+    public:
+
+        /** Default constructor, creates dummy transaction
+        */
+        Transaction() noexcept = default;
+
+
+        /** The class is not copyable
+        */
+        Transaction( const Transaction & ) = delete;
+        Transaction & operator = ( const Transaction & ) = delete;
+
+
+        /** But movable
+        */
+        Transaction( Transaction&& ) noexcept = default;
+
+
+        /** Marks a chain started from given chunk as released
+
+        @param [in] chunk - staring chunk
+        @retval operation status
+        @throw nothing
+        */
+        RetCode erase_chain( ChunkOffset chunk ) noexcept
+        {
+            // conditional execution
+            auto ce = [&] ( const auto & f ) noexcept { if ( status_ ) status_ = f(); };
+
+            // check that given chunk is valid
+            if ( chunk > file_size_ )
+            {
+                return RetCode::UnknownError;
+            }
+
+            // initialize pointers to released space end
+            ce( [&] {
+                released_tile_ = ( released_tile_ == InvalidChunkOffset ) ? chunk : released_tile_;
+            } );
+
+            while ( chunk != InvalidChunkOffset )
+            {
+                // get next used for current chunk
+                big_uint64_t next_used;
+                ce( [&] {
+                    return std::get< bool >( OsPolicy::seek_file( handle_, chunk + chunk_t::of_NextUsed ) );
+                } );
+                ce( [&] {
+                    return std::get< bool >( OsPolicy::read_file( handle_, &next_used, sizeof( next_used ) ) );
+                } );
+
+                // set next free to released head
+                big_uint64_t next_free = released_head_;
+                ce( [&] {
+                    return std::get< bool >( OsPolicy::seek_file( handle_, chunk + chunk_t::of_NextFree ) );
+                } );
+                ce( [&] {
+                    return std::get< bool >( OsPolicy::write_file( handle_, &next_free, sizeof( next_free ) ) );
+                } );
+
+                // go to next chunk
+                chunk = next_used;
+            }
+
+            return status_ ? RetCode::Ok : RetCode::IoError;
+        }
+
+        /** Commit transaction
+
+        @retval - operation status
+        @throw nothing
+        */
+        auto commit() noexcept
+        {
+            if ( ! commited_ )
+            {
+
+            }
+            else
+            {
+                return RetCode::UnknownError;
+            }
+        }
+    };
+
 }
 
 #endif

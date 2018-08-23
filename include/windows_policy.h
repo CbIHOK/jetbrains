@@ -95,7 +95,7 @@ namespace jb
         @retval int64_t new position
         @throw nothing
         */
-        static std::tuple< bool, int64_t > seek_file( HandleT handle, int64_t offset, SeekMethod origin ) noexcept
+        static std::tuple< bool, int64_t > seek_file( HandleT handle, int64_t offset, SeekMethod origin = SeekMethod::Begin ) noexcept
         {
             try
             {

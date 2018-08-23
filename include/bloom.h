@@ -109,7 +109,7 @@ namespace jb
 
             if ( storage_ && RetCode::Ok == storage_->creation_status() )
             {
-                return std::get< RetCode>( storage_->add_bloom_digest( byte_no, filter_[ byte_no ] ) );
+                return storage_->add_bloom_digest( byte_no, filter_[ byte_no ] ) ;
             }
 
             return RetCode::Ok;
