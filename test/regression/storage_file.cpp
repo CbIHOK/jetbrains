@@ -10,6 +10,13 @@ struct OtherPolicies : public ::jb::DefaultPolicies
     using ValueT = std::variant< uint32_t, uint64_t, float, double >;
 };
 
+struct SmallChunkPolicies : public ::jb::DefaultPolicies
+{
+    struct PhysicalVolumePolicy : public ::jb::DefaultPolicies::PhysicalVolumePolicy
+    {
+        static constexpr size_t ChunkSize = 32;
+    };
+};
 
 class TestStorageFile : public ::testing::Test
 {
@@ -91,7 +98,25 @@ TEST_F( TestStorageFile, Compatibility )
 }
 
 
-TEST_F( TestStorageFile, OpenTransaction )
+TEST_F( TestStorageFile, Transaction_Lock )
+{
+    using namespace std;
+
+    StorageFile f{ std::filesystem::path{ "./foo.jb" }, true };
+    ASSERT_EQ( RetCode::Ok, f.creation_status() );
+
+    {
+        auto t = f.open_transaction();
+        EXPECT_EQ( RetCode::Ok, t.status() );
+        EXPECT_EQ( false, get_transaction_mutex( f ).try_lock() );
+    }
+
+    EXPECT_EQ( true, get_transaction_mutex( f ).try_lock() );
+    get_transaction_mutex( f ).unlock();
+}
+
+
+TEST_F( TestStorageFile, Transaction_SimpleWrite )
 {
     using namespace std;
 
