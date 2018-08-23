@@ -42,7 +42,7 @@ namespace jb
         using Handle = typename OsPolicy::HandleT;
         using big_uint64_t = boost::endian::big_uint64_t;
         using big_uint64_at = boost::endian::big_uint64_at;
-        
+
         inline static const auto InvalidHandle = OsPolicy::InvalidHandle;
 
         static constexpr auto BloomSize = Policies::PhysicalVolumePolicy::BloomSize;
@@ -242,7 +242,7 @@ namespace jb
 
             // reserve space for header
             ce( [&] {
-                auto [ ok, size ] = OsPolicy::resize_file( writer_, sizeof( header_t ) );
+                auto[ ok, size ] = OsPolicy::resize_file( writer_, sizeof( header_t ) );
                 return ok && size == sizeof( header_t ) ? RetCode::Ok : RetCode::IoError;
             } );
 
@@ -343,7 +343,7 @@ namespace jb
 
             assert( readers_.size() == ReaderNumber );
             for_each( execution::par, begin( readers_ ), end( readers_ ), [] ( auto h ) {
-                if ( h != InvalidHandle ) OsPolicy::close_file( h ); 
+                if ( h != InvalidHandle ) OsPolicy::close_file( h );
             } );
 
             // unlock file name
@@ -388,7 +388,7 @@ namespace jb
             auto ce = [&] ( const auto & f ) noexcept { if ( RetCode::Ok == creation_status_ ) creation_status_ = f(); };
 
             // open writter
-            ce( [&] { 
+            ce( [&] {
                 auto[ opened, tried_create, handle ] = OsPolicy::open_file( path, create );
 
                 if ( !opened )
@@ -506,7 +506,7 @@ namespace jb
 
             // seek & write data
             ce( [&] {
-                auto [ ok, pos] = OsPolicy::seek_file( bloom_, HeaderOffsets::of_Bloom + byte_no );
+                auto[ ok, pos ] = OsPolicy::seek_file( bloom_, HeaderOffsets::of_Bloom + byte_no );
                 return ok && pos == HeaderOffsets::of_Bloom + byte_no ? RetCode::Ok : RetCode::IoError;
             } );
             ce( [&] {
@@ -523,7 +523,7 @@ namespace jb
         Transaction open_transaction() const noexcept
         {
             using namespace std;
-            return Transaction { const_cast< StorageFile* >( this ), writer_, move( unique_lock{ transaction_mutex_ } ) };
+            return Transaction{ const_cast< StorageFile* >( this ), writer_, move( unique_lock{ transaction_mutex_ } ) };
         }
     };
 
@@ -569,7 +569,7 @@ namespace jb
             // read transactional data: file size...
             boost::endian::big_uint64_t file_size;
             ce( [&] {
-                auto [ ok, pos ] = OsPolicy::seek_file( handle_, HeaderOffsets::of_TransactionalData + TransactionDataOffsets::of_FileSize );
+                auto[ ok, pos ] = OsPolicy::seek_file( handle_, HeaderOffsets::of_TransactionalData + TransactionDataOffsets::of_FileSize );
                 return ( ok && pos == HeaderOffsets::of_TransactionalData + TransactionDataOffsets::of_FileSize ) ? RetCode::Ok : RetCode::IoError;
             } );
             ce( [&] {
@@ -657,15 +657,25 @@ namespace jb
                 // set next free to released head
                 big_uint64_t next_free = released_head_;
                 ce( [&] {
-                    auto [ ok, pos ] = OsPolicy::seek_file( handle_, chunk + chunk_t::of_NextFree );
+                    auto[ ok, pos ] = OsPolicy::seek_file( handle_, chunk + chunk_t::of_NextFree );
                     return ( ok && pos == chunk + chunk_t::of_NextFree ) ? RetCode::Ok : RetCode::IoError;
                 } );
                 ce( [&] {
-                    auto [ ok, written ] = OsPolicy::write_file( handle_, &next_free, sizeof( next_free ) );
+                    auto[ ok, written ] = OsPolicy::write_file( handle_, &next_free, sizeof( next_free ) );
                     return ( ok && written == sizeof( next_free ) ) ? RetCode::Ok : RetCode::IoError;
                 } );
 
-                // go to next chunk
+                //
+                // set released chain head to the chunk
+                //
+                released_head_ = chunk;
+
+                //
+                // thus we've got Schrodinger chunk, it's allocated and released in the same time. The real state depends
+                // on transaction completion
+                //
+
+                // go to next used chunk
                 chunk = next_used;
             }
 
@@ -677,19 +687,90 @@ namespace jb
         @retval - operation status
         @throw nothing
         */
-        auto commit() noexcept
+        RetCode commit() noexcept
         {
-            if ( ! commited_ )
-            {
+            // conditional execution
+            auto ce = [&] ( const auto & f ) noexcept { if ( RetCode::Ok == status_ ) status_ = f(); };
 
-            }
-            else
+            // if there is released space - glue released chunks with remaining free space
+            if ( released_head_ != InvalidChunkOffset )
             {
-                return RetCode::UnknownError;
+                assert( released_head_ != InvalidChunkOffset );
+
+                big_uint64_t next_used;
+                ce( [&] {
+                    auto[ ok, pos ] = OsPolicy::seek_file( handle_, released_tile_ + chunk_t::of_NextFree );
+                    return ( ok && pos == released_tile_ + chunk_t::of_NextFree ) ? RetCode::Ok : RetCode::IoError;
+                } );
+                ce( [&] {
+                    big_uint64_t next_free = free_space_;
+                    auto[ ok, written ] = OsPolicy::write_file( handle_, &next_free, sizeof( next_free ) );
+                    return ( ok && written == sizeof( next_free ) ) ? RetCode::Ok : RetCode::IoError;
+                } );
+                free_space_ = released_head_;
             }
+
+            // write transaction field: file size...
+            ce( [&] {
+                auto[ ok, pos ] = OsPolicy::seek_file( handle_, HeaderOffsets::of_Transaction + TransactionDataOffsets::of_FileSize );
+                return ( ok && pos == HeaderOffsets::of_Transaction + TransactionDataOffsets::of_FileSize ) ? RetCode::Ok : RetCode::IoError;
+            } );
+            ce( [&] {
+                big_uint64_t file_size = file_size_;
+                auto[ ok, written ] = OsPolicy::write_file( handle_, &file_size, sizeof( file_size ) );
+                return ( ok && written == sizeof( file_size ) ) ? RetCode::Ok : RetCode::IoError;
+            } );
+
+            // ... and free space pointer
+            ce( [&] {
+                auto[ ok, pos ] = OsPolicy::seek_file( handle_, HeaderOffsets::of_Transaction + TransactionDataOffsets::of_FreeSpace );
+                return ( ok && pos == HeaderOffsets::of_Transaction + TransactionDataOffsets::of_FreeSpace ) ? RetCode::Ok : RetCode::IoError;
+            } );
+            ce( [&] {
+                big_uint64_t free_space = free_space_;
+                auto[ ok, written ] = OsPolicy::write_file( handle_, &free_space, sizeof( free_space ) );
+                return ( ok && written == sizeof( free_space ) ) ? RetCode::Ok : RetCode::IoError;
+            } );
+
+            // and finalize transaction with CRC
+            ce( [&] {
+                auto[ ok, pos ] = OsPolicy::seek_file( handle_, HeaderOffsets::of_TransactionCrc );
+                return ( ok && pos == HeaderOffsets::of_TransactionCrc ) ? RetCode::Ok : RetCode::IoError;
+            } );
+            ce( [&] {
+                big_uint64_t crc = variadic_hash( file_size_, free_space_ );
+                auto[ ok, written ] = OsPolicy::write_file( handle_, &crc, sizeof( crc ) );
+                return ( ok && written == sizeof( crc ) ) ? RetCode::Ok : RetCode::IoError;
+            } );
+
+            //
+            // now we have valid transaction
+            //
+
+            // force file to apply commit
+            ce( [&] {
+                return file_->commit();
+            } );
+
+            // get transaction status as operation status and mark transaction as invalid
+            RetCode status = RetCode::UnknownError;
+            std::swap( status, status_ );
+
+            return status;
         }
     };
 
+
+    /** Represents transaction to storage file
+
+    @tparam Policies - global setting
+    @tparam Pad - test stuff
+    */
+    template < typename Policies, typename Pad >
+    class Storage< Policies, Pad >::PhysicalVolumeImpl::PhysicalStorage::StorageFile::ostreambuf : public std::basic_streambuf< char >
+    {
+
+    };
 }
 
 #endif
