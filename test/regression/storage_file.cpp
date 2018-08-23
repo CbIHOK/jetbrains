@@ -15,6 +15,7 @@ struct SmallChunkPolicies : public ::jb::DefaultPolicies
     struct PhysicalVolumePolicy : public ::jb::DefaultPolicies::PhysicalVolumePolicy
     {
         static constexpr size_t ChunkSize = 32;
+        static constexpr size_t BloomSize = 1024;
     };
 };
 
@@ -30,7 +31,11 @@ protected:
     using StorageFile = typename Storage::PhysicalVolumeImpl::PhysicalStorage::StorageFile;
     using OtherStorage = jb::Storage< OtherPolicies, Pad >;
     using OtherStorageFile = typename OtherStorage::PhysicalVolumeImpl::PhysicalStorage::StorageFile;
+    using SmallChunkStorage = jb::Storage< SmallChunkPolicies, Pad >;
+    using SmallChunkStorageFile = typename SmallChunkStorage::PhysicalVolumeImpl::PhysicalStorage::StorageFile;
     using Transaction = typename StorageFile::Transaction;
+    using SmallChunkTransaction = typename SmallChunkStorageFile::Transaction;
+    using ostreambuf = typename SmallChunkStorageFile::ostreambuf;
 
     TestStorageFile()
     {
@@ -116,19 +121,22 @@ TEST_F( TestStorageFile, Transaction_Lock )
 }
 
 
-TEST_F( TestStorageFile, Transaction_SimpleWrite )
+TEST_F( TestStorageFile, Transaction_Rollback )
 {
     using namespace std;
 
-    StorageFile f{ std::filesystem::path{ "./foo.jb" }, true };
-    ASSERT_EQ( RetCode::Ok, f.creation_status() );
+    SmallChunkStorageFile f{ std::filesystem::path{ "./foo3.jb" }, true };
+    ASSERT_EQ( SmallChunkStorage::RetCode::Ok, f.creation_status() );
 
     {
         auto t = f.open_transaction();
-        EXPECT_EQ( RetCode::Ok, t.status() );
-        EXPECT_EQ( false, get_transaction_mutex( f ).try_lock() );
-    }
+        ASSERT_EQ( SmallChunkStorage::RetCode::Ok, t.status() );
 
-    EXPECT_EQ( true, get_transaction_mutex( f ).try_lock() );
-    get_transaction_mutex( f ).unlock();
+        auto b = t.get_streambuf();
+        ASSERT_EQ( SmallChunkStorage::RetCode::Ok, t.status() );
+
+        std::ostream os( &b );
+        os << "abcdefghijklmnopqrstuvwxyz";
+        os.flush();
+    }
 }

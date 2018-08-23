@@ -139,7 +139,7 @@ namespace jb
         @retval uint64_t - number of written bytes
         @throw nothing
         */
-        static std::tuple< bool, uint64_t > write_file( HandleT handle, void * buffer, size_t size ) noexcept
+        static std::tuple< bool, uint64_t > write_file( HandleT handle, const void * buffer, size_t size ) noexcept
         {
             if ( size <= std::numeric_limits< DWORD >::max() )
             {

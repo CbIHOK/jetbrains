@@ -232,10 +232,7 @@ namespace jb
         {
             //conditional executor
             RetCode status = RetCode::Ok;
-            auto ce = [&] ( const auto & f ) noexcept {
-                if ( RetCode::Ok == status ) status = f();
-                assert( RetCode::Ok == status );
-            };
+            auto ce = [&] ( const auto & f ) noexcept { if ( RetCode::Ok == status ) status = f(); };
 
             big_uint64_t stamp;
 
@@ -336,7 +333,7 @@ namespace jb
 
             auto ce = [&] ( const auto & f ) noexcept {
                 if ( RetCode::Ok == status ) status = f();
-                assert( RetCode::Ok == status );
+                assert( RetCode::Ok == status || RetCode::UnknownError == status );
             };
 
             // read transaction data
@@ -363,68 +360,90 @@ namespace jb
             } );
 
             // validate transaction
+            bool valid_transaction = false;
             ce( [&] {
                 uint64_t file_size = transaction.file_size_, free_space = transaction.free_space_;
-                return transaction_crc == variadic_hash( file_size, free_space ) ? RetCode::Ok : RetCode::UnknownError;
+                valid_transaction = transaction_crc == variadic_hash( file_size, free_space );
+                return RetCode::Ok;
             } );
 
-            // read preserved chunk target
-            big_uint64_t preserved_target;
-            ce( [&] {
-                auto[ ok, pos ] = OsPolicy::seek_file( writer_, HeaderOffsets::of_PreservedChunk + PreservedChunkOffsets::of_Target );
-                return ( ok && pos == HeaderOffsets::of_PreservedChunk + PreservedChunkOffsets::of_Target ) ? RetCode::Ok : RetCode::IoError;
-            } );
-            ce( [&] {
-                auto[ ok, read ] = OsPolicy::read_file( writer_, &preserved_target, sizeof( preserved_target ) );
-                return ( ok && read == sizeof( preserved_target ) ) ? RetCode::Ok : RetCode::IoError;
-            } );
-
-            // if there is preserved chunk
-            if ( preserved_target != InvalidChunkUid )
+            if ( valid_transaction )
             {
-                // read preserved chunk
-                chunk_t preserved_chunk;
+                // read preserved chunk target
+                big_uint64_t preserved_target;
                 ce( [&] {
-                    auto[ ok, pos ] = OsPolicy::seek_file( writer_, HeaderOffsets::of_PreservedChunk + PreservedChunkOffsets::of_Chunk );
-                    return ( ok && pos == HeaderOffsets::of_PreservedChunk + PreservedChunkOffsets::of_Chunk ) ? RetCode::Ok : RetCode::IoError;
+                    auto[ ok, pos ] = OsPolicy::seek_file( writer_, HeaderOffsets::of_PreservedChunk + PreservedChunkOffsets::of_Target );
+                    return ( ok && pos == HeaderOffsets::of_PreservedChunk + PreservedChunkOffsets::of_Target ) ? RetCode::Ok : RetCode::IoError;
                 } );
                 ce( [&] {
-                    auto[ ok, read ] = OsPolicy::read_file( writer_, &preserved_chunk, sizeof( preserved_chunk ) );
-                    return ( ok && read == sizeof( preserved_chunk ) ) ? RetCode::Ok : RetCode::IoError;
+                    auto[ ok, read ] = OsPolicy::read_file( writer_, &preserved_target, sizeof( preserved_target ) );
+                    return ( ok && read == sizeof( preserved_target ) ) ? RetCode::Ok : RetCode::IoError;
                 } );
 
-                // copy preserved chunk to target
+                // if there is preserved chunk
+                if ( preserved_target != InvalidChunkUid )
+                {
+                    // read preserved chunk
+                    chunk_t preserved_chunk;
+                    ce( [&] {
+                        auto[ ok, pos ] = OsPolicy::seek_file( writer_, HeaderOffsets::of_PreservedChunk + PreservedChunkOffsets::of_Chunk );
+                        return ( ok && pos == HeaderOffsets::of_PreservedChunk + PreservedChunkOffsets::of_Chunk ) ? RetCode::Ok : RetCode::IoError;
+                    } );
+                    ce( [&] {
+                        auto[ ok, read ] = OsPolicy::read_file( writer_, &preserved_chunk, sizeof( preserved_chunk ) );
+                        return ( ok && read == sizeof( preserved_chunk ) ) ? RetCode::Ok : RetCode::IoError;
+                    } );
+
+                    // copy preserved chunk to target
+                    ce( [&] {
+                        auto[ ok, pos ] = OsPolicy::seek_file( writer_, preserved_target );
+                        return ( ok && pos == preserved_target ) ? RetCode::Ok : RetCode::IoError;
+                    } );
+                    ce( [&] {
+                        auto[ ok, written ] = OsPolicy::write_file( writer_, &preserved_chunk, sizeof( preserved_chunk ) );
+                        return ( ok && written == sizeof( preserved_chunk ) ) ? RetCode::Ok : RetCode::IoError;
+                    } );
+                }
+
+                // apply transaction
                 ce( [&] {
-                    auto[ ok, pos ] = OsPolicy::seek_file( writer_, preserved_target );
-                    return ( ok && pos == preserved_target ) ? RetCode::Ok : RetCode::IoError;
+                    auto[ ok, pos ] = OsPolicy::seek_file( writer_, HeaderOffsets::of_TransactionalData );
+                    return ( ok && pos == HeaderOffsets::of_TransactionalData ) ? RetCode::Ok : RetCode::IoError;
                 } );
                 ce( [&] {
-                    auto[ ok, written ] = OsPolicy::write_file( writer_, &preserved_chunk, sizeof( preserved_chunk ) );
-                    return ( ok && written == sizeof( preserved_chunk ) ) ? RetCode::Ok : RetCode::IoError;
+                    auto[ ok, written ] = OsPolicy::write_file( writer_, &transaction, sizeof( transaction ) );
+                    return ( ok && written == sizeof( transaction ) ) ? RetCode::Ok : RetCode::IoError;
+                } );
+
+                // invalidate transaction
+                ce( [&] {
+                    auto[ ok, pos ] = OsPolicy::seek_file( writer_, HeaderOffsets::of_TransactionCrc );
+                    return ( ok && pos == HeaderOffsets::of_TransactionCrc ) ? RetCode::Ok : RetCode::IoError;
+                } );
+                ce( [&] {
+                    uint64_t file_size = transaction.file_size_, free_space = transaction.free_space_;
+                    big_uint64_t invalid_crc = variadic_hash( file_size, free_space ) + 1;
+                    auto[ ok, written ] = OsPolicy::write_file( writer_, &invalid_crc, sizeof( invalid_crc ) );
+                    return ( ok && written == sizeof( invalid_crc ) ) ? RetCode::Ok : RetCode::IoError;
                 } );
             }
-
-            // apply transaction
-            ce( [&] {
-                auto[ ok, pos ] = OsPolicy::seek_file( writer_, HeaderOffsets::of_TransactionalData );
-                return ( ok && pos == HeaderOffsets::of_TransactionalData ) ? RetCode::Ok : RetCode::IoError;
-            } );
-            ce( [&] {
-                auto[ ok, written ] = OsPolicy::write_file( writer_, &transaction, sizeof( transaction ) );
-                return ( ok && written == sizeof( transaction ) ) ? RetCode::Ok : RetCode::IoError;
-            } );
-
-            // invalidate transaction
-            ce( [&] {
-                auto[ ok, pos ] = OsPolicy::seek_file( writer_, HeaderOffsets::of_TransactionCrc );
-                return ( ok && pos == HeaderOffsets::of_TransactionCrc ) ? RetCode::Ok : RetCode::IoError;
-            } );
-            ce( [&] {
-                uint64_t file_size = transaction.file_size_, free_space = transaction.free_space_;
-                big_uint64_t invalid_crc = variadic_hash( file_size, free_space ) + 1;
-                auto[ ok, written ] = OsPolicy::write_file( writer_, &invalid_crc, sizeof( invalid_crc ) );
-                return ( ok && written == sizeof( invalid_crc ) ) ? RetCode::Ok : RetCode::IoError;
-            } );
+            else
+            {
+                // just restore file size
+                big_uint64_t file_size;
+                ce( [&] {
+                    auto[ ok, pos ] = OsPolicy::seek_file( writer_, HeaderOffsets::of_TransactionalData + TransactionDataOffsets::of_FileSize );
+                    return ( ok && pos == HeaderOffsets::of_TransactionalData + TransactionDataOffsets::of_FileSize ) ? RetCode::Ok : RetCode::IoError;
+                } );
+                ce( [&] {
+                    auto[ ok, read ] = OsPolicy::read_file( writer_, &file_size, sizeof( file_size ) );
+                    return ( ok && read == sizeof( file_size ) ) ? RetCode::Ok : RetCode::IoError;
+                } );
+                ce( [&] {
+                    auto[ ok, size ] = OsPolicy::resize_file( writer_, file_size );
+                    return ( ok && size == file_size ) ? RetCode::Ok : RetCode::IoError;
+                } );
+            }
 
             // done
             return status;
@@ -498,7 +517,6 @@ namespace jb
             // conditional executor
             auto ce = [&] ( const auto & f ) noexcept {
                 if ( RetCode::Ok == creation_status_ ) creation_status_ = f();
-                assert( RetCode::Ok == creation_status_ );
             };
 
             // open writter
@@ -755,7 +773,7 @@ namespace jb
             // conditional execution
             auto ce = [&] ( const auto & f ) noexcept {
                 if ( RetCode::Ok == status_ ) status_ = f();
-                asset( RetCode::Ok == status_ );
+                assert( RetCode::Ok == status_ );
             };
 
             // if preserved writting: return reserved chunk offset
@@ -787,7 +805,7 @@ namespace jb
             else
             {
                 // get next available chunk at the end of file
-                available_chunk = free_space_;
+                available_chunk = file_size_;
 
                 // resize file
                 ce( [&] {
@@ -815,68 +833,83 @@ namespace jb
         @retval operation status
         @throw nothing
         */
-        auto write( const char * data, ptrdiff_t sz ) noexcept
+        auto write( const void * data, ptrdiff_t sz ) noexcept
         {
-            assert( 0 < sz && sz < ChunkOffsets::sz_Space );
+            assert( 0 <= sz && sz <= ChunkOffsets::sz_Space );
             size_t bytes_to_write = static_cast< size_t >( sz );
 
-            // conditional execution
-            auto ce = [&] ( const auto & f ) noexcept { 
-                if ( RetCode::Ok == status_ ) status_ = f(); 
-                assert( RetCode::Ok == status_ );
-            };
-            
-            // get next chunk uid
-            ChunkUid chunk_uid;
-            ce( [&] {
-                auto n = get_next_chunk();
-                chunk_uid = std::get< ChunkUid >( n );
-                return std::get< RetCode >( n );
-            } );
-
-            // update last chunk in chain
-            if ( last_written_chunk_ != InvalidChunkUid )
+            // have something to write
+            if ( sz )
             {
+                // conditional execution
+                auto ce = [&] ( const auto & f ) noexcept {
+                    if ( RetCode::Ok == status_ ) status_ = f();
+                    assert( RetCode::Ok == status_ );
+                };
+
+                // get next chunk uid
+                ChunkUid chunk_uid;
                 ce( [&] {
-                    auto[ ok, pos ] = OsPolicy::seek_file( handle_, last_written_chunk_ + ChunkOffsets::of_NextUsed );
-                    return ( ok && pos == last_written_chunk_ + ChunkOffsets::of_NextUsed ) ? RetCode::Ok : RetCode::IoError;
+                    auto n = get_next_chunk();
+                    chunk_uid = std::get< ChunkUid >( n );
+                    return std::get< RetCode >( n );
+                } );
+
+                // update last chunk in chain
+                if ( last_written_chunk_ != InvalidChunkUid )
+                {
+                    ce( [&] {
+                        auto[ ok, pos ] = OsPolicy::seek_file( handle_, last_written_chunk_ + ChunkOffsets::of_NextUsed );
+                        return ( ok && pos == last_written_chunk_ + ChunkOffsets::of_NextUsed ) ? RetCode::Ok : RetCode::IoError;
+                    } );
+                    ce( [&] {
+                        big_uint64_t next_used = chunk_uid;
+                        auto[ ok, written ] = OsPolicy::write_file( handle_, &next_used, sizeof( next_used ) );
+                        return ( ok && written == sizeof( next_used ) ) ? RetCode::Ok : RetCode::IoError;
+                    } );
+                }
+
+                // set the chunk as the last in chain
+                ce( [&] {
+                    auto[ ok, pos ] = OsPolicy::seek_file( handle_, chunk_uid + ChunkOffsets::of_NextUsed );
+                    return ( ok && pos == chunk_uid + ChunkOffsets::of_NextUsed ) ? RetCode::Ok : RetCode::IoError;
                 } );
                 ce( [&] {
-                    big_uint64_t next_used = chunk_uid;
+                    big_uint64_t next_used = InvalidChunkUid;
                     auto[ ok, written ] = OsPolicy::write_file( handle_, &next_used, sizeof( next_used ) );
                     return ( ok && written == sizeof( next_used ) ) ? RetCode::Ok : RetCode::IoError;
                 } );
+
+                // write the data size to chunk
+                ce( [&] {
+                    auto[ ok, pos ] = OsPolicy::seek_file( handle_, chunk_uid + ChunkOffsets::of_UsedSize );
+                    return ( ok && pos == chunk_uid + ChunkOffsets::of_UsedSize ) ? RetCode::Ok : RetCode::IoError;
+                } );
+                ce( [&] {
+                    big_uint64_t bytes_no = bytes_to_write;
+                    auto[ ok, written ] = OsPolicy::write_file( handle_, &bytes_no, sizeof( bytes_no ) );
+                    return ( ok && written == sizeof( bytes_no ) ) ? RetCode::Ok : RetCode::IoError;
+                } );
+
+                // write the data to chunk
+                ce( [&] {
+                    auto[ ok, pos ] = OsPolicy::seek_file( handle_, chunk_uid + ChunkOffsets::of_Space );
+                    return ( ok && pos == chunk_uid + ChunkOffsets::of_Space ) ? RetCode::Ok : RetCode::IoError;
+                } );
+                ce( [&] {
+                    auto[ ok, written ] = OsPolicy::write_file( handle_, data, bytes_to_write );
+                    return ( ok && written == bytes_to_write ) ? RetCode::Ok : RetCode::IoError;
+                } );
+
+                //
+                // another Schrodinger chunk, it's allocated and released in the same time. The real state depends
+                // on transaction completion
+                //
+
+                // remember this chunk as the last in chain
+                last_written_chunk_ = chunk_uid;
             }
 
-            // set the chunk as the last in chain
-            ce( [&] {
-                auto[ ok, pos ] = OsPolicy::seek_file( handle_, chunk_uid + ChunkOffsets::of_NextUsed );
-                return ( ok && pos == ChunkOffsets + chunk_t::of_NextUsed ) ? RetCode::Ok : RetCode::IoError;
-            } );
-            ce( [&] {
-                big_uint64_t next_used = InvalidChunkUid;
-                auto[ ok, written ] = OsPolicy::write_file( handle_, &next_used, sizeof( next_used ) );
-                return ( ok && written == sizeof( next_used ) ) ? RetCode::Ok : RetCode::IoError;
-            } );
-
-            // write the data to chunk
-            ce( [&] {
-                auto[ ok, pos ] = OsPolicy::seek_file( handle_, chunk_uid + ChunkOffsets::of_Space );
-                return ( ok && pos == chunk_uid + ChunkOffsets::of_Space ) ? RetCode::Ok : RetCode::IoError;
-            } );
-            ce( [&] {
-                big_uint64_t next_used = InvalidChunkUid;
-                auto[ ok, written ] = OsPolicy::write_file( handle_, data, sizeof( bytes_to_write ) );
-                return ( ok && written == bytes_to_write ) ? RetCode::Ok : RetCode::IoError;
-            } );
-
-            //
-            // another Schrodinger chunk, it's allocated and released in the same time. The real state depends
-            // on transaction completion
-            //
-        
-            // remember this chunk as the last in chain
-            last_written_chunk_ = chunk_uid;
 
             return status_;
         }
@@ -915,7 +948,7 @@ namespace jb
         @retval output stream buffer object
         @throw nothing
         */
-        std::tuple< RetCode, ostreambuf > get_preserved_streambuf( ChunkUid preserved_uid ) const noexcept
+        std::tuple< RetCode, ostreambuf > get_preserved_streambuf( ChunkUid preserved_uid ) noexcept
         {
             if ( !preservation_used_ )
             {
@@ -937,7 +970,7 @@ namespace jb
         @retval output stream buffer object
         @throw nothing
         */
-        ostreambuf get_streambuf() const noexcept
+        ostreambuf get_streambuf() noexcept
         {
             // invalidate last written chunk
             last_written_chunk_ = InvalidChunkUid;
@@ -1151,8 +1184,10 @@ namespace jb
                 return 0;
             }
 
+            auto sz = static_cast< int >( pptr() - pbase() );
+
             // send buffer to transaction
-            if ( RetCode::Ok == transacstion_->write( pbase(), pptr() - pbase() ) )
+            if ( RetCode::Ok == transaction_->write( pbase(), sz ) )
             {
                 pbump( -sz );
                 return 0;
