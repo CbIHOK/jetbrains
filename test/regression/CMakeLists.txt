@@ -12,7 +12,7 @@ add_executable( tests
     storage.cpp
     storage_file.cpp
     bloom.cpp
-    )
+)
 
 target_link_libraries( tests SHAtwo gtest gtest_main )
 

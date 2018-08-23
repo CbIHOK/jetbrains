@@ -42,7 +42,6 @@ namespace jb
         using Handle = typename OsPolicy::HandleT;
         using big_uint64_t = boost::endian::big_uint64_t;
         using big_uint64_at = boost::endian::big_uint64_at;
-        using CompatibilityStamp = big_uint64_t;
         
         inline static const auto InvalidHandle = OsPolicy::InvalidHandle;
 
@@ -71,29 +70,14 @@ namespace jb
         std::shared_ptr< boost::interprocess::named_mutex > file_lock_;
 
         mutable std::mutex transaction_mutex_;
-
         Handle writer_ = InvalidHandle;
 
-        mutable std::mutex bloom_writer_mutex_;
-        Handle bloom_writer_ = InvalidHandle;
+        mutable std::mutex bloom_mutex_;
+        Handle bloom_ = InvalidHandle;
 
         std::mutex readers_mutex_;
         boost::container::static_vector< Handle, ReaderNumber > readers_;
         std::stack< Handle, boost::container::static_vector< Handle, ReaderNumber > > reader_stack_;
-
-
-        /** Rounds given value up by the module
-
-        @tparam m - module
-        @param [in] v - value to be rounded
-        @return rounded value
-        @throw nothing
-        */
-        template< size_t m >
-        static constexpr auto round_up( size_t v ) noexcept
-        {
-            return m * ( v / m + ( v % m ? 1 : 0 ) );
-        }
 
 
         /** Generates compatibility stamp
@@ -101,43 +85,17 @@ namespace jb
         @retval unique stamp of software settings
         @throw nothing
         */
-        static CompatibilityStamp generate_compatibility_stamp() noexcept
+        static uint64_t generate_compatibility_stamp() noexcept
         {
-            return CompatibilityStamp{ variadic_hash( Key{}, ValueT{}, BloomSize, MaxTreeDepth, BTreeMinPower, ChunkSize ) };
+            using namespace std;
+            auto hash = variadic_hash( type_index( typeid( Key ) ), type_index( typeid( ValueT ) ), BloomSize, MaxTreeDepth, BTreeMinPower, ChunkSize );
+            return hash;
         }
 
-
-        /** Check software to file compatibility
-
-        @throws nothing
-        @warning  not thread safe
-        */
-        auto check_compatibility() noexcept
-        {
-            if ( std::get< bool> ( OsPolicy::seek_file( writer_, HeaderOffsets::of_CompatibilityStamp ) ) )
-            {
-                CompatibilityStamp stamp;
-
-                if ( std::get< bool >( OsPolicy::read_file( writer_, &stamp, sizeof( stamp ) ) ) )
-                {
-                    if ( generate_compatibility_stamp() != stamp )
-                    {
-                        creation_status_ = RetCode::IncompatibleFile;
-                    }
-                }
-                else
-                {
-                    creation_status_ = RetCode::IoError;
-                }
-            }
-            else
-            {
-                creation_status_ = RetCode::IoError;
-            }
-        }
 
         static_assert( ChunkSize - 3 * sizeof( big_uint64_at ) > 0, "Chunk size too small" );
         static constexpr auto SpaceInChunk = ChunkSize - 3 * sizeof( big_uint64_at );
+
 
         struct chunk_t
         {
@@ -146,6 +104,7 @@ namespace jb
             big_uint64_at used_size_;
             std::array< uint8_t, SpaceInChunk > space_;
         };
+
 
         enum ChunkOffsets
         {
@@ -162,9 +121,10 @@ namespace jb
             sz_Space = sizeof( chunk_t::space_ ),
         };
 
+
         struct header_t
         {
-            CompatibilityStamp compatibility_stamp;
+            big_uint64_at compatibility_stamp;
 
             uint8_t bloom_[ BloomSize ];
 
@@ -209,11 +169,9 @@ namespace jb
 
         enum HeaderOffsets
         {
-            // Compatibility
             of_CompatibilityStamp = offsetof( header_t, compatibility_stamp ),
             sz_CompatibilityStamp = sizeof( header_t::compatibility_stamp ),
 
-            // Bloom filter
             of_Bloom = offsetof( header_t, bloom_ ),
             sz_Bloom = sizeof( header_t::bloom_ ),
 
@@ -240,49 +198,93 @@ namespace jb
     private:
 
 
+        /** Check software to file compatibility
+
+        @throws nothing
+        @warning  not thread safe
+        */
+        auto check_compatibility() noexcept
+        {
+            //conditional executor
+            RetCode status = RetCode::Ok;
+            auto ce = [&] ( const auto & f ) noexcept { if ( RetCode::Ok == status ) status = f(); };
+
+            big_uint64_t stamp;
+
+            ce( [&] {
+                auto[ ok, pos ] = OsPolicy::seek_file( writer_, HeaderOffsets::of_CompatibilityStamp );
+                return ( ok && pos == HeaderOffsets::of_CompatibilityStamp ) ? RetCode::Ok : RetCode::IoError;
+            } );
+            ce( [&] {
+                auto[ ok, read ] = OsPolicy::read_file( writer_, &stamp, sizeof( stamp ) );
+                return ( ok && read == sizeof( stamp ) ) ? RetCode::Ok : RetCode::IoError;
+            } );
+            ce( [&] {
+                return ( stamp != generate_compatibility_stamp() ) ? RetCode::IncompatibleFile : RetCode::Ok;
+            } );
+
+            return status;
+        }
+
+
         /** Initialize newly create file
 
+        @retvar RetCode - operation status
         @throw nothing
         @warning not thread safe
         */
         auto deploy() noexcept
         {
-            bool status = true;
-            auto ce = [&] ( const auto & f ) noexcept { if ( status ) status = f(); };
+            //conditional executor
+            RetCode status = RetCode::Ok;
+
+            auto ce = [&] ( const auto & f ) noexcept { if ( RetCode::Ok == status ) status = f(); };
+
+            // reserve space for header
+            ce( [&] {
+                auto [ ok, size ] = OsPolicy::resize_file( writer_, sizeof( header_t ) );
+                return ok && size == sizeof( header_t ) ? RetCode::Ok : RetCode::IoError;
+            } );
 
             // write compatibility stamp
             ce( [&] {
-                return std::get< bool >( OsPolicy::seek_file( writer_, HeaderOffsets::of_CompatibilityStamp ) );
+                auto[ ok, pos ] = OsPolicy::seek_file( writer_, HeaderOffsets::of_CompatibilityStamp );
+                return ( ok && pos == HeaderOffsets::of_CompatibilityStamp ) ? RetCode::Ok : RetCode::IoError;
             } );
             ce( [&] {
-                CompatibilityStamp stamp = generate_compatibility_stamp();
-                return std::get< bool >( OsPolicy::write_file( writer_, &stamp, sizeof( stamp ) ) );
+                big_uint64_t stamp = generate_compatibility_stamp();
+                auto[ ok, written ] = OsPolicy::write_file( writer_, &stamp, sizeof( stamp ) );
+                return ( ok && written == sizeof( stamp ) ) ? RetCode::Ok : RetCode::IoError;
             } );
 
             // write file size
             ce( [&] {
-                return std::get< bool >( OsPolicy::seek_file( writer_, HeaderOffsets::of_TransactionalData + TransactionDataOffsets::of_FileSize ) );
+                auto[ ok, pos ] = OsPolicy::seek_file( writer_, HeaderOffsets::of_TransactionalData + TransactionDataOffsets::of_FileSize );
+                return ( ok && pos == HeaderOffsets::of_TransactionalData + TransactionDataOffsets::of_FileSize ) ? RetCode::Ok : RetCode::IoError;
             } );
             ce( [&] {
-                boost::endian::big_uint64_t value = HeaderOffsets::of_Root;
-                return std::get< bool >( OsPolicy::write_file( writer_, &value, sizeof( value ) ) );
+                boost::endian::big_uint64_t file_size = HeaderOffsets::of_Root;
+                auto[ ok, written ] = OsPolicy::write_file( writer_, &file_size, sizeof( file_size ) );
+                return ( ok && written == sizeof( file_size ) ) ? RetCode::Ok : RetCode::IoError;
             } );
 
             // invalidate free space ptr
             ce( [&] {
-                return std::get< bool >( OsPolicy::seek_file( writer_, HeaderOffsets::of_TransactionalData + TransactionDataOffsets::of_FreeSpace ) );
+                auto[ ok, pos ] = OsPolicy::seek_file( writer_, HeaderOffsets::of_TransactionalData + TransactionDataOffsets::of_FreeSpace );
+                return ( ok && pos == HeaderOffsets::of_TransactionalData + TransactionDataOffsets::of_FreeSpace ) ? RetCode::Ok : RetCode::IoError;
             } );
             ce( [&] {
-                boost::endian::big_uint64_t value = InvalidChunkOffset;
-                return std::get< bool >( OsPolicy::write_file( writer_, &value, sizeof( value ) ) );
+                boost::endian::big_uint64_t free_space = InvalidChunkOffset;
+                auto[ ok, written ] = OsPolicy::write_file( writer_, &free_space, sizeof( free_space ) );
+                return ( ok && written == sizeof( free_space ) ) ? RetCode::Ok : RetCode::IoError;
             } );
 
             // invalidate transaction
             ce( [&] {
-                return invalidate_transaction() == RetCode::Ok;
+                return invalidate_transaction();
             } );
 
-            return status ? RetCode::Ok : RetCode::IoError;
+            return status;
         }
 
 
@@ -291,30 +293,34 @@ namespace jb
         @throw nothing
         @warning not thread safe
         */
-        RetCode invalidate_transaction() const noexcept
+        auto invalidate_transaction() const noexcept
         {
             using namespace std;
 
-            bool status = true;
-            auto ce = [&] ( const auto & f ) noexcept { if ( status ) status = f(); };
+            RetCode status = RetCode::Ok;
+            auto ce = [&] ( const auto & f ) noexcept { if ( RetCode::Ok == status ) status = f(); };
 
             header_t::transactional_data_t transaction;
 
             ce( [&] {
-                return std::get< bool >( OsPolicy::seek_file( writer_, HeaderOffsets::of_Transaction ) );
+                auto[ ok, pos ] = OsPolicy::seek_file( writer_, HeaderOffsets::of_Transaction );
+                return ( ok && pos == HeaderOffsets::of_Transaction ) ? RetCode::Ok : RetCode::IoError;
             } );
             ce( [&] {
-                return std::get< bool >( OsPolicy::read_file( writer_, &transaction, sizeof( transaction ) ) );
+                auto[ ok, read ] = OsPolicy::read_file( writer_, &transaction, sizeof( transaction ) );
+                return ( ok && read == sizeof( transaction ) ) ? RetCode::Ok : RetCode::IoError;
             } );
             ce( [&] {
-                return std::get< bool >( OsPolicy::seek_file( writer_, HeaderOffsets::of_TransactionCrc ) );
+                auto[ ok, pos ] = OsPolicy::seek_file( writer_, HeaderOffsets::of_TransactionCrc );
+                return ( ok && pos == HeaderOffsets::of_TransactionCrc ) ? RetCode::Ok : RetCode::IoError;
             } );
             ce( [&] {
-                big_uint64_t trasaction_crc = variadic_hash( ( uint64_t )transaction.file_size_, ( uint64_t )transaction.free_space_ );
-                return std::get< bool >( OsPolicy::write_file( writer_, &trasaction_crc, sizeof( trasaction_crc ) ) );
+                big_uint64_t trasaction_crc = variadic_hash( ( uint64_t )transaction.file_size_, ( uint64_t )transaction.free_space_ ) + 1;
+                auto[ ok, written ] = OsPolicy::write_file( writer_, &trasaction_crc, sizeof( trasaction_crc ) );
+                return ( ok && written == sizeof( trasaction_crc ) ) ? RetCode::Ok : RetCode::IoError;
             } );
 
-            return status ? RetCode::Ok : RetCode::IoError;
+            return status;
         }
 
 
@@ -333,7 +339,7 @@ namespace jb
             using namespace std;
 
             if ( writer_ != InvalidHandle ) OsPolicy::close_file( writer_ );
-            if ( bloom_writer_ != InvalidHandle ) OsPolicy::close_file( bloom_writer_ );
+            if ( bloom_ != InvalidHandle ) OsPolicy::close_file( bloom_ );
 
             assert( readers_.size() == ReaderNumber );
             for_each( execution::par, begin( readers_ ), end( readers_ ), [] ( auto h ) {
@@ -378,62 +384,47 @@ namespace jb
                 creation_status_ = RetCode::AlreadyOpened;
             }
 
+            // conditional executor
+            auto ce = [&] ( const auto & f ) noexcept { if ( RetCode::Ok == creation_status_ ) creation_status_ = f(); };
+
             // open writter
-            if ( RetCode::Ok == creation_status_  )
-            {
-                if ( auto[ opened, tried_create, handle ] = OsPolicy::open_file( path, create ); !opened )
-                {
-                    creation_status_ = tried_create ? RetCode::UnableToCreate : RetCode::UnableToOpen;
-                }
-                else
-                {
-                    writer_ = handle;
+            ce( [&] { 
+                auto[ opened, tried_create, handle ] = OsPolicy::open_file( path, create );
 
-                    // if newly created
-                    if ( tried_create )
-                    {
-                        // initial deploy
-                        deploy();
-
-                        // notify storage
-                        newly_created_ = true;
-                    }
-                    else
-                    {
-                        check_compatibility();
-                    }
+                if ( !opened )
+                {
+                    return tried_create ? RetCode::UnableToCreate : RetCode::UnableToOpen;
                 }
-            }
+
+                newly_created_ = opened && tried_create;
+                writer_ = handle;
+
+                return RetCode::Ok;
+            } );
+
+            // deploy new file
+            ce( [&] {
+                return newly_created_ ? deploy() : RetCode::Ok;
+            } );
+
+            // check compatibility for existing file
+            ce( [&] {
+                return newly_created_ ? RetCode::Ok : check_compatibility();
+            } );
 
             // open Bloom writer
-            if ( RetCode::Ok == creation_status_ )
-            {
-                if ( auto[ opened, tried_create, handle ] = OsPolicy::open_file( path, false ); !opened )
-                {
-                    creation_status_ = RetCode::UnableToOpen;
-                }
-                else
-                {
-                    bloom_writer_ = handle;
-                }
-            }
+            ce( [&] {
+                auto[ opened, tried_create, handle ] = OsPolicy::open_file( path, false );
+                return ( bloom_ = handle ) != InvalidHandle ? RetCode::Ok : RetCode::UnableToOpen;
+            } );
 
             // open readers
             for ( auto & reader : readers_ )
             {
-                if ( RetCode::Ok != creation_status_ )
-                {
-                    break;
-                }
-
-                if ( auto[ opened, tried_create, handle ] = OsPolicy::open_file( path, false ); !opened )
-                {
-                    creation_status_ = RetCode::UnableToOpen;
-                }
-                else
-                {
-                    reader = handle;
-                }
+                ce( [&] {
+                    auto[ opened, tried_create, handle ] = OsPolicy::open_file( path, false );
+                    return ( reader = handle ) != InvalidHandle ? RetCode::Ok : RetCode::UnableToOpen;
+                } );
             }
         }
         catch ( const std::bad_alloc & )
@@ -471,19 +462,21 @@ namespace jb
         {
             if ( !newly_created_ )
             {
-                bool status = true;
+                RetCode status = RetCode::Ok;
 
-                auto ce = [&] ( const auto & f ) noexcept { if ( status ) status = f(); };
+                auto ce = [&] ( const auto & f ) noexcept { if ( RetCode::Ok == status ) status = f(); };
 
                 // seek & read data
                 ce( [&] {
-                    return std::get< bool >( OsPolicy::seek_file( bloom_writer_, HeaderOffsets::of_Bloom ) );
+                    auto[ ok, pos ] = OsPolicy::seek_file( bloom_, HeaderOffsets::of_Bloom );
+                    return ok && pos == HeaderOffsets::of_Bloom ? RetCode::Ok : RetCode::IoError;
                 } );
                 ce( [&] {
-                    return std::get< bool >( OsPolicy::read_file( bloom_writer_, bloom_buffer, BloomSize ) );
+                    auto[ ok, read ] = OsPolicy::read_file( bloom_, bloom_buffer, BloomSize );
+                    return ok && read == BloomSize ? RetCode::Ok : RetCode::IoError;
                 } );
 
-                return status ? RetCode::Ok : RetCode::IoError;
+                return status;
             }
             else
             {
@@ -506,56 +499,31 @@ namespace jb
 
             assert( byte_no < BloomSize );
 
-            scoped_lock l( bloom_writer_mutex_ );
+            scoped_lock l( bloom_mutex_ );
 
-            bool status = true;
-            auto ce = [&] ( const auto & f ) noexcept { if ( status ) status = f(); };
+            RetCode status = RetCode::Ok;
+            auto ce = [&] ( const auto & f ) noexcept { if ( RetCode::Ok == status ) status = f(); };
 
             // seek & write data
             ce( [&] {
-                return std::get< bool >( OsPolicy::seek_file( bloom_writer_, HeaderOffsets::of_Bloom + byte_no ) );
+                auto [ ok, pos] = OsPolicy::seek_file( bloom_, HeaderOffsets::of_Bloom + byte_no );
+                return ok && pos == HeaderOffsets::of_Bloom + byte_no ? RetCode::Ok : RetCode::IoError;
             } );
             ce( [&] {
-                return std::get< bool >( OsPolicy::write_file( bloom_writer_, &byte, 1 ) );
+                auto[ ok, written ] = OsPolicy::write_file( bloom_, &byte, 1 );
+                return ok && written == 1 ? RetCode::Ok : RetCode::IoError;
             } );
 
-            return status ? RetCode::Ok : RetCode::IoError;
+            return status;
         }
 
 
         /** Starts new transaction
         */
-        std::tuple< RetCode, Transaction > open_transaction() const noexcept
+        Transaction open_transaction() const noexcept
         {
             using namespace std;
-
-            Transaction transaction{ const_cast< Storage* >( this ), move( scoped_lock{ write_mutex } ) };
-
-            // conditional execution
-            bool status = true;
-            auto ce = [&] ( const auto & f ) noexcept { if ( status ) status = f(); };
-
-            // read transactional data: file size...
-            boost::endian::big_uint64_t file_size;
-            ce( [&] {
-                return std::get< bool >( OsPolicy::seek_file( writer_, HeaderOffsets::of_FileSize ) );
-            } );
-            ce( [&] {
-                return std::get< bool >( OsPolicy::read_file( writer_, &file_size, sizeof( file_size ) ) );
-            } );
-            transaction.file_size_ = file_size;
-
-            // ... free space
-            boost::endian::big_uint64_t free_space;
-            ce( [&] {
-                return std::get< bool >( OsPolicy::seek_file( writer_, HeaderOffsets::of_FreeSpace ) );
-            } );
-            ce( [&] {
-                return std::get< bool >( OsPolicy::read_file( writer_, &free_space, sizeof( free_space ) ) );
-            } );
-
-
-            return status ? std::tuple{ RetCode::Ok, }
+            return Transaction { const_cast< StorageFile* >( this ), writer_, move( unique_lock{ transaction_mutex_ } ) };
         }
     };
 
@@ -568,16 +536,16 @@ namespace jb
     template < typename Policies, typename Pad >
     class Storage< Policies, Pad >::PhysicalVolumeImpl::PhysicalStorage::StorageFile::Transaction
     {
+        friend class TestStorageFile;
         friend class StorageFile;
 
+        RetCode status_ = RetCode::UnknownError;
         StorageFile * file_ = nullptr;
-        std::scoped_lock< std::mutex > lock_;
+        std::unique_lock< std::mutex > lock_;
         Handle handle_ = InvalidHandle;
-        bool commited_ = false;
         uint64_t file_size_;
         ChunkOffset free_space_;
         ChunkOffset released_head_ = InvalidChunkOffset, released_tile_ = InvalidChunkOffset;
-        bool status_ = false;
 
 
         /* Constructor
@@ -586,14 +554,41 @@ namespace jb
         @param [in] lock - write lock
         @throw nothing
         */
-        explicit Transaction( StorageFile * file, Handle handle, std::scoped_lock< std::mutex > && lock ) noexcept try
+        explicit Transaction( StorageFile * file, Handle handle, std::unique_lock< std::mutex > && lock ) noexcept
             : file_{ file }
             , handle_{ handle }
             , lock_{ move( lock ) }
-            , status_{ true }
+            , status_{ RetCode::Ok }
         {
             assert( file_ );
-            assert( hadle_ != InvalidHandle );
+            assert( handle_ != InvalidHandle );
+
+            // conditional execution
+            auto ce = [&] ( const auto & f ) noexcept { if ( RetCode::Ok == status_ ) status_ = f(); };
+
+            // read transactional data: file size...
+            boost::endian::big_uint64_t file_size;
+            ce( [&] {
+                auto [ ok, pos ] = OsPolicy::seek_file( handle_, HeaderOffsets::of_TransactionalData + TransactionDataOffsets::of_FileSize );
+                return ( ok && pos == HeaderOffsets::of_TransactionalData + TransactionDataOffsets::of_FileSize ) ? RetCode::Ok : RetCode::IoError;
+            } );
+            ce( [&] {
+                auto[ ok, read ] = OsPolicy::read_file( handle_, &file_size, sizeof( file_size ) );
+                return ( ok && read == sizeof( file_size ) ? RetCode::Ok : RetCode::IoError );
+            } );
+            file_size_ = file_size;
+
+            // ... and free space
+            boost::endian::big_uint64_t free_space;
+            ce( [&] {
+                auto[ ok, pos ] = OsPolicy::seek_file( handle_, HeaderOffsets::of_TransactionalData + TransactionDataOffsets::of_FreeSpace );
+                return ( ok && pos == HeaderOffsets::of_TransactionalData + TransactionDataOffsets::of_FreeSpace ) ? RetCode::Ok : RetCode::IoError;
+            } );
+            ce( [&] {
+                auto[ ok, read ] = OsPolicy::read_file( handle_, &free_space, sizeof( free_space ) );
+                return ( ok && read == sizeof( free_space ) ? RetCode::Ok : RetCode::IoError );
+            } );
+            free_space_ = free_space;
         }
 
 
@@ -615,6 +610,14 @@ namespace jb
         Transaction( Transaction&& ) noexcept = default;
 
 
+        /** Provides transaction status
+
+        @retval status
+        @throw nothing
+        */
+        RetCode status() const noexcept { return status_; }
+
+
         /** Marks a chain started from given chunk as released
 
         @param [in] chunk - staring chunk
@@ -624,10 +627,10 @@ namespace jb
         RetCode erase_chain( ChunkOffset chunk ) noexcept
         {
             // conditional execution
-            auto ce = [&] ( const auto & f ) noexcept { if ( status_ ) status_ = f(); };
+            auto ce = [&] ( const auto & f ) noexcept { if ( RetCode::Ok == status_ ) status_ = f(); };
 
             // check that given chunk is valid
-            if ( chunk > file_size_ )
+            if ( chunk < HeaderOffsets::of_Root || file_size_ < chunk )
             {
                 return RetCode::UnknownError;
             }
@@ -635,6 +638,7 @@ namespace jb
             // initialize pointers to released space end
             ce( [&] {
                 released_tile_ = ( released_tile_ == InvalidChunkOffset ) ? chunk : released_tile_;
+                return RetCode::Ok;
             } );
 
             while ( chunk != InvalidChunkOffset )
@@ -642,26 +646,30 @@ namespace jb
                 // get next used for current chunk
                 big_uint64_t next_used;
                 ce( [&] {
-                    return std::get< bool >( OsPolicy::seek_file( handle_, chunk + chunk_t::of_NextUsed ) );
+                    auto[ ok, pos ] = OsPolicy::seek_file( handle_, chunk + chunk_t::of_NextUsed );
+                    return ( ok && pos == chunk + chunk_t::of_NextUsed ) ? RetCode::Ok : RetCode::IoError;
                 } );
                 ce( [&] {
-                    return std::get< bool >( OsPolicy::read_file( handle_, &next_used, sizeof( next_used ) ) );
+                    auto[ ok, read ] = OsPolicy::read_file( handle_, &next_used, sizeof( next_used ) );
+                    return ( ok && read == sizeof( next_used ) ) ? RetCode::Ok : RetCode::IoError;
                 } );
 
                 // set next free to released head
                 big_uint64_t next_free = released_head_;
                 ce( [&] {
-                    return std::get< bool >( OsPolicy::seek_file( handle_, chunk + chunk_t::of_NextFree ) );
+                    auto [ ok, pos ] = OsPolicy::seek_file( handle_, chunk + chunk_t::of_NextFree );
+                    return ( ok && pos == chunk + chunk_t::of_NextFree ) ? RetCode::Ok : RetCode::IoError;
                 } );
                 ce( [&] {
-                    return std::get< bool >( OsPolicy::write_file( handle_, &next_free, sizeof( next_free ) ) );
+                    auto [ ok, written ] = OsPolicy::write_file( handle_, &next_free, sizeof( next_free ) );
+                    return ( ok && written == sizeof( next_free ) ) ? RetCode::Ok : RetCode::IoError;
                 } );
 
                 // go to next chunk
                 chunk = next_used;
             }
 
-            return status_ ? RetCode::Ok : RetCode::IoError;
+            return status_;
         }
 
         /** Commit transaction

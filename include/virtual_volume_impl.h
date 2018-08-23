@@ -28,7 +28,6 @@ namespace jb
         //
         // Short aliases
         //
-        using Storage = ::jb::Storage< Policies, Pad >;
         using RetCode = typename Storage::RetCode;
         using Key = typename Storage::Key;
         using KeyValue = typename Storage::KeyValue;

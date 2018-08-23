@@ -6,9 +6,11 @@
 #include <unordered_map>
 #include <limits>
 
+
 #include <Windows.h>
 #undef min
 #undef max
+
 
 namespace jb
 {
@@ -53,7 +55,8 @@ namespace jb
                         FILE_ATTRIBUTE_ARCHIVE | FILE_FLAG_RANDOM_ACCESS | FILE_FLAG_WRITE_THROUGH,
                         NULL );
 
-                    return { handle != InvalidHandle, trying_create, handle };
+                    auto le = ::GetLastError();
+                    return { handle != InvalidHandle, ! le, handle };
                 }
             }
             catch ( ... )
@@ -133,6 +136,7 @@ namespace jb
         @param [in] buffer - memory buffer to be written
         @param [in] size - amount of bytes to be written
         @retval true if the operation succeeds
+        @retval uint64_t - number of written bytes
         @throw nothing
         */
         static std::tuple< bool, uint64_t > write_file( HandleT handle, void * buffer, size_t size ) noexcept
@@ -162,7 +166,8 @@ namespace jb
         @param [in] handle - file to be read
         @param [out] buffer - reading buffer
         @param [in] size - amount of bytes to be read
-        @retval true if the operation succeeds
+        @retval bool - true if the operation succeeds
+        @retval uint64_t - number of read bytes
         @throw nothing
         */
         static std::tuple< bool, uint64_t > read_file( HandleT handle, void * buffer, size_t size ) noexcept
@@ -185,6 +190,29 @@ namespace jb
             {
                 return { false, 0 };
             }
+        }
+
+
+        /** Implements file resizing for Windows
+
+        @param [in] handle - file to be read
+        @param [out] size - desired size
+        @retval bool - true if the operation succeeds
+        @throw nothing
+        */
+        static std::tuple< bool, uint64_t > resize_file( HandleT handle, uint64_t size ) noexcept
+        {
+            if ( size > static_cast< uint64_t >( std::numeric_limits< int64_t >::max() ) )
+            {
+                return { false, 0 };
+            }
+
+            if ( auto[ seek_ok, pos ] = seek_file( handle, size ); !seek_ok || pos != size )
+            {
+                return { false, 0 };
+            }
+
+            return { TRUE == SetEndOfFile( handle ), size };
         }
     };
 }
