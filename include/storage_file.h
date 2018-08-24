@@ -40,6 +40,8 @@ namespace jb
         using TimestampT = typename Storage::Timestamp;
         using OsPolicy = typename Policies::OSPolicy;
         using Handle = typename OsPolicy::HandleT;
+        using big_uint32_t = boost::endian::big_uint32_t;
+        using big_uint32_at = boost::endian::big_uint32_at;
         using big_uint64_t = boost::endian::big_uint64_t;
         using big_uint64_at = boost::endian::big_uint64_at;
 
@@ -105,19 +107,19 @@ namespace jb
             return hash;
         }
 
-        // number of utilized bytes in a chunk
-        static_assert( ChunkSize - 3 * sizeof( big_uint64_at ) > 0, "Chunk size too small" );
-        static constexpr auto SpaceInChunk = ChunkSize - 3 * sizeof( big_uint64_at );
-
         //
         // defines chunk structure
         //
         struct chunk_t
         {
+            uint8_t head_;
+            uint8_t released_;
+            uint8_t reserved_1_;
+            uint8_t reserved_2_;
+            big_uint32_at used_size_;                   //< number of utilized bytes in chunk
             big_uint64_at next_used_;                   //< next used chunk (takes sense for allocated chunks)
             big_uint64_at next_free_;                   //< next free chunk (takes sense for released chunks)
-            big_uint64_at used_size_;                   //< number of utilized bytes in chunk
-            std::array< uint8_t, SpaceInChunk > space_; //< available space
+            std::array< uint8_t, ChunkSize > space_;    //< available space
         };
 
         //
@@ -125,14 +127,14 @@ namespace jb
         //
         enum ChunkOffsets
         {
+            of_UsedSize = offsetof( chunk_t, used_size_ ),
+            sz_UsedSize = sizeof( chunk_t::used_size_ ),
+
             of_NextUsed = offsetof( chunk_t, next_used_ ),
             sz_NextUsed = sizeof( chunk_t::next_used_ ),
 
             of_NextFree = offsetof( chunk_t, next_free_ ),
             sz_NextFree = sizeof( chunk_t::next_free_ ),
-
-            of_UsedSize = offsetof( chunk_t, used_size_ ),
-            sz_UsedSize = sizeof( chunk_t::used_size_ ),
 
             of_Space = offsetof( chunk_t, space_ ),
             sz_Space = sizeof( chunk_t::space_ ),
@@ -869,8 +871,8 @@ namespace jb
 
                 // resize file
                 ce( [&] {
-                    auto[ ok, size ] = OsPolicy::resize_file( handle_, file_size_ + ChunkSize );
-                    if ( ok && size == file_size_ + ChunkSize )
+                    auto[ ok, size ] = OsPolicy::resize_file( handle_, file_size_ + sizeof( chunk_t ) );
+                    if ( ok && size == file_size_ + sizeof( chunk_t ) )
                     {
                         file_size_ = size;
                         return RetCode::Ok;
@@ -943,7 +945,7 @@ namespace jb
                     return ( ok && pos == chunk_uid + ChunkOffsets::of_UsedSize ) ? RetCode::Ok : RetCode::IoError;
                 } );
                 ce( [&] {
-                    big_uint64_t bytes_no = bytes_to_write;
+                    big_uint32_t bytes_no = static_cast< uint32_t >( bytes_to_write );
                     auto[ ok, written ] = OsPolicy::write_file( handle_, &bytes_no, sizeof( bytes_no ) );
                     return ( ok && written == sizeof( bytes_no ) ) ? RetCode::Ok : RetCode::IoError;
                 } );
@@ -1374,7 +1376,7 @@ namespace jb
                 } );
 
                 // used size
-                big_uint64_t used_size;
+                big_uint32_t used_size;
                 ce( [&] {
                     auto[ ok, pos ] = OsPolicy::seek_file( handle_, current_chunk_ + ChunkOffsets::of_UsedSize );
                     return ( ok && pos == current_chunk_ + ChunkOffsets::of_UsedSize ) ? RetCode::Ok : RetCode::IoError;
@@ -1397,8 +1399,8 @@ namespace jb
                     return ( ok && pos == current_chunk_ + ChunkOffsets::of_Space ) ? RetCode::Ok : RetCode::IoError;
                 } );
                 ce( [&] {
-                    auto[ ok, read ] = OsPolicy::read_file( handle_, buffer_.data() + putb_limit, sizeof( size_to_read ) );
-                    return ( ok && read == sizeof( size_to_read ) ) ? RetCode::Ok : RetCode::IoError;
+                    auto[ ok, read ] = OsPolicy::read_file( handle_, buffer_.data() + putb_limit, size_to_read );
+                    return ( ok && read == size_to_read ) ? RetCode::Ok : RetCode::IoError;
                 } );
 
                 // proceed to next chunk

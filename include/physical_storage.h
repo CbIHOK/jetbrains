@@ -32,8 +32,6 @@ namespace jb
     {
         friend class TestStorageFile;
 
-        class StorageFile;
-
     public:
 
         using RetCode = typename Storage::RetCode;
@@ -45,6 +43,7 @@ namespace jb
         static constexpr NodeUid InvalidNodeUid = std::numeric_limits< uint64_t >::max( );
 
         class BTree;
+        class StorageFile;
         using BTreeP = std::shared_ptr< BTree >;
 
     private:
