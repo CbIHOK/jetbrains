@@ -125,7 +125,7 @@ TEST_F( TestStorageFile, Transaction_Rollback )
 {
     using namespace std;
 
-    SmallChunkStorageFile f{ std::filesystem::path{ "./foo11.jb" }, true };
+    SmallChunkStorageFile f{ std::filesystem::path{ "./foo14.jb" }, true };
     ASSERT_EQ( SmallChunkStorage::RetCode::Ok, f.creation_status() );
 
     {

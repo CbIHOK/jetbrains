@@ -70,6 +70,7 @@ namespace jb
 
         // status
         RetCode creation_status_ = RetCode::Ok;
+        RetCode status_ = RetCode::Ok;
         bool newly_created_ = false;
 
         // file locking
@@ -452,6 +453,34 @@ namespace jb
         }
 
 
+        /* Rollback transaction
+
+        @throw noexcept
+        */
+        auto rollback() noexcept
+        {
+            auto ce = [&] ( const auto & f ) noexcept {
+                if ( RetCode::Ok == status_ ) status_ = f();
+                assert( RetCode::Ok == status_ );
+            };
+
+            // just restore file size
+            big_uint64_t file_size;
+            ce( [&] {
+                auto[ ok, pos ] = OsPolicy::seek_file( writer_, HeaderOffsets::of_TransactionalData + TransactionDataOffsets::of_FileSize );
+                return ( ok && pos == HeaderOffsets::of_TransactionalData + TransactionDataOffsets::of_FileSize ) ? RetCode::Ok : RetCode::IoError;
+            } );
+            ce( [&] {
+                auto[ ok, read ] = OsPolicy::read_file( writer_, &file_size, sizeof( file_size ) );
+                return ( ok && read == sizeof( file_size ) ) ? RetCode::Ok : RetCode::IoError;
+            } );
+            ce( [&] {
+                auto[ ok, size ] = OsPolicy::resize_file( writer_, file_size );
+                return ( ok && size == file_size ) ? RetCode::Ok : RetCode::IoError;
+            } );
+        }
+
+
     public:
 
         /** The class is not default creatable/copyable/movable
@@ -730,6 +759,7 @@ namespace jb
         ChunkUid last_written_chunk_ = InvalidChunkUid;
         ChunkUid preserved_chunk_ = InvalidChunkUid;
         bool preservation_used_ = false;
+        bool commited_ = false;
 
         /* Constructor
 
@@ -954,6 +984,12 @@ namespace jb
         Transaction() noexcept = default;
 
 
+        ~Transaction()
+        {
+            if ( !commited_ ) file_->rollback();
+        }
+
+
         /** The class is not copyable
         */
         Transaction( const Transaction & ) = delete;
@@ -1165,11 +1201,10 @@ namespace jb
                 return file_->commit();
             } );
 
-            // get transaction status as operation status and mark transaction as invalid
-            RetCode status = RetCode::UnknownError;
-            std::swap( status, status_ );
+            // mark transaction as commited
+            commited_ = true;
 
-            return status;
+            return status_;
         }
     };
 
@@ -1305,10 +1340,7 @@ namespace jb
         size_t read() noexcept
         {
             // conditional execution
-            auto ce = [&] ( const auto & f ) noexcept { 
-                if ( RetCode::Ok == status_ ) status_ = f();
-                assert( RetCode::Ok == status_ ); 
-            };
+            auto ce = [&] ( const auto & f ) noexcept { if ( RetCode::Ok == status_ ) status_ = f(); };
 
             if ( current_chunk_ != InvalidChunkUid )
             {
