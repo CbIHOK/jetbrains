@@ -163,7 +163,7 @@ namespace jb
                 big_uint64_at target_;                //< target chunk uid
                 chunk_t chunk_;                       //< preserved chunk
             };
-            preserved_chunk_t preserved_chunk_;       //< let us make one writing per transaction with preservation of original chunk uid
+            preserved_chunk_t overwritten__chunk_;       //< let us make one writing per transaction with preservation of original chunk uid
         };
 
         //
@@ -210,8 +210,8 @@ namespace jb
             of_TransactionCrc = offsetof( header_t, transaction_crc_ ),
             sz_TransactionCrc = sizeof( header_t::transaction_crc_ ),
 
-            of_PreservedChunk = offsetof( header_t, preserved_chunk_ ),
-            sz_PreservedChunk = sizeof( header_t::preserved_chunk_ ),
+            of_PreservedChunk = offsetof( header_t, overwritten__chunk_ ),
+            sz_PreservedChunk = sizeof( header_t::overwritten__chunk_ ),
 
             of_Root = sizeof( header_t )
         };
@@ -757,8 +757,9 @@ namespace jb
         ChunkUid released_head_ = InvalidChunkUid, released_tile_ = InvalidChunkUid;
         ChunkUid first_written_chunk = InvalidChunkUid;
         ChunkUid last_written_chunk_ = InvalidChunkUid;
-        ChunkUid preserved_chunk_ = InvalidChunkUid;
-        bool preservation_used_ = false;
+        ChunkUid overwritten__chunk_ = InvalidChunkUid;
+        bool overwriting_used_ = false;
+        bool overwriting_first_chunk_ = false;
         bool commited_ = false;
 
         /* Constructor
@@ -836,10 +837,10 @@ namespace jb
             };
 
             // if preserved writting: return reserved chunk offset
-            if ( preserved_chunk_ != InvalidChunkUid )
+            if ( overwriting_first_chunk_ )
             {
-                available_chunk = InvalidChunkUid;
-                std::swap( available_chunk, preserved_chunk_ );
+                available_chunk = HeaderOffsets::of_PreservedChunk + PreservedChunkOffsets::of_Chunk;
+                overwriting_first_chunk_ = false;
             }
             // if there is free space
             else if ( free_space_ != InvalidChunkUid )
@@ -901,10 +902,7 @@ namespace jb
             if ( sz )
             {
                 // conditional execution
-                auto ce = [&] ( const auto & f ) noexcept {
-                    if ( RetCode::Ok == status_ ) status_ = f();
-                    assert( RetCode::Ok == status_ );
-                };
+                auto ce = [&] ( const auto & f ) noexcept { if ( RetCode::Ok == status_ ) status_ = f(); };
 
                 // get next chunk uid
                 ChunkUid chunk_uid;
@@ -1009,27 +1007,65 @@ namespace jb
         RetCode status() const noexcept { return status_; }
 
 
-        /** Provides streaming buffer for writting a chain with preservation of start chunk
+        /** Provides streaming buffer for overwriting of existing chain with preservation of start chunk uid
 
-        @param [in] preserved_uid - REQUIRED start chunk of chain
-        @retval operation status
+        @param [in] uid - uid of chain to be overwritten
         @retval output stream buffer object
         @throw nothing
         */
-        std::tuple< RetCode, ostreambuf > get_preserved_chain_writer( ChunkUid preserved_uid ) noexcept
+        ostreambuf get_chain_overwriter( ChunkUid uid ) noexcept
         {
-            if ( !preservation_used_ )
-            {
-                preservation_used_ = true;
-                preserved_chunk_ = preserved_uid;
-                first_written_chunk = last_written_chunk_ = InvalidChunkUid;
+            assert( uid != InvalidChunkUid );
 
-                return { RetCode::Ok, move( ostreambuf( const_cast< Transaction* >( this ) ) ) };
-            }
-            else
-            {
-                return { RetCode::UnknownError, move( ostreambuf() ) };
-            }
+            auto ce = [&] ( const auto & f ) noexcept { if ( RetCode::Ok == status_ ) status_ = f(); };
+
+            // overwriting allowed only for the chunks created before this transaction
+            ce( [&] {
+                return ( HeaderOffsets::of_Root <= uid && uid < file_size_ ) ? RetCode::Ok : RetCode::UnknownError;
+            } );
+
+            // check that overwriting has not been used during this transaction
+            ce( [&] {
+                return !overwriting_used_ ? RetCode::Ok : RetCode::UnknownError;
+            } );
+
+            // initializing
+            ce( [&] {
+                overwriting_used_ = true;
+                overwriting_first_chunk_ = true;
+                overwritten__chunk_ = uid;
+                first_written_chunk = last_written_chunk_ = InvalidChunkUid;
+                return RetCode::Ok;
+            } );
+
+            // write uid to be overwritten
+            ce( [&] {
+                auto[ ok, pos ] = OsPolicy::seek_file( handle_, HeaderOffsets::of_PreservedChunk + PreservedChunkOffsets::of_Target );
+                return ( ok && pos == HeaderOffsets::of_PreservedChunk + PreservedChunkOffsets::of_Target ) ? RetCode::Ok : RetCode::IoError;
+            } );
+            ce( [&] {
+                big_uint64_t preserved_chunk = overwritten__chunk_;
+                auto[ ok, written ] = OsPolicy::write_file( handle_, &preserved_chunk, sizeof( preserved_chunk ) );
+                return ( ok && written == sizeof( preserved_chunk ) ) ? RetCode::Ok : RetCode::IoError;
+            } );
+
+            // mark 2nd and futher chunks of overwritten chain as released
+            big_uint64_t second_chunk;
+            ce( [&] {
+                auto[ ok, pos ] = OsPolicy::seek_file( handle_, overwritten__chunk_ + ChunkOffsets::of_NextUsed );
+                return ( ok && pos == overwritten__chunk_ + ChunkOffsets::of_NextUsed ) ? RetCode::Ok : RetCode::IoError;
+            } );
+            ce( [&] {
+                auto[ ok, read ] = OsPolicy::read_file( handle_, &second_chunk, sizeof( second_chunk ) );
+                return ( ok && read == sizeof( second_chunk ) ) ? RetCode::Ok : RetCode::IoError;
+            } );
+            ce( [&] {
+                return second_chunk != InvalidChunkUid ? erase_chain( second_chunk ) : RetCode::Ok;
+            } );
+
+
+
+            return ostreambuf( const_cast< Transaction* >( this ) );
         }
 
 
@@ -1132,20 +1168,16 @@ namespace jb
         RetCode commit() noexcept
         {
             // conditional execution
-            auto ce = [&] ( const auto & f ) noexcept {
-                if ( RetCode::Ok == status_ ) status_ = f();
-                assert( RetCode::Ok == status_ );
-            };
+            auto ce = [&] ( const auto & f ) noexcept { if ( RetCode::Ok == status_ ) status_ = f(); };
 
             // if there is released space - glue released chunks with remaining free space
             if ( released_head_ != InvalidChunkUid )
             {
-                assert( released_head_ != InvalidChunkUid );
+                assert( released_tile_ != InvalidChunkUid );
 
-                big_uint64_t next_used;
                 ce( [&] {
-                    auto[ ok, pos ] = OsPolicy::seek_file( handle_, released_tile_ + chunk_t::of_NextFree );
-                    return ( ok && pos == released_tile_ + chunk_t::of_NextFree ) ? RetCode::Ok : RetCode::IoError;
+                    auto[ ok, pos ] = OsPolicy::seek_file( handle_, released_tile_ + ChunkOffsets::of_NextFree );
+                    return ( ok && pos == released_tile_ + ChunkOffsets::of_NextFree ) ? RetCode::Ok : RetCode::IoError;
                 } );
                 ce( [&] {
                     big_uint64_t next_free = free_space_;
@@ -1155,22 +1187,8 @@ namespace jb
                 free_space_ = released_head_;
             }
 
-            // if preserved chunk was used - apply preserved target
-            if ( preserved_chunk_ != InvalidChunkUid )
-            {
-                ce( [&] {
-                    auto[ ok, pos ] = OsPolicy::seek_file( handle_, HeaderOffsets::of_PreservedChunk + PreservedChunkOffsets::of_Target );
-                    return ( ok && pos == HeaderOffsets::of_PreservedChunk + PreservedChunkOffsets::of_Target ) ? RetCode::Ok : RetCode::IoError;
-                } );
-                ce( [&] {
-                    big_uint64_t preserved_chunk = preserved_chunk_;
-                    auto[ ok, written ] = OsPolicy::write_file( handle_, &preserved_chunk, sizeof( preserved_chunk ) );
-                    return ( ok && written == sizeof( preserved_chunk ) ) ? RetCode::Ok : RetCode::IoError;
-                } );
-            }
-
             // write transaction
-            transactional_data_t transaction{ file_size_, free_space_ };
+            header_t::transactional_data_t transaction{ file_size_, free_space_ };
 
             ce( [&] {
                 auto[ ok, pos ] = OsPolicy::seek_file( handle_, HeaderOffsets::of_Transaction );
@@ -1187,7 +1205,7 @@ namespace jb
                 return ( ok && pos == HeaderOffsets::of_TransactionCrc ) ? RetCode::Ok : RetCode::IoError;
             } );
             ce( [&] {
-                big_uint64_t crc = variadic_hash( transaction.file_size_, transaction.free_space_ );
+                big_uint64_t crc = variadic_hash( ( uint64_t )transaction.file_size_, ( uint64_t )transaction.free_space_ );
                 auto[ ok, written ] = OsPolicy::write_file( handle_, &crc, sizeof( crc ) );
                 return ( ok && written == sizeof( crc ) ) ? RetCode::Ok : RetCode::IoError;
             } );
@@ -1238,7 +1256,7 @@ namespace jb
         //
         virtual int_type overflow( int_type c ) override
         {
-            if ( c != traits_type::eof() )
+            if ( c != traits_type::eof() && RetCode::Ok == transaction_->status() )
             {
                 *pptr() = c;
                 pbump( 1 );
@@ -1261,7 +1279,7 @@ namespace jb
             auto sz = static_cast< int >( pptr() - pbase() );
 
             // send buffer to transaction
-            if ( RetCode::Ok == transaction_->write( pbase(), sz ) )
+            if ( RetCode::Ok == transaction_->status() && RetCode::Ok == transaction_->write( pbase(), sz ) )
             {
                 pbump( -sz );
                 return 0;
