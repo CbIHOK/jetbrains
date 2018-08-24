@@ -132,11 +132,14 @@ TEST_F( TestStorageFile, Transaction_Rollback )
         auto t = f.open_transaction();
         ASSERT_EQ( SmallChunkStorage::RetCode::Ok, t.status() );
 
-        auto b = t.get_streambuf();
-        ASSERT_EQ( SmallChunkStorage::RetCode::Ok, t.status() );
+        auto b = t.get_chain_writer();
+        EXPECT_EQ( SmallChunkStorage::RetCode::Ok, t.status() );
 
         std::ostream os( &b );
         os << "abcdefghijklmnopqrstuvwxyz";
         os.flush();
+
+        EXPECT_EQ( SmallChunkStorage::RetCode::Ok, t.status() );
+        EXPECT_EQ( SmallChunkStorageFile::RootChunkUid, t.get_first_written_chunk() );
     }
 }

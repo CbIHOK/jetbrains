@@ -43,7 +43,7 @@ namespace jb
         using big_uint64_t = boost::endian::big_uint64_t;
         using big_uint64_at = boost::endian::big_uint64_at;
 
-        inline static const auto InvalidHandle = OsPolicy::InvalidHandle;
+        inline static const Handle InvalidHandle = OsPolicy::InvalidHandle;
 
         static constexpr auto BloomSize = Policies::PhysicalVolumePolicy::BloomSize;
         static constexpr auto MaxTreeDepth = Policies::PhysicalVolumePolicy::MaxTreeDepth;
@@ -683,7 +683,7 @@ namespace jb
         @note in theory the body may fire an exception, but in this case the better to die on noexcept
               and analyze the crash than investigate a deadlock
         */
-        istreambuf get_chaing_reader( ChunkUid chain ) noexcept
+        istreambuf get_chain_reader( ChunkUid chain ) noexcept
         {
             using namespace std;
 
@@ -692,13 +692,13 @@ namespace jb
             // acquire reading handle
             {
                 unique_lock lock( readers_mutex_ );
-                readers_cv_.wait( lock, !reader_stack_.empty() );
+                readers_cv_.wait( lock, [&] { return !reader_stack_.empty(); } );
                 
                 reader = reader_stack_.top();
                 reader_stack_.pop();
             }
 
-            return istreambuf( this, reader, chain );
+            return istreambuf{ this, reader, chain };
         }
     };
 
@@ -722,6 +722,7 @@ namespace jb
         uint64_t file_size_;
         ChunkUid free_space_;
         ChunkUid released_head_ = InvalidChunkUid, released_tile_ = InvalidChunkUid;
+        ChunkUid first_written_chunk = InvalidChunkUid;
         ChunkUid last_written_chunk_ = InvalidChunkUid;
         ChunkUid preserved_chunk_ = InvalidChunkUid;
         bool preservation_used_ = false;
@@ -930,6 +931,9 @@ namespace jb
                 // on transaction completion
                 //
 
+                // remember first written chunk
+                first_written_chunk = ( first_written_chunk == InvalidChunkUid ) ? chunk_uid : first_written_chunk;
+
                 // remember this chunk as the last in chain
                 last_written_chunk_ = chunk_uid;
             }
@@ -972,13 +976,13 @@ namespace jb
         @retval output stream buffer object
         @throw nothing
         */
-        std::tuple< RetCode, ostreambuf > get_preserved_streambuf( ChunkUid preserved_uid ) noexcept
+        std::tuple< RetCode, ostreambuf > get_preserved_chain_writer( ChunkUid preserved_uid ) noexcept
         {
             if ( !preservation_used_ )
             {
                 preservation_used_ = true;
                 preserved_chunk_ = preserved_uid;
-                last_written_chunk_ = InvalidChunkUid;
+                first_written_chunk = last_written_chunk_ = InvalidChunkUid;
 
                 return { RetCode::Ok, move( ostreambuf( const_cast< Transaction* >( this ) ) ) };
             }
@@ -994,14 +998,21 @@ namespace jb
         @retval output stream buffer object
         @throw nothing
         */
-        ostreambuf get_streambuf() noexcept
+        ostreambuf get_chain_writer() noexcept
         {
-            // invalidate last written chunk
-            last_written_chunk_ = InvalidChunkUid;
+            first_written_chunk = last_written_chunk_ = InvalidChunkUid;
 
             // provide streambuf object
             return ostreambuf( const_cast< Transaction* >( this ) );
         }
+
+
+        /** Provides uid of the first chunk in written chain
+
+        @retval ChunkUid - uid of the first chunk
+        @throw nothing
+        */
+        ChunkUid get_first_written_chunk() const noexcept { return first_written_chunk; }
 
 
         /** Marks a chain started from given chunk as released
@@ -1253,33 +1264,131 @@ namespace jb
         friend class StorageFile;
 
         StorageFile * file_ = nullptr;
-        Handle        handle_ = InvalidHandle;
-        ChunkUid      current_chunk_ = InvalidChunkUid;
+        Handle handle_ = InvalidHandle;
+        ChunkUid current_chunk_ = InvalidChunkUid;
+        RetCode status_ = RetCode::Ok;
+
+        static constexpr size_t putb_limit = 10;
+        std::array< char, putb_limit + ChunkOffsets::sz_Space > buffer_;
 
 
         /* Exlplicit constructor
+
+        @param [in] file - associated storage file
+        @param [in] handle - associated handle
+        @param [in] start_chunk - start chunk of the chain to be read
+        @throw nothing
         */
         explicit istreambuf( StorageFile * file, Handle handle, ChunkUid start_chunk ) noexcept
             : file_( file )
             , handle_( handle )
-            , current_chunk_ 
+            , current_chunk_( start_chunk )
         {
+            assert( file_ && handle != InvalidHandle && current_chunk_ != InvalidChunkUid );
 
+            // initialize pointer like all data is currently read-out
+            auto start = buffer_.data() + putb_limit;
+            auto end = buffer_.data() + buffer_.size();
+            setg( start, end, end );
+        }
+
+
+        /* Reads another chunk into internal buffer
+
+        @retval size_t - number of read characters
+        @throw nothing
+        */
+        size_t read() noexcept
+        {
+            // conditional execution
+            auto ce = [&] ( const auto & f ) noexcept { if ( RetCode::Ok == status_ ) status_ = f(); assert( RetCode::Ok == status_ ); };
+
+            if ( current_chunk_ != InvalidChunkUid )
+            {
+                // next used
+                big_uint64_t next_used;
+                ce( [&] {
+                    auto[ ok, pos ] = OsPolicy::seek_file( handle_, current_chunk_ + ChunkOffsets::of_NextUsed );
+                    return ( ok && pos == current_chunk_ + ChunkOffsets::of_NextUsed) ? RetCode::Ok : RetCode::IoError;
+                } );
+                ce( [&] {
+                    auto[ ok, read ] = OsPolicy::read_file( handle_, &next_used, sizeof( next_used ) );
+                    return ( ok && read == sizeof( next_used ) ) ? RetCode::Ok : RetCode::IoError;
+                } );
+
+                // used size
+                big_uint64_t used_size;
+                ce( [&] {
+                    auto[ ok, pos ] = OsPolicy::seek_file( handle_, current_chunk_ + ChunkOffsets::of_UsedSize );
+                    return ( ok && pos == current_chunk_ + ChunkOffsets::of_UsedSize ) ? RetCode::Ok : RetCode::IoError;
+                } );
+                ce( [&] {
+                    auto[ ok, read ] = OsPolicy::read_file( handle_, &used_size, sizeof( used_size ) );
+                    return ( ok && read == sizeof( used_size ) ) ? RetCode::Ok : RetCode::IoError;
+                } );
+
+                // check read size
+                assert( used_size < std::numeric_limits< size_t >::max() );
+                auto size_to_read = static_cast< size_t >( used_size );
+                ce( [&] {
+                    return size_to_read < ChunkOffsets::sz_Space ? RetCode::Ok : RetCode::UnknownError;
+                } );
+
+                // data
+                ce( [&] {
+                    auto[ ok, pos ] = OsPolicy::seek_file( handle_, current_chunk_ + ChunkOffsets::of_Space );
+                    return ( ok && pos == current_chunk_ + ChunkOffsets::of_Space ) ? RetCode::Ok : RetCode::IoError;
+                } );
+                ce( [&] {
+                    auto[ ok, read ] = OsPolicy::read_file( handle_, buffer_.data() + putb_limit, sizeof( size_to_read ) );
+                    return ( ok && read == sizeof( size_to_read ) ) ? RetCode::Ok : RetCode::IoError;
+                } );
+
+                // proceed to next chunk
+                current_chunk_ = next_used;
+
+                return RetCode::Ok == status_ ? size_to_read : 0;
+            }
+            else
+            {
+                return 0;
+            }
         }
 
     protected:
+
+        //
+        // handles lack of data
+        //
+        virtual int underflow() override
+        {
+            // we ain't ok
+            if ( RetCode::Ok != status_ ) return traits_type::eof();
+
+            // we still have something to get
+            if ( gptr() < egptr() ) return *gptr();
+
+            // read another chunk
+            auto read_bytes = read();
+            auto start = buffer_.data() + putb_limit;
+
+            // re-initialize pointers
+            setg( start, start, start + read_bytes );
+
+            return read_bytes > 0 ? *gptr() : traits_type::eof();
+        }
 
     public:
 
         /** The class is not default creatable/copyable
         */
         istreambuf() = delete;
-        istreambuf( const ostreambuf & ) = delete;
+        istreambuf( const istreambuf & ) = delete;
 
 
         /** ...but movable
         */
-        istreambuf( istreambuf&& ) noexcept = default;
+        istreambuf( istreambuf&& ) = default;
 
 
         /** Destructor, releases allocated handle
@@ -1290,7 +1399,7 @@ namespace jb
         */
         ~istreambuf() noexcept
         {
-            assert( file_ && handle_ = InvalidHandle );
+            assert( file_ && handle_ == InvalidHandle );
 
             std::scoped_lock l( file_->readers_mutex_ );
             file_->reader_stack_.push( handle_ );
