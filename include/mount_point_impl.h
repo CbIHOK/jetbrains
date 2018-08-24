@@ -32,8 +32,8 @@ namespace jb
         using VirtualVolumeImpl = typename Storage::VirtualVolumeImpl;
         using PhysicalVolumeImpl = typename Storage::PhysicalVolumeImpl;
         using PhysicalVolumeImplP = std::shared_ptr< PhysicalVolumeImpl >;
-        using PathLock = typename PhysicalVolumeImpl::PathLock;
-        using NodeUid = typename PhysicalVolumeImpl::NodeUid;
+        using PathLock = typename PhysicalVolumeImpl::PathLocker::PathLock;
+        using NodeUid = typename PhysicalVolumeImpl::BTree::NodeUid;
         using execution_connector = typename PhysicalVolumeImpl::execution_connector;
 
 

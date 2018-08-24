@@ -36,12 +36,12 @@ namespace jb
         using KeyHashT = size_t;
         using PhysicalVolumeImpl = typename Storage::PhysicalVolumeImpl;
         using PhysicalVolumeImplP = std::shared_ptr< PhysicalVolumeImpl >;
-        using PathLock = typename PhysicalVolumeImpl::PathLock;
+        using PathLock = typename PhysicalVolumeImpl::PathLocker::PathLock;
         using MountPoint = typename Storage::MountPoint;
         using MountPointImpl = typename Storage::MountPointImpl;
         using MountPointImplP = std::shared_ptr< MountPointImpl >;
         using MountPointImplWeakP = std::weak_ptr< MountPointImpl >;
-        using NodeUid = typename PhysicalVolumeImpl::NodeUid;
+        using NodeUid = typename PhysicalVolumeImpl::BTree::NodeUid;
         using execution_connector = typename MountPointImpl::execution_connector;
        
         static constexpr auto MountLimit = Policies::VirtualVolumePolicy::MountPointLimit;

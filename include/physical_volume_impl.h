@@ -25,11 +25,17 @@ namespace jb
         friend class TestBloom;
         friend class TestStorageFile;
 
+    public:
+
         class PathLocker;
         class Bloom;
-        class PhysicalStorage;
+        class StorageFile;
+        class BTree;
+        class BTreeCache;
 
-    public:
+        using execution_connector = std::pair< std::atomic_bool, std::atomic_bool >;
+
+    private:
 
         using RetCode = typename Storage::RetCode;
         using Key = typename Storage::Key;
@@ -37,45 +43,19 @@ namespace jb
         using Timestamp = typename Storage::Timestamp;
         using PhysicalVolume = typename Storage::PhysicalVolume;
         using MountPointImpl = typename Storage::MountPointImpl;
-        using execution_connector = std::pair< std::atomic_bool, std::atomic_bool >;
-        using BTree = typename PhysicalStorage::BTree;
-        using BTreeP = typename PhysicalStorage::BTreeP;
-        using NodeUid = typename PhysicalStorage::NodeUid;
-
-        static constexpr auto RootNodeUid = PhysicalStorage::RootNodeUid;
-        static constexpr auto InvalidNodeUid = PhysicalStorage::InvalidNodeUid;
-        static constexpr auto MaxTreeDepth = Policies::PhysicalVolumePolicy::MaxTreeDepth;
-
+        using BTreeP = typename BTree::BTreeP;
+        using NodeUid = typename BTree::NodeUid;
         using PathLock = typename PathLocker::PathLock;
 
+        static constexpr auto RootNodeUid = BTree::RootNodeUid;
+        static constexpr auto InvalidNodeUid = BTree::InvalidNodeUid;
+        static constexpr auto MaxTreeDepth = Policies::PhysicalVolumePolicy::MaxTreeDepth;
 
-    private:
-
-        RetCode creation_status_;
-
-
-        //
-        // manage volume access mode between shared ( regular operations ) and exclusive ( cleanup )
-        //
-        std::shared_mutex cleanup_lock_;
-
-
-        //
-        // locks mounted path
-        //
+        RetCode status_ = RetCode::Ok;
         PathLocker path_locker_;
-
-
-        //
-        //
-        //
-        PhysicalStorage physical_storage_;
-
-
-        //
-        // filters incoming path for existance
-        //
+        StorageFile file_;
         Bloom filter_;
+        BTreeCache cache_;
 
 
         /* Search for key starting from given B-tree node
@@ -105,7 +85,7 @@ namespace jb
                 else if ( auto uid = std::get< 1 >( f ); uid != InvalidNodeUid )
                 {
                     // continue for next B-tree node
-                    auto[ ret, next ]= physical_storage_.get_node( uid );
+                    auto[ ret, next ]= cache_.get_node( uid );
                     if ( ret != RetCode::Ok )
                     {
                         return std::tuple{ ret, BTreeP{}, BTree::Npos };
@@ -152,7 +132,7 @@ namespace jb
             auto subkey = key;
 
             // get start node by uid
-            auto [ ret, node ] = physical_storage_.get_node( uid );
+            auto [ ret, node ] = cache_.get_node( uid );
             if ( ret != RetCode::Ok )
             {
                 return std::tuple{ ret, BTreeP{}, BTree::Npos };
@@ -339,16 +319,18 @@ namespace jb
     public:
 
         explicit PhysicalVolumeImpl( const std::filesystem::path & path, bool create ) try
-            : physical_storage_{ path, create }
-            , filter_( &physical_storage_ )
+            : file_{ path, create }
+            , filter_( &file_ )
+            , cache_( &file_ )
         {
-            creation_status_ = std::max( creation_status_, path_locker_.creation_status() );
-            creation_status_ = std::max( creation_status_, physical_storage_.creation_status() );
-            creation_status_ = std::max( creation_status_, filter_.creation_status() );
+            status_ = std::max( status_, path_locker_.creation_status() );
+            status_ = std::max( status_, file_.creation_status() );
+            status_ = std::max( status_, filter_.status() );
+            status_ = std::max( status_, cache_.status() );
         }
         catch ( ... )
         {
-            creation_status_ = RetCode::UnknownError;
+            status_ = RetCode::UnknownError;
         }
 
 
@@ -617,8 +599,10 @@ namespace jb
 
 
 #include "path_locker.h"
+#include "storage_file.h"
 #include "bloom.h"
-#include "physical_storage.h"
+#include "b_tree.h"
+#include "b_tree_cache.h"
 
 
 #endif

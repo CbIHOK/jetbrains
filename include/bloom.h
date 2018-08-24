@@ -15,7 +15,7 @@ namespace jb
     {
         using RetCode = typename Storage::RetCode;
         using Key = typename Storage::Key;
-        using PhysicalStorage = typename PhysicalVolumeImpl::PhysicalStorage;
+        using StorageFile = typename PhysicalVolumeImpl::StorageFile;
 
         static constexpr auto BloomSize = Policies::PhysicalVolumePolicy::BloomSize;
         static constexpr auto BloomFnCount = Policies::PhysicalVolumePolicy::MaxTreeDepth;
@@ -28,8 +28,8 @@ namespace jb
         static_assert( power_of_2( BloomSize ), "Should be power of 2" );
         static_assert( BloomFnCount > 0, "Invalid number of Bloom functions" );
 
-        RetCode creation_status_ = RetCode::Ok;
-        PhysicalStorage * storage_ = nullptr;
+        RetCode status_ = RetCode::Ok;
+        StorageFile * file_ = nullptr;
         std::array< uint8_t, BloomSize > filter_;
         mutable std::atomic_flag lock_ = ATOMIC_FLAG_INIT;
 
@@ -46,11 +46,11 @@ namespace jb
 
         @param [in] storage - associated physical storage
         */
-        explicit Bloom( PhysicalStorage * storage = nullptr ) try : storage_( storage )
+        explicit Bloom( StorageFile * file = nullptr ) try : file_( file )
         {
-            if ( storage_ && RetCode::Ok == storage_->creation_status() )
+            if ( file_ && RetCode::Ok == file_->creation_status() )
             {
-                creation_status_ = storage_->read_bloom( filter_.data() );
+                status_ = file_->read_bloom( filter_.data() );
             }
             else
             {
@@ -59,7 +59,7 @@ namespace jb
         }
         catch ( ... )
         {
-            creation_status_ = RetCode::UnknownError;
+            status_ = RetCode::UnknownError;
         }
 
 
@@ -68,7 +68,7 @@ namespace jb
         @retval - creation status
         @throw nothing
         */
-        auto creation_status() const noexcept { return creation_status_; }
+        auto status() const noexcept { return status_; }
 
 
         /** Declaration of single digest that is actually just hash value of a key segment
@@ -107,9 +107,9 @@ namespace jb
             filter_[ byte_no ] |= ( 1 << bit_no );
             lock_.clear( std::memory_order_release );
 
-            if ( storage_ && RetCode::Ok == storage_->creation_status() )
+            if ( file_ && RetCode::Ok == file_->creation_status() )
             {
-                return storage_->add_bloom_digest( byte_no, filter_[ byte_no ] ) ;
+                return file_->add_bloom_digest( byte_no, filter_[ byte_no ] ) ;
             }
 
             return RetCode::Ok;

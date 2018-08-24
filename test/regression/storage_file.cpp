@@ -28,11 +28,11 @@ protected:
     using Pad = ::jb::DefaultPad;
     using Storage = ::jb::Storage<Policies, Pad>;
     using RetCode = typename Storage::RetCode;
-    using StorageFile = typename Storage::PhysicalVolumeImpl::PhysicalStorage::StorageFile;
+    using StorageFile = typename Storage::PhysicalVolumeImpl::StorageFile;
     using OtherStorage = jb::Storage< OtherPolicies, Pad >;
-    using OtherStorageFile = typename OtherStorage::PhysicalVolumeImpl::PhysicalStorage::StorageFile;
+    using OtherStorageFile = typename OtherStorage::PhysicalVolumeImpl::StorageFile;
     using SmallChunkStorage = jb::Storage< SmallChunkPolicies, Pad >;
-    using SmallChunkStorageFile = typename SmallChunkStorage::PhysicalVolumeImpl::PhysicalStorage::StorageFile;
+    using SmallChunkStorageFile = typename SmallChunkStorage::PhysicalVolumeImpl::StorageFile;
     using Transaction = typename StorageFile::Transaction;
     using SmallChunkTransaction = typename SmallChunkStorageFile::Transaction;
     using ostreambuf = typename SmallChunkStorageFile::ostreambuf;

@@ -19,7 +19,7 @@ protected:
     using Storage = ::jb::Storage< Policies, Pad >;
     using RetCode = typename Storage::RetCode;
     using Bloom = typename Storage::PhysicalVolumeImpl::Bloom;
-    using PhysicalStorage = Storage::PhysicalVolumeImpl::PhysicalStorage;
+    using StorageFile = typename Storage::PhysicalVolumeImpl::StorageFile;
     using Key = typename Storage::Key;
     using KeyCharT = typename Key::CharT;
 
@@ -155,7 +155,7 @@ TEST_F( DISABLED_TestBloom, Long_long_test )
 
         // create filter
         auto bloom = make_shared< Bloom >( nullptr );
-        ASSERT_EQ( RetCode::Ok, bloom->creation_status() );
+        ASSERT_EQ( RetCode::Ok, bloom->status() );
 
         // through all the keys - berak them in digest and put into the filter
         for_each( execution::par, begin( present_ ), end( present_ ), [&] ( const auto & key_str )
@@ -221,11 +221,11 @@ TEST_F( TestBloom, Store_Restore )
     constexpr size_t PresentNumber = 1'000;
 
     {
-        PhysicalStorage storage( "TestBloom_Store_Restore.jb", true );
-        ASSERT_EQ( RetCode::Ok, storage.creation_status() );
+        StorageFile file( "TestBloom_Store_Restore.jb", true );
+        ASSERT_EQ( RetCode::Ok, file.creation_status() );
 
-        auto bloom = make_shared< Bloom >( &storage );
-        ASSERT_EQ( RetCode::Ok, bloom->creation_status() );
+        auto bloom = make_shared< Bloom >( &file );
+        EXPECT_EQ( RetCode::Ok, bloom->status() );
 
         vector< pair< mt19937, future< void > > > generators( 64 );
 
@@ -286,11 +286,11 @@ TEST_F( TestBloom, Store_Restore )
     }
     // reopen storage and retrieve filter data
     {
-        PhysicalStorage storage( "TestBloom_Store_Restore.jb", true );
-        ASSERT_EQ( RetCode::Ok, storage.creation_status() );
+        StorageFile file( "TestBloom_Store_Restore.jb", true );
+        ASSERT_EQ( RetCode::Ok, file.creation_status() );
 
-        auto bloom = make_shared< Bloom >( &storage );
-        ASSERT_EQ( RetCode::Ok, bloom->creation_status() );
+        auto bloom = make_shared< Bloom >( &file );
+        EXPECT_EQ( RetCode::Ok, bloom->status() );
 
         atomic< size_t > positive_counter( 0 );
         for_each( execution::par, begin( present_ ), end( present_ ), [&] ( const auto & str ) {

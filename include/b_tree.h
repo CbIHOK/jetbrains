@@ -13,20 +13,21 @@
 namespace jb
 {
     template < typename Policies, typename Pad >
-    class Storage< Policies, Pad >::PhysicalVolumeImpl::PhysicalStorage::BTree
+    class Storage< Policies, Pad >::PhysicalVolumeImpl::BTree
     {
-    public:
-
         using Storage = Storage< Policies, Pad >;
         using Key = typename Storage::Key;
         using Value = typename Storage::Value;
         using Timestamp = typename Storage::Timestamp;
         using KeyHashT = size_t;
-        using BTreeP = std::shared_ptr< BTree >;
 
-        using NodeUid = PhysicalStorage::NodeUid;
-        static constexpr auto RootNodeUid = PhysicalStorage::RootNodeUid;
-        static constexpr auto InvalidNodeUid = PhysicalStorage::InvalidNodeUid;
+    public:
+
+        using BTreeP = std::shared_ptr< BTree >;
+        using NodeUid = typename StorageFile::ChunkUid;
+
+        static constexpr auto RootNodeUid = StorageFile::RootChunkUid;
+        static constexpr auto InvalidNodeUid = StorageFile::InvalidChunkUid;
 
         typedef size_t Pos;
         static constexpr auto Npos = Pos{ std::numeric_limits< size_t >::max() };
@@ -54,7 +55,8 @@ namespace jb
         static constexpr auto BTreeMin = BTreeMinPower - 1;
         static constexpr auto BTreeMax = 2 * BTreeMinPower - 1;
 
-        PhysicalStorage * storage_;
+        StorageFile * storage_;
+        BTreeCache * cache_;
         NodeUid parent_uid_;
         NodeUid uid_;
         mutable boost::upgrade_mutex guard_;
