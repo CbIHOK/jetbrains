@@ -88,7 +88,8 @@ namespace jb
         std::mutex readers_mutex_;
         std::condition_variable readers_cv_;
         boost::container::static_vector< Handle, ReaderNumber > readers_;
-        std::stack< Handle, boost::container::static_vector< Handle, ReaderNumber > > reader_stack_;
+        using reader_stack_t = std::stack< Handle, boost::container::static_vector< Handle, ReaderNumber > >;
+        reader_stack_t reader_stack_;
 
 
         /* Generates compatibility stamp
@@ -572,6 +573,9 @@ namespace jb
                     return ( reader = handle ) != InvalidHandle ? RetCode::Ok : RetCode::UnableToOpen;
                 } );
             }
+
+            // initialize stack of readers
+            reader_stack_ = move( reader_stack_t{ readers_ } );
         }
         catch ( const std::bad_alloc & )
         {
@@ -1301,7 +1305,10 @@ namespace jb
         size_t read() noexcept
         {
             // conditional execution
-            auto ce = [&] ( const auto & f ) noexcept { if ( RetCode::Ok == status_ ) status_ = f(); assert( RetCode::Ok == status_ ); };
+            auto ce = [&] ( const auto & f ) noexcept { 
+                if ( RetCode::Ok == status_ ) status_ = f();
+                assert( RetCode::Ok == status_ ); 
+            };
 
             if ( current_chunk_ != InvalidChunkUid )
             {
@@ -1331,7 +1338,7 @@ namespace jb
                 assert( used_size < std::numeric_limits< size_t >::max() );
                 auto size_to_read = static_cast< size_t >( used_size );
                 ce( [&] {
-                    return size_to_read < ChunkOffsets::sz_Space ? RetCode::Ok : RetCode::UnknownError;
+                    return size_to_read <= ChunkOffsets::sz_Space ? RetCode::Ok : RetCode::UnknownError;
                 } );
 
                 // data
@@ -1399,7 +1406,7 @@ namespace jb
         */
         ~istreambuf() noexcept
         {
-            assert( file_ && handle_ == InvalidHandle );
+            assert( file_ && handle_ != InvalidHandle );
 
             std::scoped_lock l( file_->readers_mutex_ );
             file_->reader_stack_.push( handle_ );

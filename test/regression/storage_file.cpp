@@ -125,7 +125,7 @@ TEST_F( TestStorageFile, Transaction_Rollback )
 {
     using namespace std;
 
-    SmallChunkStorageFile f{ std::filesystem::path{ "./foo3.jb" }, true };
+    SmallChunkStorageFile f{ std::filesystem::path{ "./foo11.jb" }, true };
     ASSERT_EQ( SmallChunkStorage::RetCode::Ok, f.creation_status() );
 
     {
@@ -135,11 +135,20 @@ TEST_F( TestStorageFile, Transaction_Rollback )
         auto b = t.get_chain_writer();
         EXPECT_EQ( SmallChunkStorage::RetCode::Ok, t.status() );
 
-        std::ostream os( &b );
+        ostream os( &b );
         os << "abcdefghijklmnopqrstuvwxyz";
         os.flush();
 
         EXPECT_EQ( SmallChunkStorage::RetCode::Ok, t.status() );
         EXPECT_EQ( SmallChunkStorageFile::RootChunkUid, t.get_first_written_chunk() );
+    }
+
+    {
+        auto b = f.get_chain_reader( SmallChunkStorageFile::RootChunkUid );
+        istream is( &b );
+        string str;
+        is >> str;
+
+        EXPECT_EQ( ""s, str );
     }
 }

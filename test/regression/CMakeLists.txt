@@ -14,6 +14,6 @@ add_executable( tests
     bloom.cpp
 )
 
-target_link_libraries( tests SHAtwo gtest gtest_main )
+target_link_libraries( tests gtest gtest_main )
 
 add_test( tests tests )

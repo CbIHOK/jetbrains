@@ -15,5 +15,4 @@ enable_testing()
 include_directories( ./include ./3rdparty ${BOOST_INC} ${gtest_SOURCE_DIR}/include ${gtest_SOURCE_DIR} )
 link_directories( ${BOOST_LINK} )
 
-add_subdirectory(3rdparty)
 add_subdirectory(test)
