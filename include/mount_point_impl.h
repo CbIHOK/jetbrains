@@ -144,7 +144,7 @@ namespace jb
 
             try
             {
-                return physical_volume_->insert( entry_node_uid_, Key{ entry_path_ }, relative_path, subkey, move( value ), move( good_before ), overwrite, in, out );
+                return physical_volume_->insert( entry_node_uid_, Key{ entry_path_ }, relative_path, subkey, std::move( value ), std::move( good_before ), overwrite, in, out );
             }
             catch ( ... )
             {

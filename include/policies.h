@@ -2,10 +2,8 @@
 #define __JB__POLICIES__H__
 
 
-#include <variant>
 #include <string>
-#include <functional>
-#include <filesystem>
+#include <boost/variant.hpp>
 #include "windows_policy.h"
 
 
@@ -14,7 +12,7 @@ namespace jb
     struct DefaultPolicies
     {
         using KeyCharT   = char;
-        using ValueT     = std::variant< uint32_t, uint64_t, float, double, std::string >;
+        using ValueT     = boost::variant< uint32_t, uint64_t, float, double, std::string >;
 
         struct VirtualVolumePolicy
         {

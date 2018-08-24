@@ -330,8 +330,8 @@ namespace jb
                     assert( is_superkey );
 
                     // run insert() for all mounts in parallel
-                    auto futures = move( run_parallel( mounts, [&] ( const auto & mount, const auto & in, auto & out ) noexcept {
-                        return mount->insert( relative_path, subkey, move( value ), move( good_before ), overwrite, in, out );
+                    auto futures = std::move( run_parallel( mounts, [&] ( const auto & mount, const auto & in, auto & out ) noexcept {
+                        return mount->insert( relative_path, subkey, std::move( value ), std::move( good_before ), overwrite, in, out );
                     } ) );
 
                     // through all futures
@@ -392,7 +392,7 @@ namespace jb
                     assert( is_superkey );
 
                     // run get() for all mounts in parallel
-                    auto futures = move( run_parallel( mounts, [&] ( const auto & mount, const auto & in, auto & out ) noexcept {
+                    auto futures = std::move( run_parallel( mounts, [&] ( const auto & mount, const auto & in, auto & out ) noexcept {
                         return mount->get( relative_path, in, out );
                     } ) );
 
