@@ -71,7 +71,6 @@ namespace jb
     private:
 
         // status
-        RetCode creation_status_ = RetCode::Ok;
         RetCode status_ = RetCode::Ok;
         bool newly_created_ = false;
 
@@ -544,12 +543,12 @@ namespace jb
             }
             catch ( const boost::interprocess::interprocess_exception & )
             {
-                creation_status_ = RetCode::AlreadyOpened;
+                status_ = RetCode::AlreadyOpened;
             }
 
             // conditional executor
             auto ce = [&] ( const auto & f ) noexcept {
-                if ( RetCode::Ok == creation_status_ ) creation_status_ = f();
+                if ( RetCode::Ok == status_ ) status_ = f();
             };
 
             // open writter
@@ -610,11 +609,11 @@ namespace jb
         }
         catch ( const std::bad_alloc & )
         {
-            creation_status_ = RetCode::InsufficientMemory;
+            status_ = RetCode::InsufficientMemory;
         }
         catch ( ... )
         {
-            creation_status_ = RetCode::UnknownError;
+            status_ = RetCode::UnknownError;
         }
 
 
@@ -622,7 +621,7 @@ namespace jb
 
         @throw nothing
         */
-        auto creation_status() const noexcept { return creation_status_; }
+        auto status() const noexcept { return status_; }
 
 
         /** Let us know if the file is newly created

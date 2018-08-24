@@ -323,8 +323,8 @@ namespace jb
             , filter_( &file_ )
             , cache_( &file_ )
         {
-            status_ = std::max( status_, path_locker_.creation_status() );
-            status_ = std::max( status_, file_.creation_status() );
+            status_ = std::max( status_, path_locker_.status() );
+            status_ = std::max( status_, file_.status() );
             status_ = std::max( status_, filter_.status() );
             status_ = std::max( status_, cache_.status() );
         }

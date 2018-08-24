@@ -222,7 +222,7 @@ TEST_F( TestBloom, Store_Restore )
 
     {
         StorageFile file( "TestBloom_Store_Restore.jb", true );
-        ASSERT_EQ( RetCode::Ok, file.creation_status() );
+        ASSERT_EQ( RetCode::Ok, file.status() );
 
         auto bloom = make_shared< Bloom >( &file );
         EXPECT_EQ( RetCode::Ok, bloom->status() );
@@ -287,7 +287,7 @@ TEST_F( TestBloom, Store_Restore )
     // reopen storage and retrieve filter data
     {
         StorageFile file( "TestBloom_Store_Restore.jb", true );
-        ASSERT_EQ( RetCode::Ok, file.creation_status() );
+        ASSERT_EQ( RetCode::Ok, file.status() );
 
         auto bloom = make_shared< Bloom >( &file );
         EXPECT_EQ( RetCode::Ok, bloom->status() );

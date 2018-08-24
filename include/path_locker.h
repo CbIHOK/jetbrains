@@ -24,7 +24,7 @@ namespace jb
 
         mutable std::shared_mutex guard_;
         std::unordered_map< NodeUid, std::atomic< size_t > > locked_nodes_;
-        RetCode creation_status_ = RetCode::Ok;
+        RetCode status_ = RetCode::Ok;
 
         static constexpr auto MaxTreeDepth = Policies::PhysicalVolumePolicy::MaxTreeDepth;
         static constexpr auto MountPointLimit = Policies::PhysicalVolumePolicy::MountPointLimit;
@@ -43,11 +43,11 @@ namespace jb
         }
         catch ( const std::bad_alloc & )
         {
-            creation_status_ = RetCode::InsufficientMemory;
+            status_ = RetCode::InsufficientMemory;
         }
         catch ( ... )
         {
-            creation_status_ = RetCode::UnknownError;
+            status_ = RetCode::UnknownError;
         }
 
 
@@ -60,7 +60,7 @@ namespace jb
 
         @retval RetCode::Ok if object created successfully, otherwise - error code
         */
-        auto creation_status() const noexcept { return creation_status_; }
+        auto status() const noexcept { return status_; }
 
 
         /** Gets lock over a key in physical volume

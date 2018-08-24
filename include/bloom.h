@@ -48,7 +48,7 @@ namespace jb
         */
         explicit Bloom( StorageFile * file = nullptr ) try : file_( file )
         {
-            if ( file_ && RetCode::Ok == file_->creation_status() )
+            if ( file_ && RetCode::Ok == file_->status() )
             {
                 status_ = file_->read_bloom( filter_.data() );
             }
@@ -107,7 +107,7 @@ namespace jb
             filter_[ byte_no ] |= ( 1 << bit_no );
             lock_.clear( std::memory_order_release );
 
-            if ( file_ && RetCode::Ok == file_->creation_status() )
+            if ( file_ && RetCode::Ok == file_->status() )
             {
                 return file_->add_bloom_digest( byte_no, filter_[ byte_no ] ) ;
             }

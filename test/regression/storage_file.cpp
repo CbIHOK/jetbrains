@@ -62,12 +62,12 @@ TEST_F( TestStorageFile, CreateNew )
 {
     {
         StorageFile f{ std::filesystem::path{ "./foo.jb" }, false };
-        EXPECT_EQ( RetCode::UnableToOpen, f.creation_status() );
+        EXPECT_EQ( RetCode::UnableToOpen, f.status() );
     }
 
     {
         StorageFile f{ std::filesystem::path{ "./foo.jb" }, true };
-        EXPECT_EQ( RetCode::Ok, f.creation_status() );
+        EXPECT_EQ( RetCode::Ok, f.status() );
         EXPECT_TRUE( f.newly_created() );
     }
 }
@@ -77,14 +77,14 @@ TEST_F( TestStorageFile, LockingFile )
 {
     {
         StorageFile f1{ std::filesystem::path{ "./foo.jb" }, true };
-        EXPECT_EQ( RetCode::Ok, f1.creation_status() );
+        EXPECT_EQ( RetCode::Ok, f1.status() );
 
         StorageFile f2{ std::filesystem::path{ "./foo.jb" }, true };
-        EXPECT_EQ( RetCode::AlreadyOpened, f2.creation_status() );
+        EXPECT_EQ( RetCode::AlreadyOpened, f2.status() );
     }
 
     StorageFile f{ std::filesystem::path{ "./foo.jb" }, true };
-    EXPECT_EQ( RetCode::Ok, f.creation_status() );
+    EXPECT_EQ( RetCode::Ok, f.status() );
 }
 
 
@@ -92,12 +92,12 @@ TEST_F( TestStorageFile, Compatibility )
 {
     {
         StorageFile f{ std::filesystem::path{ "./foo.jb" }, true };
-        ASSERT_EQ( RetCode::Ok, f.creation_status() );
+        ASSERT_EQ( RetCode::Ok, f.status() );
     }
 
     {
         OtherStorageFile f{ std::filesystem::path{ "./foo.jb" }, false };
-        ASSERT_EQ( OtherStorage::RetCode::IncompatibleFile, f.creation_status() );
+        ASSERT_EQ( OtherStorage::RetCode::IncompatibleFile, f.status() );
     }
 }
 
@@ -107,7 +107,7 @@ TEST_F( TestStorageFile, Transaction_Lock )
     using namespace std;
 
     StorageFile f{ std::filesystem::path{ "./foo.jb" }, true };
-    ASSERT_EQ( RetCode::Ok, f.creation_status() );
+    ASSERT_EQ( RetCode::Ok, f.status() );
 
     {
         auto t = f.open_transaction();
@@ -125,7 +125,7 @@ TEST_F( TestStorageFile, Transaction_Rollback )
     using namespace std;
 
     SmallChunkStorageFile f{ std::filesystem::path{ "./foo.jb" }, true };
-    ASSERT_EQ( SmallChunkStorage::RetCode::Ok, f.creation_status() );
+    ASSERT_EQ( SmallChunkStorage::RetCode::Ok, f.status() );
 
     {
         auto t = f.open_transaction();
@@ -157,7 +157,7 @@ TEST_F( TestStorageFile, Transaction_Commit )
     using namespace std;
 
     SmallChunkStorageFile f{ std::filesystem::path{ "./foo.jb" }, true };
-    ASSERT_EQ( SmallChunkStorage::RetCode::Ok, f.creation_status() );
+    ASSERT_EQ( SmallChunkStorage::RetCode::Ok, f.status() );
 
     {
         auto t = f.open_transaction();
@@ -192,7 +192,7 @@ TEST_F( TestStorageFile, Transaction_RollbackOnOpen )
 
     {
         SmallChunkStorageFile f{ std::filesystem::path{ "./foo.jb" }, true };
-        ASSERT_EQ( SmallChunkStorage::RetCode::Ok, f.creation_status() );
+        ASSERT_EQ( SmallChunkStorage::RetCode::Ok, f.status() );
 
         auto t = f.open_transaction();
         ASSERT_EQ( SmallChunkStorage::RetCode::Ok, t.status() );
@@ -210,7 +210,7 @@ TEST_F( TestStorageFile, Transaction_RollbackOnOpen )
 
     {
         SmallChunkStorageFile f{ std::filesystem::path{ "./foo.jb" }, true };
-        ASSERT_EQ( SmallChunkStorage::RetCode::Ok, f.creation_status() );
+        ASSERT_EQ( SmallChunkStorage::RetCode::Ok, f.status() );
 
         auto b = f.get_chain_reader( SmallChunkStorageFile::RootChunkUid );
         istream is( &b );
@@ -230,7 +230,7 @@ TEST_F( TestStorageFile, Overwriting )
 
 
     SmallChunkStorageFile f{ std::filesystem::path{ "./foo4.jb" }, true };
-    ASSERT_EQ( SmallChunkStorage::RetCode::Ok, f.creation_status() );
+    ASSERT_EQ( SmallChunkStorage::RetCode::Ok, f.status() );
 
     {
         auto t = f.open_transaction();
@@ -327,7 +327,7 @@ TEST_F( TestStorageFile, GarbageCollector )
 
 
     SmallChunkStorageFile f{ std::filesystem::path{ "./foo4.jb" }, true };
-    ASSERT_EQ( SmallChunkStorage::RetCode::Ok, f.creation_status() );
+    ASSERT_EQ( SmallChunkStorage::RetCode::Ok, f.status() );
 
     // write 3 chains
     {
