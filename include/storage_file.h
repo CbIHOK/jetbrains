@@ -9,11 +9,11 @@
 #include <stack>
 #include <mutex>
 #include <limits>
+#include <condition_variable>
 
 #include <boost/container/static_vector.hpp>
 #include <boost/interprocess/sync/named_mutex.hpp>
 #include <boost/interprocess/exceptions.hpp>
-#include <boost/container_hash/hash.hpp>
 
 #ifndef BOOST_ENDIAN_DEPRECATED_NAMES
 #define BOOST_ENDIAN_DEPRECATED_NAMES
@@ -86,6 +86,7 @@ namespace jb
 
         // readers
         std::mutex readers_mutex_;
+        std::condition_variable readers_cv_;
         boost::container::static_vector< Handle, ReaderNumber > readers_;
         std::stack< Handle, boost::container::static_vector< Handle, ReaderNumber > > reader_stack_;
 
@@ -608,11 +609,7 @@ namespace jb
             if ( !newly_created_ )
             {
                 RetCode status = RetCode::Ok;
-
-                auto ce = [&] ( const auto & f ) noexcept {
-                    if ( RetCode::Ok == status ) status = f();
-                    assert( RetCode::Ok == status );
-                };
+                auto ce = [&] ( const auto & f ) noexcept { if ( RetCode::Ok == status ) status = f(); };
 
                 // seek & read data
                 ce( [&] {
@@ -675,6 +672,33 @@ namespace jb
         {
             using namespace std;
             return Transaction{ const_cast< StorageFile* >( this ), writer_, move( unique_lock{ transaction_mutex_ } ) };
+        }
+
+
+        /** Provides input stream buffer for given chunk
+
+        @param [in] chain - uid of start chunk of chain to be read
+        @return stream buffer object
+        @throw nothing
+        @note in theory the body may fire an exception, but in this case the better to die on noexcept
+              and analyze the crash than investigate a deadlock
+        */
+        istreambuf get_chaing_reader( ChunkUid chain ) noexcept
+        {
+            using namespace std;
+
+            Handle reader = InvalidHandle;
+
+            // acquire reading handle
+            {
+                unique_lock lock( readers_mutex_ );
+                readers_cv_.wait( lock, !reader_stack_.empty() );
+                
+                reader = reader_stack_.top();
+                reader_stack_.pop();
+            }
+
+            return istreambuf( this, reader, chain );
         }
     };
 
@@ -1215,6 +1239,63 @@ namespace jb
         /** ...but movable
         */
         ostreambuf( ostreambuf&& ) = default;
+    };
+
+
+    /** Represents input stream from storage file
+
+    @tparam Policies - global setting
+    @tparam Pad - test stuff
+    */
+    template < typename Policies, typename Pad >
+    class Storage< Policies, Pad >::PhysicalVolumeImpl::PhysicalStorage::StorageFile::istreambuf : public std::basic_streambuf< char >
+    {
+        friend class StorageFile;
+
+        StorageFile * file_ = nullptr;
+        Handle        handle_ = InvalidHandle;
+        ChunkUid      current_chunk_ = InvalidChunkUid;
+
+
+        /* Exlplicit constructor
+        */
+        explicit istreambuf( StorageFile * file, Handle handle, ChunkUid start_chunk ) noexcept
+            : file_( file )
+            , handle_( handle )
+            , current_chunk_ 
+        {
+
+        }
+
+    protected:
+
+    public:
+
+        /** The class is not default creatable/copyable
+        */
+        istreambuf() = delete;
+        istreambuf( const ostreambuf & ) = delete;
+
+
+        /** ...but movable
+        */
+        istreambuf( istreambuf&& ) noexcept = default;
+
+
+        /** Destructor, releases allocated handle
+
+        @throw nothing
+        @note in theory the body may fire an exception but here it's much better to die on noexcept
+              guard than to analyze a deadlock
+        */
+        ~istreambuf() noexcept
+        {
+            assert( file_ && handle_ = InvalidHandle );
+
+            std::scoped_lock l( file_->readers_mutex_ );
+            file_->reader_stack_.push( handle_ );
+            file_->readers_cv_.notify_one();
+        }
     };
 }
 
