@@ -55,8 +55,7 @@ namespace jb
 
         /** Constructs physical storage
 
-        @param [in] path - file name
-        @param [in] create - create file if does not exist
+        @param [in] file - pointer to storage file
         @throw nothing
         @note check object validity by status()
         */

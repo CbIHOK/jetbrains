@@ -36,7 +36,6 @@ namespace jb
         using RetCode = typename Storage::RetCode;
         using Key = typename Storage::Key;
         using Value = typename Storage::Value;
-        using Timestamp = typename Storage::Timestamp;
         using PhysicalVolume = typename Storage::PhysicalVolume;
         using MountPointImpl = typename Storage::MountPointImpl;
         using BTreeP = typename BTree::BTreeP;
@@ -431,7 +430,7 @@ namespace jb
             const Key & relative_path,
             const Key & subkey,
             Value && value,
-            Timestamp && good_before,
+            uint64_t good_before,
             bool overwrite,
             const execution_connector & in,
             execution_connector & out )

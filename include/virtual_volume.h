@@ -32,7 +32,6 @@ namespace jb
         using Key = typename Storage::Key;
         using KeyValue = typename Storage::KeyValue;
         using Value = typename Storage::Value;
-        using Timestamp = typename Storage::Timestamp;
         using PhysicalVolume = typename Storage::PhysicalVolume;
         using MountPoint = typename Storage::MountPoint;
 
@@ -169,7 +168,7 @@ namespace jb
         }
 
 
-        std::tuple< RetCode > Insert( const KeyValue & key, const KeyValue & subkey, Value && value, Timestamp && good_before = Timestamp{}, bool overwrite = false ) noexcept
+        std::tuple< RetCode > Insert( const KeyValue & key, const KeyValue & subkey, Value && value, uint64_t good_before = 0, bool overwrite = false ) noexcept
         {
             using namespace std;
 
@@ -187,14 +186,15 @@ namespace jb
                     return { RetCode::InvalidSubkey };
                 }
 
-                if ( good_before != Timestamp{} && good_before < Timestamp::clock::now() )
+                if ( good_before )
                 {
+                    auto now = chrono::system_clock::now().time_since_epoch() / chrono::milliseconds( 1 );
                     return { RetCode::AlreadyExpired };
                 }
 
                 if ( auto impl = impl_.lock( ) )
                 {
-                    return impl->insert( key_, subkey_, std::move( value ), std::move( good_before ), overwrite );
+                    return impl->insert( key_, subkey_, std::move( value ), good_before, overwrite );
                 }
                 else
                 {

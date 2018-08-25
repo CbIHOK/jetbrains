@@ -16,7 +16,6 @@ protected:
     using PhysicalVolume = typename Storage::PhysicalVolume;
     using MountPoint = typename Storage::MountPoint;
     using Value = Storage::Value;
-    using Timestamp = Storage::Timestamp;
 
 
     ~TestVirtualVolume( ) { Storage::CloseAll( ); }

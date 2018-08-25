@@ -28,7 +28,6 @@ namespace jb
         using Key = typename Storage::Key;
         using KeyValue = typename Key::ValueT;
         using Value = typename Storage::Value;
-        using Timestamp = typename Storage::Timestamp;
         using VirtualVolumeImpl = typename Storage::VirtualVolumeImpl;
         using PhysicalVolumeImpl = typename Storage::PhysicalVolumeImpl;
         using PhysicalVolumeImplP = std::shared_ptr< PhysicalVolumeImpl >;
@@ -137,14 +136,14 @@ namespace jb
         @throw nothing
         */
         [[ nodiscard ]]
-        std::tuple< RetCode > insert( const Key & relative_path, const Key & subkey, Value && value, Timestamp && good_before, bool overwrite, const execution_connector & in, execution_connector & out ) noexcept
+        std::tuple< RetCode > insert( const Key & relative_path, const Key & subkey, Value && value, uint64_t good_before, bool overwrite, const execution_connector & in, execution_connector & out ) noexcept
         {
             assert( relative_path.is_path() );
             assert( subkey.is_leaf() );
 
             try
             {
-                return physical_volume_->insert( entry_node_uid_, Key{ entry_path_ }, relative_path, subkey, std::move( value ), std::move( good_before ), overwrite, in, out );
+                return physical_volume_->insert( entry_node_uid_, Key{ entry_path_ }, relative_path, subkey, std::move( value ), good_before, overwrite, in, out );
             }
             catch ( ... )
             {

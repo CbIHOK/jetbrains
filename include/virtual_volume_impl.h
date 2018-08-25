@@ -32,7 +32,6 @@ namespace jb
         using Key = typename Storage::Key;
         using KeyValue = typename Storage::KeyValue;
         using Value = typename Storage::Value;
-        using Timestamp = typename Storage::Timestamp;
         using KeyHashT = size_t;
         using PhysicalVolumeImpl = typename Storage::PhysicalVolumeImpl;
         using PhysicalVolumeImplP = std::shared_ptr< PhysicalVolumeImpl >;
@@ -307,7 +306,7 @@ namespace jb
         @throw nothing
         */
         [[ nodiscard ]]
-        std::tuple< RetCode > insert( const Key & path, const Key & subkey, Value && value, Timestamp && good_before, bool overwrite ) noexcept
+        std::tuple< RetCode > insert( const Key & path, const Key & subkey, Value && value, uint64_t good_before, bool overwrite ) noexcept
         {
             using namespace std;
 
@@ -331,7 +330,7 @@ namespace jb
 
                     // run insert() for all mounts in parallel
                     auto futures = std::move( run_parallel( mounts, [&] ( const auto & mount, const auto & in, auto & out ) noexcept {
-                        return mount->insert( relative_path, subkey, std::move( value ), std::move( good_before ), overwrite, in, out );
+                        return mount->insert( relative_path, subkey, std::move( value ), good_before, overwrite, in, out );
                     } ) );
 
                     // through all futures

@@ -12,6 +12,7 @@ add_executable( tests
     storage.cpp
     storage_file.cpp
     bloom.cpp
+    b_tree.cpp
 )
 
 target_link_libraries( tests gtest gtest_main )

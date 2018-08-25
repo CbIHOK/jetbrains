@@ -2,12 +2,13 @@
 #include <storage.h>
 #include <policies.h>
 #include <mutex>
+#include <boost/variant.hpp>
 
 
 struct OtherPolicies : public ::jb::DefaultPolicies
 {
     using KeyCharT = wchar_t;
-    using ValueT = std::variant< uint32_t, uint64_t, float, double >;
+    using ValueT = boost::variant< uint32_t, uint64_t, float, double >;
 };
 
 struct SmallChunkPolicies : public ::jb::DefaultPolicies
@@ -126,6 +127,7 @@ TEST_F( TestStorageFile, Transaction_Rollback )
     SmallChunkStorageFile f{ std::filesystem::path{ "./foo.jb" }, true };
     ASSERT_EQ( SmallChunkStorage::RetCode::Ok, f.status() );
 
+    SmallChunkStorageFile::ChunkUid uid;
     {
         auto t = f.open_transaction();
         ASSERT_EQ( SmallChunkStorage::RetCode::Ok, t.status() );
@@ -136,13 +138,13 @@ TEST_F( TestStorageFile, Transaction_Rollback )
         ostream os( &b );
         os << "abcdefghijklmnopqrstuvwxyz";
         os.flush();
+        uid = t.get_first_written_chunk();
 
         EXPECT_EQ( SmallChunkStorage::RetCode::Ok, t.status() );
-        EXPECT_EQ( SmallChunkStorageFile::RootChunkUid, t.get_first_written_chunk() );
     }
 
     {
-        auto b = f.get_chain_reader( SmallChunkStorageFile::RootChunkUid );
+        auto b = f.get_chain_reader( uid );
         istream is( &b );
         string str;
         is >> str;
@@ -157,7 +159,8 @@ TEST_F( TestStorageFile, Transaction_Commit )
 
     SmallChunkStorageFile f{ std::filesystem::path{ "./foo.jb" }, true };
     ASSERT_EQ( SmallChunkStorage::RetCode::Ok, f.status() );
-
+    
+    SmallChunkStorageFile::ChunkUid uid;
     {
         auto t = f.open_transaction();
         ASSERT_EQ( SmallChunkStorage::RetCode::Ok, t.status() );
@@ -168,14 +171,14 @@ TEST_F( TestStorageFile, Transaction_Commit )
         ostream os( &b );
         os << "abcdefghijklmnopqrstuvwxyz";
         os.flush();
+        uid = t.get_first_written_chunk();
 
         EXPECT_EQ( SmallChunkStorage::RetCode::Ok, t.status() );
-        EXPECT_EQ( SmallChunkStorageFile::RootChunkUid, t.get_first_written_chunk() );
         EXPECT_EQ( SmallChunkStorage::RetCode::Ok, t.commit() );
     }
 
     {
-        auto b = f.get_chain_reader( SmallChunkStorageFile::RootChunkUid );
+        auto b = f.get_chain_reader( uid );
         istream is( &b );
         string str;
         is >> str;
@@ -189,6 +192,7 @@ TEST_F( TestStorageFile, Transaction_RollbackOnOpen )
 {
     using namespace std;
 
+    SmallChunkStorageFile::ChunkUid uid;
     {
         SmallChunkStorageFile f{ std::filesystem::path{ "./foo.jb" }, true };
         ASSERT_EQ( SmallChunkStorage::RetCode::Ok, f.status() );
@@ -202,16 +206,16 @@ TEST_F( TestStorageFile, Transaction_RollbackOnOpen )
         ostream os( &b );
         os << "abcdefghijklmnopqrstuvwxyz";
         os.flush();
+        uid = t.get_first_written_chunk();
 
         EXPECT_EQ( SmallChunkStorage::RetCode::Ok, t.status() );
-        EXPECT_EQ( SmallChunkStorageFile::RootChunkUid, t.get_first_written_chunk() );
     }
 
     {
         SmallChunkStorageFile f{ std::filesystem::path{ "./foo.jb" }, true };
         ASSERT_EQ( SmallChunkStorage::RetCode::Ok, f.status() );
 
-        auto b = f.get_chain_reader( SmallChunkStorageFile::RootChunkUid );
+        auto b = f.get_chain_reader( uid );
         istream is( &b );
         string str;
         is >> str;

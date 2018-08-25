@@ -38,7 +38,6 @@ namespace jb
         using RetCode = Storage::RetCode;
         using KeyCharT = typename Policies::KeyCharT;
         using ValueT = typename Storage::Value;
-        using TimestampT = typename Storage::Timestamp;
         using OsPolicy = typename Policies::OSPolicy;
         using Handle = typename OsPolicy::HandleT;
         using big_uint32_t = boost::endian::big_uint32_t;
@@ -325,12 +324,22 @@ namespace jb
 
             //
             ce( [&] {
-                BTree root;
-                //
-                auto t = open_transaction();
-                root.save( t );
-                //
-                return t.commit();
+                try
+                {
+                    auto t = open_transaction();
+                    {
+                        auto osbuf = t.get_chain_writer();
+                        std::ostream os( &osbuf );
+                        boost::archive::binary_oarchive ar( os );
+                        BTree root;
+                        ar & root;
+                    }
+                    return t.commit();
+                }
+                catch ( ... )
+                {
+                    return RetCode::UnknownError;
+                }
             } );
 
             return status;
@@ -1451,6 +1460,14 @@ namespace jb
         /** ...but movable
         */
         istreambuf( istreambuf&& ) = default;
+
+
+        /** Provides object status
+
+        @return RetCode - status
+        @throw nothing
+        */
+        auto status() const noexcept { return status_; }
 
 
         /** Destructor, releases allocated handle

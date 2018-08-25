@@ -51,6 +51,7 @@ namespace jb
         friend class TestNodeLocker;
         friend class TestBloom;
         friend class TestStorageFile;
+        friend class TestBTree;
 
         friend class VirtualVolume;
         friend class PhysicalVolume;
@@ -95,7 +96,6 @@ namespace jb
         };
 
         using Value = typename Policies::ValueT;
-        using Timestamp = std::filesystem::file_time_type;
 
         class VirtualVolume;
         class PhysicalVolume;
