@@ -15,7 +15,6 @@
 #include <boost/serialization/collection_size_type.hpp>
 #include <boost/archive/binary_iarchive.hpp>
 #include <boost/archive/binary_oarchive.hpp>
-#include <boost/variant/static_visitor.hpp>
 
 
 class TestBTree;
@@ -62,27 +61,78 @@ namespace jb
             NodeUid children_;
 
             template < class Archive >
-            void serialize( Archive & ar, const unsigned int version )
+            void save( Archive & ar, const unsigned int version ) const
             {
-                ar & digest_;
-                ar & value_;
-                ar & good_before_;
-                ar & children_;
+                ar << BOOST_SERIALIZATION_NVP( digest_ );
+                ar << BOOST_SERIALIZATION_NVP( good_before_ );
+                ar << BOOST_SERIALIZATION_NVP( children_ );
+                
+                size_t var_index = value_.index();
+                ar << BOOST_SERIALIZATION_NVP( var_index );
+
+                std::visit( [&] ( const auto & v ) {
+                    ar << BOOST_SERIALIZATION_NVP( v );
+                }, value_ );
             }
 
-            struct var_cmp : public boost::static_visitor< bool >
+            template < size_t I, class Archive >
+            Value try_deserialize_variant( size_t index, Archive & ar, const unsigned int version )
             {
+                if constexpr ( I < std::variant_size_v< Value > )
+                {
+                    if ( index == I )
+                    {
+                        std::variant_alternative_t< I, Value > v;
+                        ar >> BOOST_SERIALIZATION_NVP( v );
+                        return Value( v );
+                    }
+                    else
+                    {
+                        return try_deserialize_variant< I + 1 >( index, ar, version );
+                    }
+                }
+                else
+                {
+                    throw std::runtime_error( "Unable to deserialize variant object" );
+                }
+            }
+
+            template < class Archive >
+            void load( Archive & ar, const unsigned int version )
+            {
+                ar >> BOOST_SERIALIZATION_NVP( digest_ );
+                ar >> BOOST_SERIALIZATION_NVP( good_before_ );
+                ar >> BOOST_SERIALIZATION_NVP( children_ );
+
+                size_t var_index;
+                ar >> BOOST_SERIALIZATION_NVP( var_index );
+                value_ = std::move( try_deserialize_variant< 0 >( var_index, ar, version ) );
+            }
+            BOOST_SERIALIZATION_SPLIT_MEMBER()
+
+            struct var_cmp
+            {
+                bool value = true;
+
                 template < typename U, typename V >
-                bool operator () ( const U &, const V & ) const { return false; }
-                
+                void operator () ( const U &, const V & )
+                {
+                    value = false;
+                }
+
                 template < typename T >
-                bool operator () ( const T & l, const T & r ) const { return l == r; }
+                void operator () ( const T & l, const T & r )
+                {
+                    value = ( l == r );
+                }
             };
 
             friend bool operator == ( const Element & l, const Element & r )
             {
                 if ( l.digest_ != r.digest_ || l.good_before_ != r.good_before_ || l.children_ != r.children_ ) return false;
-                return boost::apply_visitor( var_cmp(), l.value_, r.value_ );
+                var_cmp cmp;
+                std::visit( cmp, l.value_, r.value_ );
+                return cmp.value;
             }
         };
 

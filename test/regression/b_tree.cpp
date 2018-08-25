@@ -48,8 +48,8 @@ TEST_F( TestBTree, Serialization )
         ASSERT_EQ( RetCode::Ok, f.status() );
 
         BTree tree( InvalidNodeUid, &f, &c );
-        elements( tree ) = std::move( etalon_elements );
-        links( tree ) = std::move( etalon_links );
+        elements( tree ) = etalon_elements;
+        links( tree ) = etalon_links;
 
         auto t = f.open_transaction();
         EXPECT_NO_THROW( save( tree, t ) );

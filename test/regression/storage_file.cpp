@@ -2,13 +2,12 @@
 #include <storage.h>
 #include <policies.h>
 #include <mutex>
-#include <boost/variant.hpp>
 
 
 struct OtherPolicies : public ::jb::DefaultPolicies
 {
     using KeyCharT = wchar_t;
-    using ValueT = boost::variant< uint32_t, uint64_t, float, double >;
+    using ValueT = std::variant< uint32_t, uint64_t, float, double >;
 };
 
 struct SmallChunkPolicies : public ::jb::DefaultPolicies
