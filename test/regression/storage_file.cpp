@@ -68,7 +68,6 @@ TEST_F( TestStorageFile, CreateNew )
     {
         StorageFile f{ std::filesystem::path{ "./foo.jb" }, true };
         EXPECT_EQ( RetCode::Ok, f.status() );
-        EXPECT_TRUE( f.newly_created() );
     }
 }
 

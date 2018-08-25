@@ -14,6 +14,7 @@
 #include <boost/container/static_vector.hpp>
 #include <boost/interprocess/sync/named_mutex.hpp>
 #include <boost/interprocess/exceptions.hpp>
+#include <boost/archive/binary_oarchive.hpp>
 
 #ifndef BOOST_ENDIAN_DEPRECATED_NAMES
 #define BOOST_ENDIAN_DEPRECATED_NAMES
@@ -322,6 +323,16 @@ namespace jb
                 return ( ok && written == sizeof( invalid_crc ) ) ? RetCode::Ok : RetCode::IoError;
             } );
 
+            //
+            ce( [&] {
+                BTree root;
+                //
+                auto t = open_transaction();
+                root.save( t );
+                //
+                return t.commit();
+            } );
+
             return status;
         }
 
@@ -622,13 +633,6 @@ namespace jb
         @throw nothing
         */
         auto status() const noexcept { return status_; }
-
-
-        /** Let us know if the file is newly created
-
-        @throw nothing
-        */
-        auto newly_created() const noexcept { return newly_created_; }
 
 
         /** Reads data for Bloom filter

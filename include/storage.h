@@ -20,7 +20,7 @@ class TestKey;
 class TestNodeLocker;
 class TestBloom;
 class TestStorageFile;
-
+class TestBTree;
 
 namespace jb
 {
@@ -91,7 +91,7 @@ namespace jb
             IoError,                ///< General I/O error
             IncompatibleFile,       ///< File is incompatible
             ///
-            NotImplementedYet
+            NotYetImplemented
         };
 
         using Value = typename Policies::ValueT;

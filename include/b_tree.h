@@ -6,8 +6,15 @@
 #include <tuple>
 #include <algorithm>
 #include <limits>
+
 #include <boost/container/static_vector.hpp>
 #include <boost/thread/shared_mutex.hpp>
+#include <boost/serialization/split_member.hpp>
+#include <boost/serialization/nvp.hpp>
+#include <boost/serialization/collection_size_type.hpp>
+#include <boost/serialization/variant.hpp>
+
+class TestBTree;
 
 
 namespace jb
@@ -15,11 +22,16 @@ namespace jb
     template < typename Policies, typename Pad >
     class Storage< Policies, Pad >::PhysicalVolumeImpl::BTree
     {
+        friend class TestBTree;
+        friend class boost::serialization::access;
+
         using Storage = Storage< Policies, Pad >;
         using Key = typename Storage::Key;
         using Value = typename Storage::Value;
         using Timestamp = typename Storage::Timestamp;
-        using KeyHashT = size_t;
+        using Digest = typename Bloom::Digest;
+
+        template < typename T, size_t C > using  static_vector = boost::container::static_vector< T, C >;
 
     public:
 
@@ -29,17 +41,30 @@ namespace jb
         static constexpr auto RootNodeUid = StorageFile::RootChunkUid;
         static constexpr auto InvalidNodeUid = StorageFile::InvalidChunkUid;
 
-        typedef size_t Pos;
+        using Pos = size_t;
         static constexpr auto Npos = Pos{ std::numeric_limits< size_t >::max() };
+
+        using BTreePath = boost::container::static_vector < NodeUid, 64 >;
+
+    private:
 
         struct Element
         {
-            KeyHashT key_hash_;
+            Digest digest_;
             Value value_;
             Timestamp expiration_;
             NodeUid children_;
 
-            operator KeyHashT () const noexcept { return key_hash_; }
+            template<class Archive>
+            void serialize( Archive & ar, const unsigned int version )
+            {
+                ar & digest_;
+                ar & value_;
+                ar & expiration_;
+                ar & children_;
+            }
+
+            operator Digest () const noexcept { return digest_; }
 
             friend bool operator < ( const Element & l, const Element & r ) noexcept
             {
@@ -47,113 +72,112 @@ namespace jb
             }
         };
 
-    private:
-
         static constexpr auto BTreeMinPower = Policies::PhysicalVolumePolicy::BTreeMinPower;
         static_assert( BTreeMinPower >= 2, "B-tree power must be > 1" );
 
         static constexpr auto BTreeMin = BTreeMinPower - 1;
         static constexpr auto BTreeMax = 2 * BTreeMinPower - 1;
 
+        NodeUid uid_;
         StorageFile * storage_;
         BTreeCache * cache_;
-        NodeUid parent_uid_;
-        NodeUid uid_;
         mutable boost::upgrade_mutex guard_;
-        boost::container::static_vector< Element, BTreeMax + 1> elements_;
-        boost::container::static_vector< NodeUid, BTreeMax + 2> links_;
+        static_vector< Element, BTreeMax + 1> elements_;
+        static_vector< NodeUid, BTreeMax + 2> links_;
 
-        
+        template<class Archive>
+        void save( Archive & ar, const unsigned int version ) const
+        {
+            using namespace boost::serialization;
+
+            const collection_size_type element_count( elements_.size() );
+            ar << BOOST_SERIALIZATION_NVP( element_count );
+
+            if ( !elements_.empty() )
+            {
+                ar << make_array< const Element, collection_size_type >( 
+                    static_cast< const Element* >( &elements_[ 0 ] ),
+                    element_count
+                    );
+            }
+
+            const collection_size_type link_count( links_.size() );
+            ar << BOOST_SERIALIZATION_NVP( link_count );
+
+            if ( !links_.empty() )
+            {
+                ar << make_array< const NodeUid, collection_size_type >(
+                    static_cast< const NodeUid* >( &links_[ 0 ] ),
+                    link_count
+                    );
+            }
+        }
+
+        template<class Archive>
+        void load( Archive & ar, const unsigned int version )
+        {
+            collection_size_type count( t.size() );
+            ar >> BOOST_SERIALIZATION_NVP( count );
+            element_.resize( count );
+            links_.resize( count + 1 );
+            if ( !elements_.empty() )
+            {
+                ar >> serialization::make_array< Element, collection_size_type >(
+                    static_cast< Element* >( &elements_[ 0 ] ),
+                    count
+                    );
+                ar >> serialization::make_array< NodeUid, collection_size_type >(
+                    static_cast< NodeUid* >( &links_[ 0 ] ),
+                    count
+                    );
+            }
+
+        }
+
+        BOOST_SERIALIZATION_SPLIT_MEMBER()
+
     public:
 
         /** The class is not copyable/movable
         */
         BTree( BTree&& ) = delete;
 
-
-        BTree( )
+        BTree() noexcept
         {
+            links_.push_back( InvalidNodeUid );
+        }
+
+        BTree( NodeUid uid, StorageFile * file, BTreeCache * cache ) noexcept
+            : uid_( uid ),
+            , file_( file )
+            , cache_( cache )
+        {
+            assert( file_ && cache_ );
             links_.push_back( InvalidNodeUid );
         }
 
         auto uid() const noexcept { return uid_; }
 
+        auto & guard() const noexcept { return guard_; }
 
-        auto & guard( ) const noexcept { return guard_; }
-
-
-        /** Checks if key presents in the node
-
-        If key presents returns
-
-        @retval Pos - position of the key in the B-tree node or Npos if key is not in the node
-        @retval NodeUid - B-tree node to search
-        @throw may cause std::exception for some reasons
-        */
-        std::tuple< Pos, NodeUid > find_key( const Key & key ) const
+        auto save( typename StorageFile::Transaction & t ) noexcept
         {
-            using namespace std;
+            auto sbuf = t.get_chain_writer();
+            std::ostream os( &sbuf );
+            boost::archive::binary_oarchive ar( os );
+            ar & *this;
 
-            assert( key.is_leaf() );
-
-            static constexpr Hash< Key > hasher;
-            auto hash = hasher( key );
-
-            if ( auto lower = lower_bound( begin( elements_ ), end( elements_ ), hash ); lower == elements_.end() )
-            {
-                return tuple{ Npos, links_.back() };
-            }
-            else
-            {
-                assert( 0 <= distance( begin( elements_ ), lower ) );
-                auto pos = static_cast< Pos >( distance( begin( elements_ ), lower ) );
-                assert( pos < elements_.size() );
-
-                if ( lower->key_hash_ == hash )
-                {
-                    return tuple{ pos, InvalidNodeUid };
-                }
-                else
-                {
-                    return tuple{ Npos, links_[ pos ] };
-                }
-            }
+            auto new_uid = t.get_first_written_chunk();
+            //if ( cache_ ) cache_->update_uid( uid_, new_uid );
+            uid_ = new_uid;
         }
 
-
-        const Value & value( size_t ndx ) const noexcept
-        { 
-            assert( ndx < elements_.size() );
-            return elements_[ ndx ].value_;
-        }
-
-
-        const Timestamp & expiration( size_t ndx ) const noexcept
+        auto load() noexcept
         {
-            assert( ndx < elements_.size( ) );
-            return elements_[ ndx ].expiration_;
-        }
-
-
-        NodeUid children( size_t ndx ) const noexcept
-        {
-            assert( ndx < elements_.size() );
-            return elements_[ ndx ].children_;
-        }
-
-
-        std::tuple< RetCode > insert( const Key & key, Value && value, Timestamp && expiration, bool overwrite ) noexcept
-        {
-            using namespace std;
-
-
-            return { RetCode::NotImplementedYet };
-        }
-
-
-        std::tuple< RetCode >  erase( size_t ndx ) noexcept
-        {
-            return { RetCode::NotImplementedYet };
+            auto sbuf = file_->get_chain_reader();
+            std::ostream is( &sbuf );
+            boost::archive::binary_oarchive ar( is );
+            ar & *this;
         }
     };
 }

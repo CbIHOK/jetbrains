@@ -12,10 +12,6 @@
 #include <boost/thread/lock_types.hpp>
 
 
-class TestNodeLocker;
-class TestBloom;
-class TestStorageFile;
-
 namespace jb
 {
     template < typename Policies, typename Pad >
@@ -375,32 +371,34 @@ namespace jb
                     return wait_and_do_it( in, out, [] { return std::tuple{ RetCode::NotFound, InvalidNodeUid, PathLock{} }; } );
                 }
 
-                PathLock mount_lock;
-                NodeUid mount_node_uid = InvalidNodeUid;
+                //PathLock mount_lock;
+                //NodeUid mount_node_uid = InvalidNodeUid;
 
-                using upgrade_lock = boost::upgrade_lock< boost::upgrade_mutex >;
-                boost::container::static_vector< upgrade_lock, MaxTreeDepth > locks;
+                //using upgrade_lock = boost::upgrade_lock< boost::upgrade_mutex >;
+                //boost::container::static_vector< upgrade_lock, MaxTreeDepth > locks;
 
-                // navigate through to path and take lock over each node
-                auto[ ret, btree, pos ] = navigate( entry_node_uid, relative_path, in, locks, [&] ( const auto & node ) {
-                    assert( node );
-                    mount_node_uid = node->uid();
-                    mount_lock << path_locker_.lock_node( node->uid() );
-                } );
+                //// navigate through to path and take lock over each node
+                //auto[ ret, btree, pos ] = navigate( entry_node_uid, relative_path, in, locks, [&] ( const auto & node ) {
+                //    assert( node );
+                //    mount_node_uid = node->uid();
+                //    mount_lock << path_locker_.lock_node( node->uid() );
+                //} );
 
-                if ( RetCode::Ok == ret )
-                {
-                    // return path lock object 
-                    return wait_and_do_it( in, out, [&] {
-                        return std::tuple{ RetCode::NotImplementedYet, InvalidNodeUid, std::move( mount_lock ) };
-                    } );
-                }
-                else
-                {
-                    return wait_and_do_it( in, out, [&] {
-                        return std::tuple{ ret, InvalidNodeUid, PathLock{} };
-                    } );
-                }
+                //if ( RetCode::Ok == ret )
+                //{
+                //    // return path lock object 
+                //    return wait_and_do_it( in, out, [&] {
+                //        return std::tuple{ RetCode::NotYetImplemented, InvalidNodeUid, std::move( mount_lock ) };
+                //    } );
+                //}
+                //else
+                //{
+                //    return wait_and_do_it( in, out, [&] {
+                //        return std::tuple{ ret, InvalidNodeUid, PathLock{} };
+                //    } );
+                //}
+                
+                return wait_and_do_it( in, out, [=] { return std::tuple{ RetCode::NotYetImplemented, InvalidNodeUid, PathLock{} }; } );
             }
             catch ( ... )
             {
@@ -457,32 +455,34 @@ namespace jb
                     return wait_and_do_it( in, out, [] { return std::tuple{ RetCode::NotFound }; } );
                 }
 
-                using upgrade_lock = boost::upgrade_lock< boost::upgrade_mutex >;
-                boost::container::static_vector< upgrade_lock, MaxTreeDepth > locks;
+                //using upgrade_lock = boost::upgrade_lock< boost::upgrade_mutex >;
+                //boost::container::static_vector< upgrade_lock, MaxTreeDepth > locks;
 
-                auto[ ret, btree, pos ] = navigate( entry_node_uid,
-                    relative_path,
-                    in,
-                    locks,
-                    [&] ( [[maybe_unused]] const auto & node ) {} );
+                //auto[ ret, btree, pos ] = navigate( entry_node_uid,
+                //    relative_path,
+                //    in,
+                //    locks,
+                //    [&] ( [[maybe_unused]] const auto & node ) {} );
 
-                if ( RetCode::Ok == ret )
-                {
-                    return wait_and_do_it( in, out, [=] {
+                //if ( RetCode::Ok == ret )
+                //{
+                //    return wait_and_do_it( in, out, [=] {
 
-                        return std::tuple{ RetCode::NotImplementedYet };
+                //        return std::tuple{ RetCode::NotYetImplemented };
 
-                        //BTreeP insert_to = physical_storage_.get_node( btree->children( pos ) );
+                //        //BTreeP insert_to = physical_storage_.get_node( btree->children( pos ) );
 
-                        //boost::unique_lock exclusive_lock{ insert_to->guard() };
+                //        //boost::unique_lock exclusive_lock{ insert_to->guard() };
 
-                        //return insert_to->insert( subkey, value, good_before, overwrite );
-                    } );
-                }
-                else
-                {
-                    return wait_and_do_it( in, out, [=] { return std::tuple{ ret }; } );
-                }
+                //        //return insert_to->insert( subkey, value, good_before, overwrite );
+                //    } );
+                //}
+                //else
+                //{
+                //    return wait_and_do_it( in, out, [=] { return std::tuple{ ret }; } );
+                //}
+                
+                return wait_and_do_it( in, out, [=] { return std::tuple{ RetCode::NotYetImplemented }; } );
             }
             catch ( ... )
             {
@@ -523,26 +523,28 @@ namespace jb
                     return wait_and_do_it( in, out, [] { return tuple{ RetCode::NotFound, Value{} }; } );
                 } 
                 
-                using upgrade_lock = boost::upgrade_lock< boost::upgrade_mutex >;
-                boost::container::static_vector< upgrade_lock, MaxTreeDepth > locks;
+                //using upgrade_lock = boost::upgrade_lock< boost::upgrade_mutex >;
+                //boost::container::static_vector< upgrade_lock, MaxTreeDepth > locks;
 
-                auto[ ret, btree, pos ] = navigate( entry_node_uid, 
-                    relative_path, 
-                    in, 
-                    locks, 
-                    [&] ( [[maybe_unused]] const auto & BTreeP ) {} );
+                //auto[ ret, btree, pos ] = navigate( entry_node_uid, 
+                //    relative_path, 
+                //    in, 
+                //    locks, 
+                //    [&] ( [[maybe_unused]] const auto & BTreeP ) {} );
 
-                if ( RetCode::Ok == ret )
-                {
-                    return wait_and_do_it( in, out, [=] {
-                        Value value = btree->value( pos );
-                        return tuple{ RetCode::Ok, std::move( value ) };
-                    } );
-                }
-                else
-                {
-                    return wait_and_do_it( in, out, [=] { return tuple{ ret, Value{} }; } );
-                }
+                //if ( RetCode::Ok == ret )
+                //{
+                //    return wait_and_do_it( in, out, [=] {
+                //        Value value = btree->value( pos );
+                //        return tuple{ RetCode::Ok, std::move( value ) };
+                //    } );
+                //}
+                //else
+                //{
+                //    return wait_and_do_it( in, out, [=] { return tuple{ ret, Value{} }; } );
+                //}
+
+                return wait_and_do_it( in, out, [=] { return tuple{ RetCode::NotYetImplemented, Value{} }; } );
             }
             catch ( ... )
             {
@@ -585,7 +587,7 @@ namespace jb
                     return wait_and_do_it( in, out, [] { return tuple{ RetCode::NotFound }; } );
                 }
 
-                return wait_and_do_it( in, out, [] { return tuple{ RetCode::NotImplementedYet }; } );
+                return wait_and_do_it( in, out, [] { return tuple{ RetCode::NotYetImplemented }; } );
             }
             catch ( ... )
             {
