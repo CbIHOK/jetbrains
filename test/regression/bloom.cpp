@@ -7,6 +7,7 @@
 #include <atomic>
 #include <algorithm>
 #include <execution>
+#include <boost/container/static_vector.hpp>
 
 
 class TestBloom : public ::testing::Test
@@ -22,6 +23,11 @@ protected:
     using StorageFile = typename Storage::PhysicalVolumeImpl::StorageFile;
     using Key = typename Storage::Key;
     using KeyCharT = typename Key::CharT;
+    using Digest = typename Bloom::Digest;
+
+    template < typename T, size_t C > using static_vector = boost::container::static_vector< T, C >;
+
+    static constexpr auto MaxTreeDepth = Policies::PhysicalVolumePolicy::MaxTreeDepth;
 
     std::mutex present_mutex_;
     std::unordered_set< std::basic_string< KeyCharT > > present_;
@@ -193,7 +199,8 @@ TEST_F( DISABLED_TestBloom, Long_long_test )
         atomic< size_t > positive_counter( 0 );
         for_each( execution::par, begin( present_ ), end( present_ ), [&] ( const auto & str ) {
             auto[ k1, k2 ] = split_to_keys( str );
-            if ( auto[ ret, digest_no, may_present ] = bloom->test( k1, k2 ); may_present )
+            static_vector< Digest, MaxTreeDepth > digests;
+            if ( auto[ ret, may_present ] = bloom->test( k1, k2, digests ); may_present )
             {
                 positive_counter++;
             }
@@ -204,7 +211,8 @@ TEST_F( DISABLED_TestBloom, Long_long_test )
         atomic< size_t > negative_counter( 0 );
         for_each( execution::par, begin( absent_ ), end( absent_ ), [&] ( const auto & str ) {
             auto[ k1, k2 ] = split_to_keys( str );
-            if ( auto[ ret, digest_no, may_present ] = bloom->test( k1, k2 ); !may_present )
+            static_vector< Digest, MaxTreeDepth > digests;
+            if ( auto[ ret, may_present ] = bloom->test( k1, k2, digests ); !may_present )
             {
                 negative_counter++;
             }
@@ -255,17 +263,15 @@ TEST_F( TestBloom, Store_Restore )
         for ( auto & generator : generators ) { generator.second.wait(); }
 
         // through all the keys - berak them in digest and put into the filter
-        for_each( execution::par, begin( present_ ), end( present_ ), [&] ( const auto & key_str )
+        for_each( begin( present_ ), end( present_ ), [&] ( const auto & key_str )
         {
             Key key( key_str );
 
-            size_t level = 0;
+            size_t level = 1;
 
             if ( Key::root() != key )
             {
                 auto rest = key;
-
-                size_t level = 0;
 
                 while ( rest.size() )
                 {
@@ -293,9 +299,10 @@ TEST_F( TestBloom, Store_Restore )
         EXPECT_EQ( RetCode::Ok, bloom->status() );
 
         atomic< size_t > positive_counter( 0 );
-        for_each( execution::par, begin( present_ ), end( present_ ), [&] ( const auto & str ) {
+        for_each( begin( present_ ), end( present_ ), [&] ( const auto & str ) {
             auto[ k1, k2 ] = split_to_keys( str );
-            if ( auto[ ret, digest_no, may_present ] = bloom->test( k1, k2 ); may_present )
+            static_vector< Digest, MaxTreeDepth > digests;
+            if ( auto[ ret, may_present ] = bloom->test( k1, k2, digests ); may_present )
             {
                 positive_counter++;
             }

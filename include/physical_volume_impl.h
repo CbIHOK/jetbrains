@@ -6,10 +6,15 @@
 #include <thread>
 #include <chrono>
 #include <filesystem>
-#include <shared_mutex>
+#include <tuple>
+#include <utility>
+
 #include <boost/container/static_vector.hpp>
+#include <boost/thread/shared_mutex.hpp>
 #include <boost/thread/locks.hpp>
 #include <boost/thread/lock_types.hpp>
+
+#include <assert.h>
 
 
 namespace jb
@@ -41,181 +46,95 @@ namespace jb
         using BTreeP = typename BTree::BTreeP;
         using NodeUid = typename BTree::NodeUid;
         using PathLock = typename PathLocker::PathLock;
+        using Digest = typename Bloom::Digest;
+        using shared_lock = boost::upgrade_lock< boost::upgrade_mutex >;
+        using exclusive_lock = boost::upgrade_to_unique_lock< boost::upgrade_mutex >;
+
+        template < typename T, size_t C > using static_vector = boost::container::static_vector< T, C >;
 
         static constexpr auto RootNodeUid = BTree::RootNodeUid;
         static constexpr auto InvalidNodeUid = BTree::InvalidNodeUid;
         static constexpr auto MaxTreeDepth = Policies::PhysicalVolumePolicy::MaxTreeDepth;
+        static constexpr auto BTreeDepth = Policies::PhysicalVolumePolicy::BTreeDepth;
+
 
         RetCode status_ = RetCode::Ok;
-        PathLocker path_locker_;
         StorageFile file_;
+        PathLocker path_locker_;
         Bloom filter_;
         BTreeCache cache_;
 
 
-        /* Search for key starting from given B-tree node
-
-        @param [in] node - B-tree node
-        @param [in] key - key to be found
-        @param [in] in - incoming execution events
-        @retval BTreeP - B-tree node containing the key
-        @retval BTree::Pos - position of the key in B-tree node
-        @throw may throw std::exception for some reason
+        /* Navigates throght the tree searching for given key and locks found B-tree node with requested
         */
-        auto find_key( BTreeP node, const Key & key, const execution_connector & in )
+        template < typename D, typename L, typename P, typename F >
+        std::tuple< RetCode, BTreeP, typename BTree::Pos > navigate( 
+            const D & digests, 
+            L & locks, 
+            P & bpath, 
+            const F & f, 
+            const execution_connector & in ) noexcept
         {
             using namespace std;
 
-            while ( !cancelled( in ) )
+            assert( digests.size() );
+            auto digest_it = begin( digests );
+
+            if ( auto[ rc, btree ] = cache_.get_node( RootNodeUid ); RetCode::Ok != rc )
             {
-                // try find the key
-                auto f = node->find_key( key );
-
-                // if key found
-                if ( auto pos = std::get< 0 >( f ); pos != BTree::Npos )
-                {
-                    return std::tuple{ RetCode::Ok, node, pos };
-                }
-                // if there is another B-tree node for search
-                else if ( auto uid = std::get< 1 >( f ); uid != InvalidNodeUid )
-                {
-                    // continue for next B-tree node
-                    auto[ ret, next ]= cache_.get_node( uid );
-                    if ( ret != RetCode::Ok )
-                    {
-                        return std::tuple{ ret, BTreeP{}, BTree::Npos };
-                    }
-                    assert( node );
-
-                    node = next;
-                    continue;
-                }
-                // such key does not exist
-                else
-                {
-                    break;
-                }
-            }
-
-            return std::tuple{ RetCode::NotFound, BTreeP{}, BTree::Npos };
-        }
-
-
-        /* Navigates throght the tree searching for given key and locks found B-tree node with requested
-
-        requested lock type
-
-        @tparam F - type of action to be performed on each key node
-        @tparam PathLockHolder - type of lock accumulator
-        @param [in] uid - start B-tree node uid
-        @param [in] path - relative path
-        @param [in] f - action to be taken on each found node of the key
-        @param [in] in - incoming execution events
-        @param [out] path_lockholder - accumulates shared locks over the path to preserve it until an operation gets completed
-        @retval RetCode - status of the operation
-        @retval BTreeP - pointer to found B-tree node
-        @retval BTree:Pos - position of the key in B-tree node
-        @throw may throw std::exception for some reasons
-        */
-        template < typename PathLockHolder, typename F >
-        auto navigate( NodeUid uid, const Key & key, const execution_connector & in, PathLockHolder & path_lockholder, const F & f )
-        {
-            using namespace boost;
-
-            assert( uid != InvalidNodeUid );
-            assert( key.is_path() );
-            auto subkey = key;
-
-            // get start node by uid
-            auto [ ret, node ] = cache_.get_node( uid );
-            if ( ret != RetCode::Ok )
-            {
-                return std::tuple{ ret, BTreeP{}, BTree::Npos };
-            }
-            assert( node );
-
-            // get shared lock over "/"
-            if ( path_lockholder.size() < path_lockholder.capacity() )
-            {
-                path_lockholder.emplace_back( upgrade_lock< upgrade_mutex > { node->guard() } );
+                return { rc, BTreeP{}, BTree::Npos };
             }
             else
             {
-                return std::tuple{ RetCode::MaxTreeDepthExceeded, BTreeP{}, BTree::Npos };
-            }
-
-            // while not cacelled
-            while ( !cancelled( in ) )
-            {
-                // split path by the end of the 1st segment
-                auto [ chunk_ok, chunk, rest ] = subkey.split_at_head();
-                assert( chunk_ok );
-                subkey = rest;
-
-                // cut lead separator
-                auto [ stem_ok, stem ] = chunk.cut_lead_separator();
-                assert( stem_ok );
-
-                // search for the key starting from uid
-                auto [ ret, subnode, pos ] = find_key( node, stem, in );
-
-                // if key not found
-                if ( ret != RetCode::Ok )
+                while ( ! cancelled( in ) )
                 {
-                    return std::tuple{ ret, BTreeP{}, BTree::Npos };
-                }
-                else
-                {
-                    assert( subnode && pos != BTree::Npos );
+                    f( btree );
 
-                    // get shared lock over found subkey
-                    upgrade_lock< upgrade_mutex > subnode_shared_lock{ node->guard() };
+                    bpath.clear();
 
-                    // check if found key expired
-                    if ( subnode->expiration( pos ) < Timestamp::clock::now() )
+                    if ( auto[ rc, found, pos ] = btree->find_digest( *digest_it, bpath ); RetCode::Ok != rc )
                     {
-                        // get exclusive lock over parent node
-                        upgrade_to_unique_lock< upgrade_mutex > exclusive_lock{ subnode_shared_lock };
+                        return { rc, BTreeP{}, BTree::Npos };
+                    }
+                    else if ( !found )
+                    {
+                        return { RetCode::NotFound, BTreeP{}, BTree::Npos };
+                    }
+                    else
+                    {
+                        assert( bpath.size() );
 
-                        // erase expired key
-                        if ( auto [ ret ] = subnode->erase( pos ); RetCode::Ok == ret )
+                        if ( auto[ rc, found ] = cache_.get_node( bpath.back() ); RetCode::Ok != rc )
                         {
-                            return std::tuple{ RetCode::NotFound, BTreeP{}, BTree::Npos };
+                            return { rc, BTreeP{}, BTree::Npos };
                         }
                         else
                         {
-                            return std::tuple{ ret, BTreeP{}, BTree::Npos };
+                            bpath.pop_back();
+
+                            locks.emplace_back( shared_lock{ found->guard() } );
+
+                            const uint64_t now = std::chrono::system_clock::now().time_since_epoch() / std::chrono::milliseconds( 1 );
+
+                            if ( found->good_before( pos ) && found->good_before( pos ) < now )
+                            {
+                                return { RetCode::NotFound, BTreeP{}, BTree::Npos };
+                            }
+                            else if ( ++digest_it == end( digests ) )
+                            {
+                                return { RetCode::Ok, found, pos };
+                            }
+                            else
+                            {
+                                btree = found;
+                                continue;
+                            }
                         }
                     }
-
-                    // preserve taken lock over subnode
-                    if ( path_lockholder.size() < path_lockholder.capacity() )
-                    {
-                        path_lockholder.emplace_back( std::move( subnode_shared_lock ) );
-                    }
-                    else
-                    {
-                        return std::tuple{ RetCode::MaxTreeDepthExceeded, BTreeP{}, BTree::Npos };
-                    }
-
-                    // apply action to the found key
-                    f( subnode );
-
-                    // if nothing left to search
-                    if ( ! subkey.size() )
-                    {
-                        return std::tuple{ RetCode::Ok, subnode, pos };
-                    }
-                    else
-                    {
-                        // search deeper
-                        node = subnode;
-                        continue;
-                    }
                 }
-            }
 
-            return std::tuple{ RetCode::NotFound, BTreeP{}, BTree::Npos };
+                return { RetCode::NotFound, BTreeP{}, BTree::Npos };
+            }
         }
 
 
@@ -341,71 +260,52 @@ namespace jb
         @retval PathLock - lock over all nodes on the path begining from entry path
         */
         [ [ nodiscard ] ]
-        std::tuple < RetCode, NodeUid, PathLock > lock_path( NodeUid entry_node_uid,
+        std::tuple < RetCode, NodeUid, PathLock > lock_path(
+            NodeUid entry_node_uid,
             const Key & entry_path,
             const Key & relative_path,
             const execution_connector & in,
             execution_connector & out ) noexcept
         {
             using namespace std;
-            using namespace boost;
-            using namespace boost::container;
 
             try
             {
-                // no reason to lock root path
-                if ( Key::root() == entry_path && Key::root() == relative_path )
+                static_vector< Digest, MaxTreeDepth > digests;
+
+                if ( auto[ rc, may_present ] = filter_.test( entry_path, relative_path, digests ); RetCode::Ok != rc )
                 {
-                    return wait_and_do_it( in, out, [&] {
-                        return std::tuple{ RetCode::Ok, RootNodeUid, PathLock{} };
-                    } );
+                    return wait_and_do_it( in, out, [=] { return tuple{ rc, InvalidNodeUid, PathLock{} }; } );
                 }
-                // check if path exists
-                else if ( auto[ ret, digests_no, may_present ] = filter_.test( entry_path, relative_path ); RetCode::Ok != ret )
+                else if ( digests.empty() ) // root node
                 {
-                    return wait_and_do_it( in, out, [=] { return std::tuple{ ret, InvalidNodeUid, PathLock{} }; } );
+                    return wait_and_do_it( in, out, [] { return tuple{ RetCode::Ok, RootNodeUid, PathLock{} }; } );
                 }
                 else
                 {
-                    return wait_and_do_it( in, out, [] { return std::tuple{ RetCode::NotFound, InvalidNodeUid, PathLock{} }; } );
+                    static_vector< shared_lock, MaxTreeDepth > locks;
+                    static_vector< NodeUid, BTreeDepth > bpath;
+                    PathLock path_lock;
+
+                    auto[ rc, btree, pos ] = navigate( digests, locks, bpath, [&] ( const BTreeP & p ) {
+                        path_lock << path_locker_.lock( p->uid() );
+                    }, in );
+
+                    if ( RetCode::Ok == rc )
+                    {
+                        return wait_and_do_it( in, out, [&] { return tuple{ RetCode::Ok, btree->uid(), move( path_lock ) }; } );
+                    }
+                    else
+                    {
+                        return wait_and_do_it( in, out, [=] { return tuple{ rc, InvalidNodeUid, PathLock{} }; } );
+                    }
                 }
-
-                //PathLock mount_lock;
-                //NodeUid mount_node_uid = InvalidNodeUid;
-
-                //using upgrade_lock = boost::upgrade_lock< boost::upgrade_mutex >;
-                //boost::container::static_vector< upgrade_lock, MaxTreeDepth > locks;
-
-                //// navigate through to path and take lock over each node
-                //auto[ ret, btree, pos ] = navigate( entry_node_uid, relative_path, in, locks, [&] ( const auto & node ) {
-                //    assert( node );
-                //    mount_node_uid = node->uid();
-                //    mount_lock << path_locker_.lock_node( node->uid() );
-                //} );
-
-                //if ( RetCode::Ok == ret )
-                //{
-                //    // return path lock object 
-                //    return wait_and_do_it( in, out, [&] {
-                //        return std::tuple{ RetCode::NotYetImplemented, InvalidNodeUid, std::move( mount_lock ) };
-                //    } );
-                //}
-                //else
-                //{
-                //    return wait_and_do_it( in, out, [&] {
-                //        return std::tuple{ ret, InvalidNodeUid, PathLock{} };
-                //    } );
-                //}
-                
-                return wait_and_do_it( in, out, [=] { return std::tuple{ RetCode::NotYetImplemented, InvalidNodeUid, PathLock{} }; } );
             }
             catch ( ... )
             {
             }
 
-            return wait_and_do_it( in, out, [] {
-                return std::tuple{ RetCode::UnknownError, InvalidNodeUid, PathLock{} };
-            } );
+            return wait_and_do_it( in, out, [] { return tuple{ RetCode::UnknownError, InvalidNodeUid, PathLock{} }; } );
         }
 
 
@@ -436,22 +336,22 @@ namespace jb
             execution_connector & out )
         {
             using namespace std;
-            using namespace boost;
-            using namespace boost::container;
 
             try
             {
-                if ( auto[ ret, digest_no, may_present ] = filter_.test( entry_path, relative_path ); RetCode::Ok != ret )
+                static_vector< Digest, MaxTreeDepth > digests;
+
+                if ( auto[ rc, may_present ] = filter_.test( entry_path, relative_path, digests ); RetCode::Ok != rc )
                 {
-                    return wait_and_do_it( in, out, [=] { return std::tuple{ ret }; } );
+                    return wait_and_do_it( in, out, [=] { return tuple{ rc }; } );
                 }
-                else if ( digest_no == MaxTreeDepth )
+                else if ( digests.size() >= MaxTreeDepth )
                 {
-                    return wait_and_do_it( in, out, [] { return std::tuple{ RetCode::MaxTreeDepthExceeded }; } );
+                    return wait_and_do_it( in, out, [] { return tuple{ RetCode::MaxTreeDepthExceeded }; } );
                 }
                 else
                 {
-                    return wait_and_do_it( in, out, [] { return std::tuple{ RetCode::NotFound }; } );
+                    return wait_and_do_it( in, out, [] { return tuple{ RetCode::NotFound }; } );
                 }
 
                 //using upgrade_lock = boost::upgrade_lock< boost::upgrade_mutex >;
@@ -481,14 +381,14 @@ namespace jb
                 //    return wait_and_do_it( in, out, [=] { return std::tuple{ ret }; } );
                 //}
                 
-                return wait_and_do_it( in, out, [=] { return std::tuple{ RetCode::NotYetImplemented }; } );
+                return wait_and_do_it( in, out, [=] { return tuple{ RetCode::NotYetImplemented }; } );
             }
             catch ( ... )
             {
 
             }
 
-            return wait_and_do_it( in, out, [] { return std::tuple{ RetCode::UnknownError }; } );
+            return wait_and_do_it( in, out, [] { return tuple{ RetCode::UnknownError }; } );
         }
 
 
@@ -503,7 +403,8 @@ namespace jb
         @retvel Value - if operation succeeded contains the value
         */
         [ [ nodiscard ] ]
-        std::tuple< RetCode, Value > get( NodeUid entry_node_uid,
+        std::tuple< RetCode, Value > get(
+            NodeUid entry_node_uid,
             const Key & entry_path,
             const Key & relative_path,
             const execution_connector & in,
@@ -513,37 +414,30 @@ namespace jb
 
             try
             {
-                if ( auto[ ret, digests_no, may_present ] = filter_.test( entry_path, relative_path ); RetCode::Ok != ret )
+                static_vector< Digest, MaxTreeDepth > digests;
+
+                if ( auto[ rc, may_present ] = filter_.test( entry_path, relative_path, digests ); RetCode::Ok != rc )
                 {
-                    return wait_and_do_it( in, out, [=] { return tuple{ ret, Value{} }; } );
+                    return wait_and_do_it( in, out, [=] { return tuple{ rc, Value{} }; } );
+                }
+                else if ( ! may_present )
+                {
+                    return wait_and_do_it( in, out, [] { return tuple{ RetCode::NotFound, Value{} }; } );
                 }
                 else
                 {
-                    return wait_and_do_it( in, out, [] { return tuple{ RetCode::NotFound, Value{} }; } );
-                } 
-                
-                //using upgrade_lock = boost::upgrade_lock< boost::upgrade_mutex >;
-                //boost::container::static_vector< upgrade_lock, MaxTreeDepth > locks;
+                    static_vector< shared_lock, MaxTreeDepth > locks;
+                    static_vector< NodeUid, BTreeDepth > bpath;
 
-                //auto[ ret, btree, pos ] = navigate( entry_node_uid, 
-                //    relative_path, 
-                //    in, 
-                //    locks, 
-                //    [&] ( [[maybe_unused]] const auto & BTreeP ) {} );
-
-                //if ( RetCode::Ok == ret )
-                //{
-                //    return wait_and_do_it( in, out, [=] {
-                //        Value value = btree->value( pos );
-                //        return tuple{ RetCode::Ok, std::move( value ) };
-                //    } );
-                //}
-                //else
-                //{
-                //    return wait_and_do_it( in, out, [=] { return tuple{ ret, Value{} }; } );
-                //}
-
-                return wait_and_do_it( in, out, [=] { return tuple{ RetCode::NotYetImplemented, Value{} }; } );
+                    if ( auto[ rc, btree, pos ] = navigate( digests, locks, bpath, [] ( auto ) {}, in ); RetCode::Ok == rc )
+                    {
+                        return wait_and_do_it( in, out, [&] { return tuple{ RetCode::Ok, btree->value( pos ) }; } );
+                    }
+                    else
+                    {
+                        return wait_and_do_it( in, out, [&] { return tuple{ rc, Value{} }; } );
+                    }
+                }
             }
             catch ( ... )
             {
@@ -577,7 +471,9 @@ namespace jb
 
             try
             {
-                if ( auto[ ret, digests_no, may_present ] = filter_.test( entry_path, relative_path ); RetCode::Ok != ret )
+                static_vector< Digest, MaxTreeDepth > digests;
+
+                if ( auto[ ret, may_present ] = filter_.test( entry_path, relative_path, digests ); RetCode::Ok != ret )
                 {
                     return wait_and_do_it( in, out, [=] { return tuple{ ret }; } );
                 }

@@ -134,6 +134,11 @@ namespace jb
                 std::visit( cmp, l.value_, r.value_ );
                 return cmp.value;
             }
+
+            friend bool operator < ( const Element & l, const Element & r ) noexcept
+            {
+                return l.digest_ < r.digest_;
+            }
         };
 
         using ElementCollection = boost::container::static_vector< Element, BTreeMax + 1 >;
@@ -287,6 +292,75 @@ namespace jb
         auto uid() const noexcept { return uid_; }
 
         auto & guard() const noexcept { return guard_; }
+
+        const auto & value( size_t ndx ) const noexcept
+        {
+            assert( ndx < elements_.size() );
+            return elements_[ ndx ].value_;
+        }
+
+        const auto & good_before( size_t ndx ) const noexcept
+        {
+            assert( ndx < elements_.size() );
+            return elements_[ ndx ].good_before_;
+        }
+
+        const auto & children( size_t ndx ) const noexcept
+        {
+            assert( ndx < elements_.size() );
+            return elements_[ ndx ].children_;
+        }
+
+        template < typename BTreePath >
+        std::tuple< RetCode, bool, Pos > find_digest( Digest digest, BTreePath & path ) const noexcept
+        {
+            using namespace std;
+
+            path.push_back( uid_ );
+
+            Element e{ digest };
+
+            auto link = InvalidNodeUid;
+
+            assert( elements_.size() + 1 == links_.size() );
+
+            if ( auto lower = lower_bound( begin( elements_ ), end( elements_ ), e ); lower != end( elements_ ) )
+            {
+                size_t d = static_cast< size_t >( std::distance( begin( elements_ ), lower ) );
+
+                if ( lower->digest_ == e.digest_ )
+                {
+                    return { RetCode::Ok, true, d };
+                }
+                else
+                {
+                    link = links_[ d ];
+                }
+            }
+            else
+            {
+                link = links_.back();
+            }
+
+            if ( link == InvalidNodeUid )
+            {
+                return { RetCode::Ok, false, Npos };
+            }
+            else
+            {
+                assert( cache_ );
+
+                if ( auto[ rc, p ] = cache_->get_node( link ); RetCode::Ok == rc )
+                {
+                    assert( p );
+                    return p->find_digest( digest, path );
+                }
+                else
+                {
+                    return { rc, false, Npos };
+                }
+            }
+        }
     };
 }
 

@@ -32,8 +32,8 @@ namespace jb
             static constexpr size_t BTreeMinPower = 1024;           /*!< B-tree factor, each B-tree node (except root) MUST contains at least
                                                                         such number of elements */
             static constexpr size_t BTreeDepth = 64;                /*!< maximum depth of BTree, we need this constant only to avoid heap usage
-                                                                        and to allocate memory on stack. In reality the limitation by 1024^64
-                                                                        subkeys per each key is pretty enough */
+                                                                        and to allocate memory on stack. In reality the limitation by
+                                                                        BTreeMinPower ^ BTreeDepth subkeys per each key looks enough */
             static constexpr size_t BTreeCacheSize = 1024;          /*!< capacity of BTree MRU cache */
 
             static constexpr size_t ChunkSize = 4096;               /*!< size of chunk in storage file */

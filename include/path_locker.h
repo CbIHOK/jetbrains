@@ -69,7 +69,7 @@ namespace jb
         @retval lock over the key
         @throw may throw std::exception for some reasons
         */
-        auto lock_node( NodeUid node )
+        auto lock( NodeUid node )
         {
             std::unique_lock l{ guard_ };
 

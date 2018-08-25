@@ -3,7 +3,6 @@
 
 
 #include <array>
-#include <atomic>
 #include <execution>
 #include <boost/container/static_vector.hpp>
 
@@ -102,10 +101,11 @@ namespace jb
             const auto byte_no = ( digest / 8 ) % BloomSize;
             const auto bit_no = digest % 8;
 
-            // update memory under spinlock
-            while ( lock_.test_and_set( std::memory_order_acquire ) );
+            // update memory and file
+            static mutex guard;
+            scoped_lock lock( guard );
+
             filter_[ byte_no ] |= ( 1 << bit_no );
-            lock_.clear( std::memory_order_release );
 
             if ( file_ && RetCode::Ok == file_->status() )
             {
@@ -125,16 +125,15 @@ namespace jb
         @retval bool - if combined key may present
         @throw nothing
         */
-        std::tuple< RetCode, size_t, bool > test( const Key & prefix, const Key & suffix ) const noexcept
+        template < typename D >
+        std::tuple< RetCode, bool > test( const Key & prefix, const Key & suffix, D & digests ) const noexcept
         {
             using namespace std;
 
             assert( prefix.is_path() && suffix.is_path() );
 
-            boost::container::static_vector< Digest, BloomFnCount > digests;
             auto status = RetCode::Ok;
-
-            size_t level = 0;
+            size_t level = 1;
 
             auto get_digests = [&] ( const auto & key ) noexcept {
                 
@@ -177,9 +176,7 @@ namespace jb
                     const auto byte_no = ( digest / 8 ) % BloomSize;
                     const auto bit_no = digest % 8;
                     
-                    while ( lock_.test_and_set( std::memory_order_acquire ) );
                     auto check = filter_[ byte_no ] & ( 1 << bit_no );
-                    lock_.clear( std::memory_order_release );
 
                     if ( check == 0 )
                     {
@@ -188,10 +185,10 @@ namespace jb
                     }
                 };
 
-                return { status, digests.size(), result };
+                return { status, result };
             }
 
-            return { status, digests.size(), false };
+            return { status, false };
         }
     };
 }

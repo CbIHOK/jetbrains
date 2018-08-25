@@ -16,7 +16,7 @@ protected:
 
     PathLock get_locked( NodeUid uid )
     {
-        return locker_.lock_node( uid );
+        return locker_.lock( uid );
     }
 };
 
