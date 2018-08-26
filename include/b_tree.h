@@ -281,6 +281,7 @@ namespace jb
             std::ostream os( &osbuf );
             boost::archive::binary_oarchive ar( os );
             ar & *this;
+            os.flush();
 
             if ( RetCode::Ok != t.status() )
             {
@@ -311,6 +312,7 @@ namespace jb
             std::ostream os( &osbuf );
             boost::archive::binary_oarchive ar( os );
             ar & *this;
+            os.flush();
 
             return t.status();
         }
