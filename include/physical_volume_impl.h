@@ -79,7 +79,7 @@ namespace jb
         @throw nothing
         */
         template < typename D, typename L, typename P, typename F >
-        std::tuple< RetCode, BTreeP, typename BTree::Pos > navigate( 
+        RetCode navigate( 
             const D & digests, 
             L & locks, 
             P & bpath, 
@@ -94,65 +94,70 @@ namespace jb
             // retrieve root node
             if ( auto[ rc, btree ] = cache_.get_node( RootNodeUid ); RetCode::Ok != rc )
             {
-                return { rc, BTreeP{}, BTree::Npos };
+                return rc;
             }
             else
             {
                 while ( ! cancelled( in ) )
                 {
-                    // lock root b-tree node of a key and therefore prevent any changes on a path
-                    assert( locks.size() < locks.capacity() );
-                    locks.emplace_back( btree, shared_lock{ btree->guard() } );
-                    
-                    // perform custom action on root b-tree node
-                    f( btree );
-
                     // clear b-tree path inside a key
                     bpath.clear();
 
                     // search for digest from start b-tree node
-                    if ( auto[ rc, found, pos ] = btree->find_digest( *digest_it, bpath ); RetCode::Ok != rc )
+                    if ( auto[ rc, found ] = btree->find_digest( *digest_it, bpath ); RetCode::Ok != rc )
                     {
                         // error
-                        return { rc, BTreeP{}, BTree::Npos };
+                        return rc;
                     }
                     else if ( !found )
                     {
                         // not such digest found
-                        return { RetCode::NotFound, BTreeP{}, BTree::Npos };
+                        return rc;
                     }
                     else
                     {
                         assert( bpath.size() );
 
-                        // get b-tree node containing a digest
-                        if ( auto[ rc, found ] = cache_.get_node( bpath.back().first ); RetCode::Ok != rc )
+                        // get root of b-tree
+                        if ( auto[ rc, btree_root ] = cache_.get_node( bpath.front().first ); RetCode::Ok != rc )
                         {
-                            return { rc, BTreeP{}, BTree::Npos };
+                            return rc;
                         }
                         else
                         {
-                            // lock the b-tree node for a while
-                            shared_lock l{ found->guard() };
+                            // lock root b-tree node of a key and therefore prevent any changes on a path
+                            assert( locks.size() < locks.capacity() );
+                            locks.emplace_back( btree_root, shared_lock{ btree_root->guard() } );
 
+                            // perform custom action on root b-tree node
+                            f( btree_root );
+                        }
+
+                        // get b-tree node containing a digest
+                        if ( auto[ rc, found ] = cache_.get_node( bpath.back().first ); RetCode::Ok != rc )
+                        {
+                            return rc;
+                        }
+                        else
+                        {
                             // get current time in msecs from epoch
                             const uint64_t now = std::chrono::system_clock::now().time_since_epoch() / std::chrono::milliseconds( 1 );
 
                             // check if found digest expired
-                            if ( found->good_before( pos ) && found->good_before( pos ) < now )
+                            if ( found->good_before( bpath.back().second ) && found->good_before( bpath.back().second ) < now )
                             {
-                                return { RetCode::NotFound, BTreeP{}, BTree::Npos };
+                                return rc;
                             }
                             // if there is nothing more to search
                             else if ( ++digest_it == end( digests ) )
                             {
                                 // we've done
-                                return { RetCode::Ok, found, pos };
+                                return RetCode::Ok;
                             }
                             else
                             {
                                 // get uid of children container 
-                                if ( auto children_uid = found->children( pos ); InvalidNodeUid != children_uid )
+                                if ( auto children_uid = found->children( bpath.back().second ); InvalidNodeUid != children_uid )
                                 {
                                     // load children container 
                                     if ( auto[ rc, child_btree ] = cache_.get_node( children_uid ); RetCode::Ok == rc )
@@ -163,12 +168,12 @@ namespace jb
                                     }
                                     else
                                     {
-                                        return { rc, BTreeP{}, BTree::Npos };
+                                        return rc;
                                     }
                                 }
                                 else
                                 {
-                                    return { RetCode::NotFound, BTreeP{}, BTree::Npos };
+                                    return RetCode::NotFound;
                                 }
                             }
                         }
@@ -176,7 +181,7 @@ namespace jb
                 }
 
                 // operation has been cancelled
-                return { RetCode::NotFound, BTreeP{}, BTree::Npos };
+                return RetCode::NotFound;
             }
         }
 
@@ -330,13 +335,16 @@ namespace jb
                     BTreePath bpath;
                     PathLock path_lock;
 
-                    auto[ rc, btree, pos ] = navigate( digests, locks, bpath, [&] ( const BTreeP & p ) {
+                    auto rc = navigate( digests, locks, bpath, [&] ( const BTreeP & p ) {
                         path_lock << path_locker_.lock( p->uid() );
                     }, in );
 
                     if ( RetCode::Ok == rc )
                     {
-                        return wait_and_do_it( in, out, [&] { return tuple{ RetCode::Ok, btree->uid(), move( path_lock ) }; } );
+                        assert( bpath.size() );
+                        auto root = bpath.front();
+
+                        return wait_and_do_it( in, out, [&] { return tuple{ RetCode::Ok, root.first, move( path_lock ) }; } );
                     }
                     else
                     {
@@ -400,7 +408,7 @@ namespace jb
                 static_vector< pair< BTreeP, shared_lock >, MaxTreeDepth > locks;
                 BTreePath bpath;
 
-                if ( auto[ rc, btree, pos ] = navigate( digests, locks, bpath, [] ( auto ) {}, in ); RetCode::Ok == rc )
+                if ( auto rc = navigate( digests, locks, bpath, [] ( auto ) {}, in ); RetCode::Ok == rc )
                 {
                     return wait_and_do_it( in, out, [&] {
                         
@@ -410,9 +418,12 @@ namespace jb
                         assert( locks.size() );
                         exclusive_lock e{ locks.back().second };
 
-                        if ( auto rc = btree->insert( pos, digest, move( value ), good_before, overwrite ); RetCode::Ok == rc )
+                        assert( bpath.size() );
+                        auto target = bpath.back(); bpath.pop_back();
+
+                        if ( auto[ rc, node ] = cache_.get_node( target.first ); RetCode::Ok == rc )
                         {
-                            return tuple{ filter_.add_digest( digest ) };
+                            return tuple{ node->insert( target.second, digest, move( value ), good_before, overwrite ) };
                         }
                         else
                         {
@@ -471,9 +482,19 @@ namespace jb
                     static_vector< pair< BTreeP, shared_lock >, MaxTreeDepth > locks;
                     BTreePath bpath;
 
-                    if ( auto[ rc, btree, pos ] = navigate( digests, locks, bpath, [] ( auto ) {}, in ); RetCode::Ok == rc )
+                    if ( auto rc = navigate( digests, locks, bpath, [] ( auto ) {}, in ); RetCode::Ok == rc )
                     {
-                        return wait_and_do_it( in, out, [&] { return tuple{ RetCode::Ok, btree->value( pos ) }; } );
+                        assert( bpath.size() );
+                        auto target = bpath.back(); bpath.pop_back();
+                        
+                        if ( auto[ rc, node ] = cache_.get_node( target.first ); RetCode::Ok == rc )
+                        {
+                            return wait_and_do_it( in, out, [&] { return tuple{ RetCode::Ok, node->value( target.second ) }; } );
+                        }
+                        else
+                        {
+                            return wait_and_do_it( in, out, [&] { return tuple{ rc, Value{} }; } );
+                        }
                     }
                     else
                     {

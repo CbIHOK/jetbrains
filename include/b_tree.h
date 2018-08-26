@@ -335,14 +335,24 @@ namespace jb
                 BTreePath bpath;
 
                 // find target b-tree node
-                if ( auto[ rc, node, pos ] = find_digest( e.digest_, bpath ); RetCode::Ok != rc )
+                if ( auto[ rc, found ] = find_digest( e.digest_, bpath ); RetCode::Ok != rc )
                 {
                     return rc;
                 }
                 else
                 {
                     // and insert elelement
-                    return insert_element( t, bpath, pos, move( e ), overwrite );
+                    assert( bpath.size() );
+                    auto target = bpath.back(); bpath.pop_back();
+                    
+                    if ( auto[ rc, btree_node ] = cache_->get_node( target.first ); RetCode::Ok == rc )
+                    {
+                        return btree_node->insert_element( t, bpath, target.second, move( e ), overwrite );
+                    }
+                    else
+                    {
+                        return rc;
+                    }
                 }
             }
             catch ( ... )
@@ -701,10 +711,9 @@ namespace jb
         @param [out] path - search path
         @retval RetCode - operation status
         @retval bool - if key found
-        @retval Pos - position of found element or where it could be if exists
         @throw nothing
         */
-        std::tuple< RetCode, bool, Pos > find_digest( Digest digest, BTreePath & path ) const noexcept
+        std::tuple< RetCode, bool > find_digest( Digest digest, BTreePath & path ) const noexcept
         {
             using namespace std;
 
@@ -719,11 +728,13 @@ namespace jb
                 auto lower = lower_bound( begin( elements_ ), end( elements_ ), e ); lower != end( elements_ );
                 size_t d = static_cast< size_t >( std::distance( begin( elements_ ), lower ) );
 
+                path.emplace_back( uid_, d );
+
                 if ( lower != end( elements_ ) )
                 {
                     if ( lower->digest_ == e.digest_ )
                     {
-                        return { RetCode::Ok, true, d };
+                        return { RetCode::Ok, true };
                     }
                     else
                     {
@@ -737,7 +748,7 @@ namespace jb
 
                 if ( link == InvalidNodeUid )
                 {
-                    return { RetCode::Ok, false, d };
+                    return { RetCode::Ok, false };
                 }
                 else
                 {
@@ -746,14 +757,12 @@ namespace jb
                     if ( auto[ rc, p ] = cache_->get_node( link ); RetCode::Ok == rc )
                     {
                         assert( path.size() < path.capacity() );
-                        path.emplace_back( uid_, d );
-
                         assert( p );
                         return p->find_digest( digest, path );
                     }
                     else
                     {
-                        return { rc, false, Npos };
+                        return { rc, false };
                     }
                 }
             }
@@ -761,7 +770,7 @@ namespace jb
             {
             }
 
-            return { RetCode::UnknownError, false, Npos };
+            return { RetCode::UnknownError, false };
         }
 
 

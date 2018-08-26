@@ -3,12 +3,22 @@
 #include <policies.h>
 
 
+struct TestBTreePolicy : public ::jb::DefaultPolicies
+{
+    struct PhysicalVolumePolicy : public ::jb::DefaultPolicies::PhysicalVolumePolicy
+    {
+        static constexpr size_t BTreeMinPower = 3;
+    };
+};
+
+
 class TestBTree : public ::testing::Test
 {
 
 protected:
 
-    using Storage = jb::Storage< jb::DefaultPolicies >;
+    using Storage = jb::Storage< TestBTreePolicy >;
+    using Key = typename Storage::Key;
     using RetCode = typename Storage::RetCode;
     using Value = typename Storage::Value;
     using BTree = typename Storage::PhysicalVolumeImpl::BTree;
@@ -19,7 +29,10 @@ protected:
     using LinkCollection = typename BTree::LinkCollection;
     using StorageFile = Storage::PhysicalVolumeImpl::StorageFile;
     using BTreeCache = Storage::PhysicalVolumeImpl::BTreeCache;
+    using Bloom = Storage::PhysicalVolumeImpl::Bloom;
+    using BTreePath = typename BTree::BTreePath;
 
+    static constexpr auto RootNodeUid = BTree::RootNodeUid;
     static constexpr auto InvalidNodeUid = BTree::InvalidNodeUid;
 
     static auto & elements( BTree & t ) noexcept { return t.elements_; }
@@ -69,5 +82,32 @@ TEST_F( TestBTree, Serialization )
         BTree tree( uid, &f, &c );
         EXPECT_EQ( etalon_elements, elements( tree ) );
         EXPECT_EQ( etalon_links, links( tree ) );
+    }
+}
+
+
+TEST_F( TestBTree, Find_Insert )
+{
+    using namespace std;
+
+    StorageFile f( "foo.jb", true );
+    ASSERT_EQ( RetCode::Ok, f.status() );
+
+    BTreeCache c( &f );
+    ASSERT_EQ( RetCode::Ok, f.status() );
+
+    auto[ rc, root ] = c.get_node( RootNodeUid );
+    EXPECT_EQ( RetCode::Ok, rc );
+    EXPECT_TRUE( root );
+
+    for ( size_t i = 0; i < 1000; ++i )
+    {
+        string key = to_string( i );
+        Digest digest = Bloom::generate_digest( 1, Key{ key } );
+
+        BTreePath bpath;
+        auto[ rc, found ] = root->find_digest( digest, bpath );
+        EXPECT_EQ( RetCode::Ok, rc );
+        EXPECT_FALSE( found );
     }
 }
