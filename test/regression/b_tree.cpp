@@ -38,6 +38,26 @@ protected:
     static auto & elements( BTree & t ) noexcept { return t.elements_; }
     static auto & links( BTree & t ) noexcept { return t.links_; }
     static auto save( BTree & tree, StorageFile::Transaction & t ) { return tree.save( t ); }
+
+    bool is_leaf_element( BTree & node, size_t pos )
+    {
+        return node.links_[ pos ] == InvalidNodeUid && node.links_[ pos + 1 ] == InvalidNodeUid;
+    }
+
+public:
+
+    ~TestBTree()
+    {
+        using namespace std;
+
+        for ( auto & p : filesystem::directory_iterator( "." ) )
+        {
+            if ( p.is_regular_file() && p.path().extension() == ".jb" )
+            {
+                filesystem::remove( p.path() );
+            }
+        }
+    }
 };
 
 TEST_F( TestBTree, Serialization )
@@ -46,15 +66,14 @@ TEST_F( TestBTree, Serialization )
 
     ElementCollection etalon_elements{
         { Digest{ 0 }, Value{ ( uint32_t )0 }, 0, 0 },
-        { Digest{ 1 }, Value{ ( uint64_t )0 }, 1, 1 },
         { Digest{ 2 }, Value{ 2.f }, 2, 2 },
         { Digest{ 3 }, Value{ 3. }, 3, 3 },
         { Digest{ 4 }, Value{ "4444" }, 4, 4 }
     };
-    LinkCollection etalon_links{ 0, 1, 2, 3, 4, 5 };
+    LinkCollection etalon_links{ 0, 2, 3, 4, 5 };
 
     {
-        StorageFile f( "foo.jb", true );
+        StorageFile f( "foo1000.jb", true );
         ASSERT_EQ( RetCode::Ok, f.status() );
 
         BTreeCache c( &f );
@@ -73,7 +92,7 @@ TEST_F( TestBTree, Serialization )
     }
 
     {
-        StorageFile f( "foo.jb", true );
+        StorageFile f( "foo1000.jb", true );
         ASSERT_EQ( RetCode::Ok, f.status() );
 
         BTreeCache c( &f );
@@ -90,7 +109,7 @@ TEST_F( TestBTree, Insert_Find )
 {
     using namespace std;
 
-    StorageFile f( "foo38.jb", true );
+    StorageFile f( "foo6.jb", true );
     ASSERT_EQ( RetCode::Ok, f.status() );
 
     BTreeCache c( &f );
@@ -111,12 +130,17 @@ TEST_F( TestBTree, Insert_Find )
         EXPECT_FALSE( found );
 
         {
-            auto[ rc, node ] = c.get_node( bpath.back().first );
+            auto target = bpath.back(); bpath.pop_back();
+
+            auto[ rc, node ] = c.get_node( target.first );
             EXPECT_EQ( RetCode::Ok, rc );
 
-            node->insert( bpath.back().second, digest, Value{ key }, 0, false );
+            node->insert( target.second, bpath, digest, Value{ key }, 0, false );
         }
     }
+
+    // collect leafs depths
+    std::set< size_t > depth;
 
     for ( size_t i = 0; i < 1000; ++i )
     {
@@ -124,7 +148,6 @@ TEST_F( TestBTree, Insert_Find )
         Digest digest = Bloom::generate_digest( 1, Key{ key } );
 
         BTreePath bpath;
-        bpath.reserve( 1000 );
         auto[ rc, found ] = root->find_digest( digest, bpath );
         EXPECT_EQ( RetCode::Ok, rc );
         EXPECT_TRUE( found );
@@ -134,6 +157,11 @@ TEST_F( TestBTree, Insert_Find )
             EXPECT_EQ( RetCode::Ok, rc );
 
             node->value( bpath.back().second ) == Value{ key };
+
+            if ( is_leaf_element( *node, bpath.back().second ) ) depth.insert( bpath.size() );
         }
     }
+
+    // check that tree is balanced
+    EXPECT_GE( 2, depth.size() );
 }

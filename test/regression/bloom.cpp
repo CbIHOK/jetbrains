@@ -84,6 +84,21 @@ protected:
         
         return tuple{ rest, subkey };
     }
+
+public:
+
+    ~TestBloom()
+    {
+        using namespace std;
+
+        for ( auto & p : filesystem::directory_iterator( "." ) )
+        {
+            if ( p.is_regular_file() && p.path().extension() == ".jb" )
+            {
+                filesystem::remove( p.path() );
+            }
+        }
+    }
 };
 
 

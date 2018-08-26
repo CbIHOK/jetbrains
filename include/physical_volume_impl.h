@@ -423,7 +423,7 @@ namespace jb
 
                         if ( auto[ rc, node ] = cache_.get_node( target.first ); RetCode::Ok == rc )
                         {
-                            return tuple{ node->insert( target.second, digest, move( value ), good_before, overwrite ) };
+                            return tuple{ node->insert( target.second, bpath, digest, move( value ), good_before, overwrite ) };
                         }
                         else
                         {

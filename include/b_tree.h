@@ -173,8 +173,8 @@ namespace jb
         //
         // more aliases
         //
-        using ElementCollection = static_vector< Element, BTreeMax + 1 >;
-        using LinkCollection = static_vector< NodeUid, BTreeMax + 2 >;
+        using ElementCollection = static_vector< Element, BTreeMax  >;
+        using LinkCollection = static_vector< NodeUid, BTreeMax + 1 >;
 
 
         //
@@ -196,7 +196,10 @@ namespace jb
         {
             using namespace boost::serialization;
 
-            if ( elements_.size() > BTreeMax || elements_.size() + 1 != links_.size() ) throw std::logic_error( "Broken b-tree" );
+            if ( elements_.size() >= BTreeMax || elements_.size() + 1 != links_.size() )
+            {
+                throw std::logic_error( "Broken b-tree" );
+            }
 
             const collection_size_type element_count( elements_.size() );
             ar << BOOST_SERIALIZATION_NVP( element_count );
@@ -233,7 +236,7 @@ namespace jb
             collection_size_type element_count;
             ar >> BOOST_SERIALIZATION_NVP( element_count );
 
-            if ( element_count > BTreeMax ) throw std::runtime_error( "Maximum number of elements exceeded" );
+            if ( element_count >= BTreeMax ) throw std::runtime_error( "Maximum number of elements exceeded" );
 
             elements_.resize( element_count );
 
@@ -248,7 +251,7 @@ namespace jb
             collection_size_type link_count;
             ar >> BOOST_SERIALIZATION_NVP( link_count );
 
-            if ( link_count > BTreeMax + 1 ) throw std::runtime_error( "Maximum number of links exceeded" );
+            if ( link_count >= BTreeMax + 1 ) throw std::runtime_error( "Maximum number of links exceeded" );
 
             links_.resize( link_count );
             {
@@ -318,51 +321,6 @@ namespace jb
         }
 
 
-        /* Inserts new element into b-tree
-
-        @param [in] e - element to be inserted
-        @param [in] overwrite - if overwriting allowed
-        @retval RetCode - operation status
-        @throw nothing
-        */
-        [[nodiscard]]
-        auto insert_element( Transaction & t, Element && e, bool overwrite = false ) noexcept
-        {
-            using namespace std;
-
-            try
-            {
-                BTreePath bpath;
-
-                // find target b-tree node
-                if ( auto[ rc, found ] = find_digest( e.digest_, bpath ); RetCode::Ok != rc )
-                {
-                    return rc;
-                }
-                else
-                {
-                    // and insert elelement
-                    assert( bpath.size() );
-                    auto target = bpath.back(); bpath.pop_back();
-                    
-                    if ( auto[ rc, btree_node ] = cache_->get_node( target.first ); RetCode::Ok == rc )
-                    {
-                        return btree_node->insert_element( t, bpath, target.second, move( e ), overwrite );
-                    }
-                    else
-                    {
-                        return rc;
-                    }
-                }
-            }
-            catch ( ... )
-            {
-            }
-
-            return RetCode::UnknownError;
-        }
-
-
         /* Splits node in parallel
 
         @param [in] l - the left part
@@ -409,7 +367,7 @@ namespace jb
         @throw nothing
         */
         [[nodiscard]]
-        auto insert_element( Transaction & t, BTreePath & bpath, Pos pos, Element && e, bool ow ) noexcept
+        auto insert_element( Transaction & t, Pos pos, BTreePath & bpath, Element && e, bool ow ) noexcept
         {
             using namespace std;
 
@@ -457,6 +415,10 @@ namespace jb
                     {
                         return split_and_araise_median( t, bpath );
                     }
+                }
+                else
+                {
+                    return overwrite( t );
                 }
             }
             catch ( ... )
@@ -526,10 +488,10 @@ namespace jb
 
             try
             {
-                assert( elements_.size() > BTreeMax );
+                assert( elements_.size() == BTreeMax );
 
                 // split node into 2 new and save them
-                auto l = make_shared< BTree >(), r = make_shared< BTree >();
+                auto l = make_shared< BTree >( InvalidNodeUid, file_, cache_ ), r = make_shared< BTree >( InvalidNodeUid, file_, cache_ );
                 split_node( l, r );
                 if ( auto[ rc1, rc2 ] = tuple{ l->save( t ), r->save( t ) }; RetCode::Ok != rc1 && RetCode::Ok != rc2 )
                 {
@@ -552,7 +514,7 @@ namespace jb
                 }
                 else
                 {
-                    return parent->insert_araising_element( t, bpath, parent_path.second, l->uid_, move( elements_[ BTreeMin + 1 ] ), r->uid_ );
+                    return parent->insert_araising_element( t, bpath, parent_path.second, l->uid_, move( elements_[ BTreeMin ] ), r->uid_ );
                 }
             }
             catch ( ... )
@@ -589,7 +551,7 @@ namespace jb
 
             try
             {
-                assert( elements_.size() <= BTreeMax );
+                assert( elements_.size() < BTreeMax );
 
                 // insert araising element
                 elements_.emplace( begin( elements_ ) + pos, move( e ) );
@@ -597,7 +559,7 @@ namespace jb
                 links_[ pos + 1 ] = r_link;
 
                 // check node for overflow
-                if ( elements_.size() > BTreeMax )
+                if ( elements_.size() == BTreeMax )
                 {
                     // if this is root node of b-tree
                     if ( bpath.empty() )
@@ -608,6 +570,10 @@ namespace jb
                     {
                         return split_and_araise_median( t, bpath );
                     }
+                }
+                else
+                {
+                    return overwrite( t );
                 }
             }
             catch ( ... )
@@ -784,7 +750,7 @@ namespace jb
         @return RetCode - operation status
         @throw nothing
         */
-        RetCode insert( Pos pos, Digest digest, Value && value, uint64_t good_before, bool overwrite ) noexcept
+        RetCode insert( Pos pos, BTreePath bpath, Digest digest, Value && value, uint64_t good_before, bool overwrite ) noexcept
         {
             using namespace std;
 
@@ -797,7 +763,7 @@ namespace jb
                 // open transaction
                 if ( auto transaction = file_->open_transaction(); RetCode::Ok == transaction.status() )
                 {
-                    if ( auto rc = insert_element( transaction, move( e ), overwrite ); RetCode::Ok == rc )
+                    if ( auto rc = insert_element( transaction, pos, bpath, move( e ), overwrite ); RetCode::Ok == rc )
                     {
                         return transaction.commit();
                     }

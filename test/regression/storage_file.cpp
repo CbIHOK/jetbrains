@@ -37,7 +37,9 @@ protected:
     using SmallChunkTransaction = typename SmallChunkStorageFile::Transaction;
     using ostreambuf = typename SmallChunkStorageFile::ostreambuf;
 
-    TestStorageFile()
+public:
+
+    ~TestStorageFile()
     {
         using namespace std;
 

@@ -17,8 +17,22 @@ protected:
     using MountPoint = typename Storage::MountPoint;
     using Value = Storage::Value;
 
-    
-    ~TestStorage( ) { Storage::CloseAll( ); }
+public:
+
+    ~TestStorage()
+    {
+        using namespace std;
+
+        Storage::CloseAll();
+
+        for ( auto & p : filesystem::directory_iterator( "." ) )
+        {
+            if ( p.is_regular_file() && p.path().extension() == ".jb" )
+            {
+                filesystem::remove( p.path() );
+            }
+        }
+    }
 
 
     bool is_lesser_priority( const PhysicalVolume & l, const PhysicalVolume & r ) const
