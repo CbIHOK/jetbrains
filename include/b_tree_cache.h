@@ -116,7 +116,7 @@ namespace jb
                 {
                     assert( file_ );
 
-                    auto p = make_shared< BTree >();
+                    auto p = make_shared< BTree >( uid, file_, this );
                     auto isbuf = file_->get_chain_reader( uid );
                     istream is( &isbuf );
                     boost::archive::binary_iarchive ar( is );
@@ -196,9 +196,9 @@ namespace jb
                     *order_it = new_uid;
                     mru_items_.insert( move( item ) );
                     mru_order_.splice( end( mru_order_ ), mru_order_, order_it );
-
-                    return RetCode::Ok;
                 }
+
+                return RetCode::Ok;
             }
             catch ( ... )
             {

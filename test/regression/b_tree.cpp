@@ -86,11 +86,11 @@ TEST_F( TestBTree, Serialization )
 }
 
 
-TEST_F( TestBTree, Find_Insert )
+TEST_F( TestBTree, Insert_Find )
 {
     using namespace std;
 
-    StorageFile f( "foo.jb", true );
+    StorageFile f( "foo38.jb", true );
     ASSERT_EQ( RetCode::Ok, f.status() );
 
     BTreeCache c( &f );
@@ -102,12 +102,38 @@ TEST_F( TestBTree, Find_Insert )
 
     for ( size_t i = 0; i < 1000; ++i )
     {
-        string key = to_string( i );
+        string key = "jb_" + to_string( i );
         Digest digest = Bloom::generate_digest( 1, Key{ key } );
 
         BTreePath bpath;
         auto[ rc, found ] = root->find_digest( digest, bpath );
         EXPECT_EQ( RetCode::Ok, rc );
         EXPECT_FALSE( found );
+
+        {
+            auto[ rc, node ] = c.get_node( bpath.back().first );
+            EXPECT_EQ( RetCode::Ok, rc );
+
+            node->insert( bpath.back().second, digest, Value{ key }, 0, false );
+        }
+    }
+
+    for ( size_t i = 0; i < 1000; ++i )
+    {
+        string key = "jb_" + to_string( i );
+        Digest digest = Bloom::generate_digest( 1, Key{ key } );
+
+        BTreePath bpath;
+        bpath.reserve( 1000 );
+        auto[ rc, found ] = root->find_digest( digest, bpath );
+        EXPECT_EQ( RetCode::Ok, rc );
+        EXPECT_TRUE( found );
+
+        {
+            auto[ rc, node ] = c.get_node( bpath.back().first );
+            EXPECT_EQ( RetCode::Ok, rc );
+
+            node->value( bpath.back().second ) == Value{ key };
+        }
     }
 }

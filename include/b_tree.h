@@ -374,7 +374,7 @@ namespace jb
             using namespace std;
 
             assert( l && r );
-            assert( elements_.size() > BTreeMax );
+            assert( elements_.size() == BTreeMax );
 
             // resizing
             l->elements_.resize( BTreeMin ); l->links_.resize( BTreeMin + 1 );
@@ -416,7 +416,7 @@ namespace jb
             try
             {
                 assert( pos < elements_.size() + 1 );
-                assert( elements_.size() <= BTreeMax );
+                assert( elements_.size() < BTreeMax );
 
                 // if the element exists
                 if ( pos < elements_.size() && e.digest_ == elements_[ pos ].digest_ )
@@ -446,7 +446,7 @@ namespace jb
                 }
 
                 // if this node overflow
-                if ( elements_.size() > BTreeMax )
+                if ( elements_.size() == BTreeMax )
                 {
                     // if this is root node of b-tree
                     if ( bpath.empty() )
@@ -481,10 +481,10 @@ namespace jb
 
             try
             {
-                assert( elements_.size() > BTreeMax );
+                assert( elements_.size() == BTreeMax );
 
                 // split this item into 2 new and save them
-                auto l = make_shared< BTree >(), r = make_shared< BTree >();
+                auto l = make_shared< BTree >( InvalidNodeUid, file_, cache_ ), r = make_shared< BTree >( InvalidNodeUid, file_, cache_ );
                 split_node( l, r );
                 if ( auto[ rc1, rc2 ] = tuple{ l->save( t ), r->save( t ) }; RetCode::Ok != rc1 && RetCode::Ok != rc2 )
                 {
@@ -725,7 +725,7 @@ namespace jb
 
                 assert( elements_.size() + 1 == links_.size() );
 
-                auto lower = lower_bound( begin( elements_ ), end( elements_ ), e ); lower != end( elements_ );
+                auto lower = lower_bound( begin( elements_ ), end( elements_ ), e );
                 size_t d = static_cast< size_t >( std::distance( begin( elements_ ), lower ) );
 
                 path.emplace_back( uid_, d );
@@ -788,7 +788,7 @@ namespace jb
         {
             using namespace std;
 
-            assert( pos < elements_.size() );
+            assert( pos <= elements_.size() );
 
             try
             {
@@ -797,49 +797,14 @@ namespace jb
                 // open transaction
                 if ( auto transaction = file_->open_transaction(); RetCode::Ok == transaction.status() )
                 {
-                    // get uid of chldren containing b-tree
-                    auto children_uid = elements_[ pos ].children_;
-
-                    // if this is not the 1st child?
-                    if ( InvalidNodeUid != children_uid )
+                    if ( auto rc = insert_element( transaction, move( e ), overwrite ); RetCode::Ok == rc )
                     {
-                        assert( cache_ );
-
-                        // load children b-tree
-                        if ( auto[ rc, children_btree ] = cache_->get_node( children_uid ); RetCode::Ok == rc )
-                        {
-                            // and insert new element
-                            if ( auto rc = children_btree->insert_element( transaction, move( e ), overwrite ); RetCode::Ok != rc )
-                            {
-                                return rc;
-                            }
-                        }
-                        else
-                        {
-                            return rc;
-                        }
+                        return transaction.commit();
                     }
                     else
                     {
-                        // create new b-tree
-                        auto children_btree = make_shared< BTree >();
-
-                        // insert new element (it causes saving)
-                        if ( auto rc = children_btree->insert_element( transaction, move( e ) ); RetCode::Ok != rc )
-                        {
-                            return rc;
-                        }
-
-                        // get children b-tree uid
-                        elements_[ pos ].children_ = children_btree->uid_;
-
-                        // and save this b-tree node with preservation of uid
-                        //save_with_preservation();
+                        return rc;
                     }
-
-                    // commit transaction
-                    return transaction.commit();
-
                 }
                 else
                 {
