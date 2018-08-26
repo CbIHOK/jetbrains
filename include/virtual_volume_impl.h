@@ -17,10 +17,9 @@ class TestVirtualVolume;
 
 namespace jb
 {
-    template < typename Policies, typename Pad >
-    class Storage< Policies, Pad >::VirtualVolumeImpl
+    template < typename Policies >
+    class Storage< Policies >::VirtualVolumeImpl
     {
-        friend typename Pad;
         friend class TestVirtualVolume;
 
     public:

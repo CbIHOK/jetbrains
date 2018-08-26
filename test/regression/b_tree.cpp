@@ -8,7 +8,7 @@ class TestBTree : public ::testing::Test
 
 protected:
 
-    using Storage = jb::Storage< jb::DefaultPolicies, jb::DefaultPad >;
+    using Storage = jb::Storage< jb::DefaultPolicies >;
     using RetCode = typename Storage::RetCode;
     using Value = typename Storage::Value;
     using BTree = typename Storage::PhysicalVolumeImpl::BTree;

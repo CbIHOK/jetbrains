@@ -14,10 +14,9 @@ namespace jb
     @tparam Policies - global setting
     @tparam Pad - test stuff
     */
-    template < typename Policies, typename Pad >
-    class Storage< Policies, Pad >::MountPointImpl
+    template < typename Policies >
+    class Storage< Policies >::MountPointImpl
     {
-        friend typename Pad;
 
     public:
 

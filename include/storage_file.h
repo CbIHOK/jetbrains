@@ -30,8 +30,8 @@ class TestStorageFile;
 
 namespace jb
 {
-    template < typename Policies, typename Pad >
-    class Storage< Policies, Pad >::PhysicalVolumeImpl::StorageFile
+    template < typename Policies >
+    class Storage< Policies >::PhysicalVolumeImpl::StorageFile
     {
         friend class TestStorageFile;
 
@@ -753,8 +753,8 @@ namespace jb
     @tparam Policies - global setting
     @tparam Pad - test stuff
     */
-    template < typename Policies, typename Pad >
-    class Storage< Policies, Pad >::PhysicalVolumeImpl::StorageFile::Transaction
+    template < typename Policies >
+    class Storage< Policies >::PhysicalVolumeImpl::StorageFile::Transaction
     {
         friend class TestStorageFile;
         friend class StorageFile;
@@ -1240,8 +1240,8 @@ namespace jb
     @tparam Policies - global setting
     @tparam Pad - test stuff
     */
-    template < typename Policies, typename Pad >
-    class Storage< Policies, Pad >::PhysicalVolumeImpl::StorageFile::ostreambuf : public std::basic_streambuf< char >
+    template < typename Policies >
+    class Storage< Policies >::PhysicalVolumeImpl::StorageFile::ostreambuf : public std::basic_streambuf< char >
     {
         friend class Transaction;
 
@@ -1323,8 +1323,8 @@ namespace jb
     @tparam Policies - global setting
     @tparam Pad - test stuff
     */
-    template < typename Policies, typename Pad >
-    class Storage< Policies, Pad >::PhysicalVolumeImpl::StorageFile::istreambuf : public std::basic_streambuf< char >
+    template < typename Policies >
+    class Storage< Policies >::PhysicalVolumeImpl::StorageFile::istreambuf : public std::basic_streambuf< char >
     {
         friend class StorageFile;
 

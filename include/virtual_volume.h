@@ -16,13 +16,12 @@ namespace jb
 
     Implements monostate pattern, allows many instances to share the same Virtual Volume
     */
-    template < typename Policies, typename Pad >
-    class Storage< Policies, Pad >::VirtualVolume
+    template < typename Policies >
+    class Storage< Policies >::VirtualVolume
     {
-        friend typename Pad;
         friend class TestVirtualVolume;
 
-        using Storage = ::jb::Storage< Policies, Pad >;
+        using Storage = ::jb::Storage< Policies >;
         friend class Storage;
 
         //

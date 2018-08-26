@@ -17,7 +17,7 @@ protected:
 
     using Policies = ::jb::DefaultPolicies;
     using Pad = ::jb::DefaultPad;
-    using Storage = ::jb::Storage< Policies, Pad >;
+    using Storage = ::jb::Storage< Policies >;
     using RetCode = typename Storage::RetCode;
     using Bloom = typename Storage::PhysicalVolumeImpl::Bloom;
     using StorageFile = typename Storage::PhysicalVolumeImpl::StorageFile;

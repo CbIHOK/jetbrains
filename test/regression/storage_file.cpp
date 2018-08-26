@@ -26,12 +26,12 @@ protected:
 
     using Policies = ::jb::DefaultPolicies;
     using Pad = ::jb::DefaultPad;
-    using Storage = ::jb::Storage<Policies, Pad>;
+    using Storage = ::jb::Storage<Policies >;
     using RetCode = typename Storage::RetCode;
     using StorageFile = typename Storage::PhysicalVolumeImpl::StorageFile;
-    using OtherStorage = jb::Storage< OtherPolicies, Pad >;
+    using OtherStorage = jb::Storage< OtherPolicies >;
     using OtherStorageFile = typename OtherStorage::PhysicalVolumeImpl::StorageFile;
-    using SmallChunkStorage = jb::Storage< SmallChunkPolicies, Pad >;
+    using SmallChunkStorage = jb::Storage< SmallChunkPolicies >;
     using SmallChunkStorageFile = typename SmallChunkStorage::PhysicalVolumeImpl::StorageFile;
     using Transaction = typename StorageFile::Transaction;
     using SmallChunkTransaction = typename SmallChunkStorageFile::Transaction;

@@ -7,7 +7,7 @@ class TestNodeLocker : public ::testing::Test
 {
 protected:
 
-    using Storage = ::jb::Storage< ::jb::DefaultPolicies, ::jb::DefaultPolicies >;
+    using Storage = ::jb::Storage< ::jb::DefaultPolicies >;
     using PathLocker = typename Storage::PhysicalVolumeImpl::PathLocker;
     using NodeUid = typename Storage::PhysicalVolumeImpl::NodeUid;
     using PathLock = typename PathLocker::PathLock;

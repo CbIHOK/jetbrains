@@ -9,8 +9,8 @@
 
 namespace jb
 {
-    template < typename Policies, typename Pad >
-    class Storage< Policies, Pad >::Key
+    template < typename Policies >
+    class Storage< Policies >::Key
     {
 
     public:
@@ -21,7 +21,6 @@ namespace jb
 
     private:
 
-        friend typename Pad;
         friend class Storage;
         template < typename T > friend struct Storage::Hash;
 

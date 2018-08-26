@@ -30,7 +30,7 @@ namespace jb
 
     /**
     */
-    template < typename Policies, typename Pad >
+    template < typename Policies >
     class Storage
     {
     public:
@@ -45,7 +45,6 @@ namespace jb
 
         template < typename T > friend struct Hash;
 
-        friend typename Pad;
         friend class TestStorage;
         friend class TestKey;
         friend class TestNodeLocker;

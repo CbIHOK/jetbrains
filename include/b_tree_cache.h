@@ -21,8 +21,8 @@ namespace jb
     @tparam Policies - global setting
     @tparam Pad - test pad
     */
-    template < typename Policies, typename Pad >
-    class Storage< Policies, Pad >::PhysicalVolumeImpl::BTreeCache
+    template < typename Policies >
+    class Storage< Policies >::PhysicalVolumeImpl::BTreeCache
     {
         using BTree = typename PhysicalVolumeImpl::BTree;
         using BTreeP = typename BTree::BTreeP;

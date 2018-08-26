@@ -7,13 +7,12 @@
 namespace jb
 {
 
-    template < typename Policies, typename Pad >
-    class Storage< Policies, Pad >::PhysicalVolume
+    template < typename Policies >
+    class Storage< Policies >::PhysicalVolume
     {
-        using Storage = ::jb::Storage< Policies, Pad >;
+        using Storage = ::jb::Storage< Policies >;
         using RetCode = typename Storage::RetCode;
 
-        friend typename Pad;
         friend class TestStorage;
         friend class Storage;
         friend typename Storage::VirtualVolume;

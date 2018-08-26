@@ -19,8 +19,8 @@
 
 namespace jb
 {
-    template < typename Policies, typename Pad >
-    class Storage< Policies, Pad >::PhysicalVolumeImpl
+    template < typename Policies >
+    class Storage< Policies >::PhysicalVolumeImpl
     {
         friend class TestNodeLocker;
         friend class TestBloom;

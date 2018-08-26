@@ -10,7 +10,7 @@ protected:
 
     using Policies = ::jb::DefaultPolicies;
     using Pad = ::jb::DefaultPad;
-    using Storage = ::jb::Storage< Policies, Pad >;
+    using Storage = ::jb::Storage< Policies >;
     using RetCode = typename Storage::RetCode;
     using VirtualVolume = typename Storage::VirtualVolume;
     using PhysicalVolume = typename Storage::PhysicalVolume;

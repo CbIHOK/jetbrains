@@ -11,13 +11,12 @@ namespace jb
     @tparam Policies - global setting
     @tparam Pad - test stuff
     */
-    template < typename Policies, typename Pad >
-    class Storage< Policies, Pad >::MountPoint
+    template < typename Policies >
+    class Storage< Policies >::MountPoint
     {
         using VirtualVolume = typename Storage::VirtualVolume;
         using VirtualVolumeImpl = typename Storage::VirtualVolumeImpl;
 
-        friend typename Pad;
         friend typename Storage::VirtualVolume;
         friend typename Storage::VirtualVolumeImpl;
 

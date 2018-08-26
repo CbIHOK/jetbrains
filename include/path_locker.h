@@ -17,8 +17,8 @@ namespace jb
     @tparam Policies - global settings
     @tparam Pad - test pad
     */
-    template < typename Policies, typename Pad >
-    class Storage< Policies, Pad >::PhysicalVolumeImpl::PathLocker
+    template < typename Policies >
+    class Storage< Policies >::PhysicalVolumeImpl::PathLocker
     {
         using NodeUid = typename PhysicalVolumeImpl::NodeUid;
 
@@ -112,8 +112,8 @@ namespace jb
     @tparam Policies - global settings
     @tparam Pad - test pad
     */
-    template < typename Policies, typename Pad >
-    class Storage< Policies, Pad >::PhysicalVolumeImpl::PathLocker::PathLock
+    template < typename Policies >
+    class Storage< Policies >::PhysicalVolumeImpl::PathLocker::PathLock
     {
         friend class PathLocker;
 

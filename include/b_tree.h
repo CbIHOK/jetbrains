@@ -22,13 +22,13 @@ class TestBTree;
 
 namespace jb
 {
-    template < typename Policies, typename Pad >
-    class Storage< Policies, Pad >::PhysicalVolumeImpl::BTree
+    template < typename Policies >
+    class Storage< Policies >::PhysicalVolumeImpl::BTree
     {
         friend class TestBTree;
         friend class boost::serialization::access;
 
-        using Storage = Storage< Policies, Pad >;
+        using Storage = Storage< Policies >;
         using Value = typename Storage::Value;
         using Digest = typename Bloom::Digest;
         using Transaction = typename StorageFile::Transaction;

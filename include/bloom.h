@@ -9,8 +9,8 @@
 
 namespace jb
 {
-    template < typename Policies, typename Pad >
-    class Storage< Policies, Pad >::PhysicalVolumeImpl::Bloom
+    template < typename Policies >
+    class Storage< Policies >::PhysicalVolumeImpl::Bloom
     {
         using RetCode = typename Storage::RetCode;
         using Key = typename Storage::Key;
