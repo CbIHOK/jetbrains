@@ -85,7 +85,7 @@ namespace jb
             TooManyConcurrentOps,   ///< The limit of concurent operations over physical volume is reached
             MaxTreeDepthExceeded,   ///< Cannot search such deep inside
             AlreadyExpired,         ///< Given timestamp already in the past
-            KeyAlreadyExists,       ///< Key already exists
+            AlreadyExists,          ///< Key already exists
             AlreadyOpened,          ///< Physical file is already opened
             UnableToOpen,           ///< Cannot open specified file
             UnableToCreate,         ///< Unable to create file of a name

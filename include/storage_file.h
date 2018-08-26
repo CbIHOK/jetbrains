@@ -232,6 +232,7 @@ namespace jb
         @throws nothing
         @warning  not thread safe
         */
+        [[nodiscard]]
         auto check_compatibility() noexcept
         {
             //conditional executor
@@ -262,6 +263,7 @@ namespace jb
         @throw nothing
         @warning not thread safe
         */
+        [[nodiscard]]
         auto deploy() noexcept
         {
             //conditional executor
@@ -351,6 +353,7 @@ namespace jb
         @retval operation status
         @throw nothing
         */
+        [[nodiscard]]
         auto commit() const noexcept
         {
             RetCode status = RetCode::Ok;
@@ -480,10 +483,7 @@ namespace jb
         */
         auto rollback() noexcept
         {
-            auto ce = [&] ( const auto & f ) noexcept {
-                if ( RetCode::Ok == status_ ) status_ = f();
-                assert( RetCode::Ok == status_ );
-            };
+            auto ce = [&] ( const auto & f ) noexcept { if ( RetCode::Ok == status_ ) status_ = f(); };
 
             // just restore file size
             big_uint64_t file_size;
@@ -567,9 +567,7 @@ namespace jb
             }
 
             // conditional executor
-            auto ce = [&] ( const auto & f ) noexcept {
-                if ( RetCode::Ok == status_ ) status_ = f();
-            };
+            auto ce = [&] ( const auto & f ) noexcept { if ( RetCode::Ok == status_ ) status_ = f(); };
 
             // open writter
             ce( [&] {
@@ -641,6 +639,7 @@ namespace jb
 
         @throw nothing
         */
+        [[nodiscard]]
         auto status() const noexcept { return status_; }
 
 
@@ -651,6 +650,7 @@ namespace jb
         @throw nothing
         @wraning not thread safe
         */
+        [[nodiscard]]
         RetCode read_bloom( uint8_t * bloom_buffer ) const noexcept
         {
             if ( !newly_created_ )
@@ -685,6 +685,7 @@ namespace jb
         @retval - operation status
         @thrown nothing
         */
+        [[nodiscard]]
         RetCode add_bloom_digest( size_t byte_no, uint8_t byte ) const noexcept
         {
             using namespace std;
@@ -694,10 +695,7 @@ namespace jb
             scoped_lock l( bloom_mutex_ );
 
             RetCode status = RetCode::Ok;
-            auto ce = [&] ( const auto & f ) noexcept {
-                if ( RetCode::Ok == status ) status = f();
-                assert( RetCode::Ok == status );
-            };
+            auto ce = [&] ( const auto & f ) noexcept { if ( RetCode::Ok == status ) status = f(); };
 
             // seek & write data
             ce( [&] {
@@ -792,10 +790,7 @@ namespace jb
             assert( handle_ != InvalidHandle );
 
             // conditional execution
-            auto ce = [&] ( const auto & f ) noexcept {
-                if ( RetCode::Ok == status_ ) status_ = f();
-                assert( RetCode::Ok == status_ );
-            };
+            auto ce = [&] ( const auto & f ) noexcept { if ( RetCode::Ok == status_ ) status_ = f(); };
 
             // read transactional data: file size...
             big_uint64_t file_size;
@@ -840,15 +835,13 @@ namespace jb
         @retval uint64_t - next available chunk
         @throw nothing
         */
+        [[nodiscard]]
         std::tuple< RetCode, ChunkUid > get_next_chunk() noexcept
         {
             ChunkUid available_chunk = InvalidChunkUid;
 
             // conditional execution
-            auto ce = [&] ( const auto & f ) noexcept {
-                if ( RetCode::Ok == status_ ) status_ = f();
-                assert( RetCode::Ok == status_ );
-            };
+            auto ce = [&] ( const auto & f ) noexcept { if ( RetCode::Ok == status_ ) status_ = f(); };
 
             // if preserved writting: return reserved chunk offset
             if ( overwriting_first_chunk_ )
@@ -907,6 +900,7 @@ namespace jb
         @retval operation status
         @throw nothing
         */
+        [[nodiscard]]
         auto write( const void * data, ptrdiff_t sz ) noexcept
         {
             assert( 0 <= sz && sz <= ChunkOffsets::sz_Space );
@@ -1018,6 +1012,7 @@ namespace jb
         @retval status
         @throw nothing
         */
+        [[nodiscard]]
         RetCode status() const noexcept { return status_; }
 
 
@@ -1102,6 +1097,7 @@ namespace jb
         @retval ChunkUid - uid of the first chunk
         @throw nothing
         */
+        [[nodiscard]]
         ChunkUid get_first_written_chunk() const noexcept { return first_written_chunk; }
 
 
@@ -1111,14 +1107,11 @@ namespace jb
         @retval operation status
         @throw nothing
         */
+        [[nodiscard]]
         RetCode erase_chain( ChunkUid chunk ) noexcept
         {
             // conditional execution
-            auto ce = [&] ( const auto & f ) noexcept
-            {
-                if ( RetCode::Ok == status_ ) status_ = f();
-                assert( RetCode::Ok == status_ );
-            };
+            auto ce = [&] ( const auto & f ) noexcept { if ( RetCode::Ok == status_ ) status_ = f(); };
 
             // check that given chunk is valid
             if ( chunk < HeaderOffsets::of_Root || file_size_ < chunk )
@@ -1179,6 +1172,7 @@ namespace jb
         @retval - operation status
         @throw nothing
         */
+        [[nodiscard]]
         RetCode commit() noexcept
         {
             // conditional execution
@@ -1369,6 +1363,7 @@ namespace jb
         @retval size_t - number of read characters
         @throw nothing
         */
+        [[nodiscard]]
         size_t read() noexcept
         {
             // conditional execution
@@ -1467,6 +1462,7 @@ namespace jb
         @return RetCode - status
         @throw nothing
         */
+        [[nodiscard]]
         auto status() const noexcept { return status_; }
 
 

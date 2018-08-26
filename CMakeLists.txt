@@ -19,5 +19,6 @@ include_directories( ./include ./3rdparty ${BOOST_INC} ${gtest_SOURCE_DIR}/inclu
 link_directories( ${BOOST_LINK} )
 
 set(CMAKE_INSTALL_PREFIX ${CMAKE_CURRENT_SOURCE_DIR}/build)
+
 add_subdirectory(test)
 

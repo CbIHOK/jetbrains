@@ -7,13 +7,13 @@
 #include <algorithm>
 #include <limits>
 #include <exception>
+#include <execution>
 
 #include <boost/container/static_vector.hpp>
 #include <boost/thread/shared_mutex.hpp>
 #include <boost/serialization/split_member.hpp>
 #include <boost/serialization/nvp.hpp>
 #include <boost/serialization/collection_size_type.hpp>
-#include <boost/archive/binary_iarchive.hpp>
 #include <boost/archive/binary_oarchive.hpp>
 
 
@@ -31,11 +31,16 @@ namespace jb
         using Storage = Storage< Policies, Pad >;
         using Value = typename Storage::Value;
         using Digest = typename Bloom::Digest;
+        using Transaction = typename StorageFile::Transaction;
 
         static constexpr auto BTreeMinPower = Policies::PhysicalVolumePolicy::BTreeMinPower;
         static_assert( BTreeMinPower >= 2, "B-tree power must be > 1" );
         static constexpr auto BTreeMin = BTreeMinPower - 1;
         static constexpr auto BTreeMax = 2 * BTreeMinPower - 1;
+
+        static constexpr auto BTreeMaxDepth = Policies::PhysicalVolumePolicy::BTreeMaxDepth;
+
+        template < typename T, size_t C > using static_vector = boost::container::static_vector< T, C >;
 
     public:
 
@@ -47,6 +52,8 @@ namespace jb
 
         using Pos = size_t;
         static constexpr auto Npos = Pos{ std::numeric_limits< size_t >::max() };
+
+        using BTreePath = static_vector< std::pair< NodeUid, Pos >, BTreeMaxDepth >;
 
 
     private:
@@ -166,8 +173,8 @@ namespace jb
         //
         // more aliases
         //
-        using ElementCollection = boost::container::static_vector< Element, BTreeMax + 1 >;
-        using LinkCollection = boost::container::static_vector< NodeUid, BTreeMax + 2 >;
+        using ElementCollection = static_vector< Element, BTreeMax + 1 >;
+        using LinkCollection = static_vector< NodeUid, BTreeMax + 2 >;
 
 
         //
@@ -259,23 +266,343 @@ namespace jb
         /* Stores b-tree node to file
 
         @param [in] t - transaction
+        @retval RetCode - operation status
         @throw may throw std::exception for different reasons
         */
-        auto save( typename StorageFile::Transaction & t ) const
+        [[nodiscard]]
+        auto save( Transaction & t ) const
         {
-            if ( !file_ || !cache_ ) throw std::logic_error( "Attempt to save dummy b-tree" );
+            if ( !file_ || !cache_ )
+            {
+                return RetCode::UnknownError;
+            }
 
             auto osbuf = t.get_chain_writer();
             std::ostream os( &osbuf );
             boost::archive::binary_oarchive ar( os );
             ar & *this;
-            os.flush();
 
-            if ( RetCode::Ok != t.status() ) throw std::runtime_error( "Unable to save b-tree" );
+            if ( RetCode::Ok != t.status() )
+            {
+                return t.status();
+            }
 
             NodeUid uid = t.get_first_written_chunk();
             std::swap( uid, const_cast< BTree* >( this )->uid_ );
-            cache_->update_uid( uid, uid_ );
+            
+            return cache_->update_uid( uid, uid_ );
+        }
+
+
+        /* Stores b-tree node to file preserving node uid
+
+        @param [in] t - transaction
+        @throw may throw std::exception for different reasons
+        */
+        [[nodiscard]]
+        auto overwrite( Transaction & t ) const
+        {
+            if ( !file_ )
+            {
+                return RetCode::UnknownError;
+            }
+
+            auto osbuf = t.get_chain_overwriter( uid_ );
+            std::ostream os( &osbuf );
+            boost::archive::binary_oarchive ar( os );
+            ar & *this;
+
+            return t.status();
+        }
+
+
+        /* Inserts new element into b-tree
+
+        @param [in] e - element to be inserted
+        @param [in] overwrite - if overwriting allowed
+        @retval RetCode - operation status
+        @throw nothing
+        */
+        [[nodiscard]]
+        auto insert_element( Transaction & t, Element && e, bool overwrite = false ) noexcept
+        {
+            using namespace std;
+
+            try
+            {
+                BTreePath bpath;
+
+                // find target b-tree node
+                if ( auto[ rc, node, pos ] = find_digest( e.digest_, bpath ); RetCode::Ok != rc )
+                {
+                    return rc;
+                }
+                else
+                {
+                    // and insert elelement
+                    return insert_element( t, bpath, pos, move( e ), overwrite );
+                }
+            }
+            catch ( ... )
+            {
+            }
+
+            return RetCode::UnknownError;
+        }
+
+
+        /* Splits node in parallel
+
+        @param [in] l - the left part
+        @param [in] r - the right part
+        @throw may throw std::exception
+        */
+        auto split_node( BTreeP l, BTreeP r )
+        {
+            using namespace std;
+
+            assert( l && r );
+            assert( elements_.size() > BTreeMax );
+
+            // resizing
+            l->elements_.resize( BTreeMin ); l->links_.resize( BTreeMin + 1 );
+            r->elements_.resize( BTreeMin ); r->links_.resize( BTreeMin + 1 );
+
+            auto futures = array< std::future< void >, 4>{
+                // copy first BTreeMin elements to the left
+                async( launch::async, [&] { copy( execution::par, begin( elements_ ), begin( elements_ ) + BTreeMin, begin( l->elements_ ) ); } ),
+
+                    // copy last BTreeMin elements to the right
+                    async( launch::async, [&] { copy( execution::par, end( elements_ ) - BTreeMin, end( elements_ ), begin( r->elements_ ) ); } ),
+
+                    // copy first BTreeMin + 1 links to the left
+                    async( launch::async, [&] { copy( execution::par, begin( links_ ), begin( links_ ) + BTreeMin + 1, begin( l->links_ ) ); } ),
+
+                    // copy last BTreeMin + 1 links to the right
+                    async( launch::async, [&] { copy( execution::par, end( links_ ) - BTreeMin - 1, end( links_ ), begin( r->links_ ) ); } ),
+            };
+
+            // synchronization
+            for ( const auto & f : futures ) { f.wait(); }
+        }
+
+
+        /* Insert new element into b-tree node
+
+        @param [in] t - transaction
+        @param [in] bpath - path to insert position
+        @param [in] pos - insert position
+        @param [in] ow - if overwritting allowed
+        @retval RetCode - operation status
+        @throw nothing
+        */
+        [[nodiscard]]
+        auto insert_element( Transaction & t, BTreePath & bpath, Pos pos, Element && e, bool ow ) noexcept
+        {
+            using namespace std;
+
+            try
+            {
+                assert( pos < elements_.size() + 1 );
+                assert( elements_.size() <= BTreeMax );
+
+                // if the element exists
+                if ( pos < elements_.size() && e.digest_ == elements_[ pos ].digest_ )
+                {
+                    // if overwriting possible
+                    if ( ow )
+                    {
+                        // emplace element at existing position
+                        auto old_expiration = elements_[ pos ].good_before_;
+                        elements_[ pos ] = move( e );
+                        elements_[ pos ].good_before_ = elements_[ pos ].good_before_ ? elements_[ pos ].good_before_ : old_expiration;
+
+                        // overwrite node
+                        return overwrite( t );
+                    }
+                    else
+                    {
+                        return RetCode::AlreadyExists;
+                    }
+                }
+                else
+                {
+                    // insert element at the pos
+                    assert( !pos || elements_[ pos - 1 ] < e && elements_.size() <= pos || e < elements_[ pos ] );
+                    elements_.emplace( begin( elements_ ) + pos, move( e ) );
+                    links_.insert( begin( links_ ) + pos, InvalidNodeUid );
+                }
+
+                // if this node overflow
+                if ( elements_.size() > BTreeMax )
+                {
+                    // if this is root node of b-tree
+                    if ( bpath.empty() )
+                    {
+                        return process_overflow_root( t );
+                    }
+                    else
+                    {
+                        return split_and_araise_median( t, bpath );
+                    }
+                }
+            }
+            catch ( ... )
+            {
+            }
+
+            return RetCode::UnknownError;
+        }
+
+
+        /* Processes overflow of the root
+
+        Splits root into 2 node and leave only their mediane
+
+        @param [out] - transaction
+        @retval RetCode - operation status
+        */
+        [[nodiscard]]
+        auto process_overflow_root( Transaction & t ) noexcept
+        {
+            using namespace std;
+
+            try
+            {
+                assert( elements_.size() > BTreeMax );
+
+                // split this item into 2 new and save them
+                auto l = make_shared< BTree >(), r = make_shared< BTree >();
+                split_node( l, r );
+                if ( auto[ rc1, rc2 ] = tuple{ l->save( t ), r->save( t ) }; RetCode::Ok != rc1 && RetCode::Ok != rc2 )
+                {
+                    return max( rc1, rc2 );
+                }
+
+                // leave only mediane element...
+                elements_[ 0 ] = move( elements_[ BTreeMin ] );
+                elements_.resize( 1 );
+
+                // with links to new items
+                links_[ 0 ] = l->uid(); links_[ 1 ] = r->uid();
+                links_.resize( 2 );
+
+                // ovewrite root node
+                return overwrite( t );
+            }
+            catch ( ... )
+            {
+            }
+
+            return RetCode::UnknownError;
+        }
+
+
+        /* Process overflow of non root node
+
+        Split node into 2 ones and extrude median element to the parent node
+
+        @param [out] t - transaction
+        @param [in] bpath - path in btree
+        @retval RetCode - operation status
+        @throw nothing
+        */
+        [[nodiscard]]
+        auto split_and_araise_median( Transaction & t, BTreePath & bpath )
+        {
+            using namespace std;
+
+            try
+            {
+                assert( elements_.size() > BTreeMax );
+
+                // split node into 2 new and save them
+                auto l = make_shared< BTree >(), r = make_shared< BTree >();
+                split_node( l, r );
+                if ( auto[ rc1, rc2 ] = tuple{ l->save( t ), r->save( t ) }; RetCode::Ok != rc1 && RetCode::Ok != rc2 )
+                {
+                    return max( rc1, rc2 );
+                }
+
+                // get parent b-tree path
+                BTreePath::value_type parent_path = move( bpath.back() ); bpath.pop_back();
+
+                // remove this node from storage and drop it from cache
+                if ( auto[ rc1, rc2 ] = tuple{ cache_->drop( uid_ ), t.erase_chain( uid_ ) }; RetCode::Ok != rc1 && RetCode::Ok != rc2 )
+                {
+                    return max( rc1, rc2 );
+                }
+
+                // and insert mediane element to parent
+                if ( auto[ rc, parent ] = cache_->get_node( parent_path.first ); RetCode::Ok != rc )
+                {
+                    return rc;
+                }
+                else
+                {
+                    return parent->insert_araising_element( t, bpath, parent_path.second, l->uid_, move( elements_[ BTreeMin + 1 ] ), r->uid_ );
+                }
+            }
+            catch ( ... )
+            {
+            }
+
+            return RetCode::UnknownError;
+        }
+
+
+        /* Inserts araising element
+
+        Just inserts element and check overflow condition
+
+        @param [out] t - transaction
+        @param [in] bpath - path in b-tree
+        @param [in] pos - insert position 
+        @param [in] l_link - left link of araising element
+        @param [in] e - element to be inserted
+        @param [in] r_link - right link of the element
+        @retval RetCode - operation status
+        @throw nothing
+        */
+        [[nodiscard]]
+        auto insert_araising_element(
+            Transaction & t,
+            BTreePath & bpath,
+            Pos pos,
+            NodeUid l_link,
+            Element && e,
+            NodeUid r_link ) noexcept
+        {
+            using namespace std;
+
+            try
+            {
+                assert( elements_.size() <= BTreeMax );
+
+                // insert araising element
+                elements_.emplace( begin( elements_ ) + pos, move( e ) );
+                links_.insert( begin( links_ ) + pos, l_link );
+                links_[ pos + 1 ] = r_link;
+
+                // check node for overflow
+                if ( elements_.size() > BTreeMax )
+                {
+                    // if this is root node of b-tree
+                    if ( bpath.empty() )
+                    {
+                        return process_overflow_root( t );
+                    }
+                    else
+                    {
+                        return split_and_araise_median( t, bpath );
+                    }
+                }
+            }
+            catch ( ... )
+            {
+            }
+
+            return RetCode::UnknownError;
         }
 
 
@@ -363,55 +690,156 @@ namespace jb
             return elements_[ ndx ].children_;
         }
 
-        template < typename BTreePath >
+
+        /** Searches through b-tree for given key digest...
+
+        accumulates search path that can be later used as a hint for erase operation.
+
+        @param [in] digest - key to be found
+        @param [out] path - search path
+        @retval RetCode - operation status
+        @retval bool - if key found
+        @retval Pos - position of found element or where it could be if exists
+        @throw nothing
+        */
         std::tuple< RetCode, bool, Pos > find_digest( Digest digest, BTreePath & path ) const noexcept
         {
             using namespace std;
 
-            path.push_back( uid_ );
-
-            Element e{ digest };
-
-            auto link = InvalidNodeUid;
-
-            assert( elements_.size() + 1 == links_.size() );
-
-            if ( auto lower = lower_bound( begin( elements_ ), end( elements_ ), e ); lower != end( elements_ ) )
+            try
             {
+                Element e{ digest };
+
+                auto link = InvalidNodeUid;
+
+                assert( elements_.size() + 1 == links_.size() );
+
+                auto lower = lower_bound( begin( elements_ ), end( elements_ ), e ); lower != end( elements_ );
                 size_t d = static_cast< size_t >( std::distance( begin( elements_ ), lower ) );
 
-                if ( lower->digest_ == e.digest_ )
+                if ( lower != end( elements_ ) )
                 {
-                    return { RetCode::Ok, true, d };
+                    if ( lower->digest_ == e.digest_ )
+                    {
+                        return { RetCode::Ok, true, d };
+                    }
+                    else
+                    {
+                        link = links_[ d ];
+                    }
                 }
                 else
                 {
-                    link = links_[ d ];
+                    link = links_.back();
                 }
-            }
-            else
-            {
-                link = links_.back();
-            }
 
-            if ( link == InvalidNodeUid )
-            {
-                return { RetCode::Ok, false, Npos };
-            }
-            else
-            {
-                assert( cache_ );
-
-                if ( auto[ rc, p ] = cache_->get_node( link ); RetCode::Ok == rc )
+                if ( link == InvalidNodeUid )
                 {
-                    assert( p );
-                    return p->find_digest( digest, path );
+                    return { RetCode::Ok, false, d };
                 }
                 else
                 {
-                    return { rc, false, Npos };
+                    assert( cache_ );
+
+                    if ( auto[ rc, p ] = cache_->get_node( link ); RetCode::Ok == rc )
+                    {
+                        assert( path.size() < path.capacity() );
+                        path.emplace_back( uid_, d );
+
+                        assert( p );
+                        return p->find_digest( digest, path );
+                    }
+                    else
+                    {
+                        return { rc, false, Npos };
+                    }
                 }
             }
+            catch ( ... )
+            {
+            }
+
+            return { RetCode::UnknownError, false, Npos };
+        }
+
+
+        /** Inserts new subkey with given parameters to the key at specified position
+
+        @param [in] pos - position of key
+        @param [in] subkey - subkey digest
+        @param [in] value - value to be assigned to new subkey
+        @param [in] good_before - expiration mark for the subkey
+        @param [in] overwrite - overwrite existing subkey
+        @return RetCode - operation status
+        @throw nothing
+        */
+        RetCode insert( Pos pos, Digest digest, Value && value, uint64_t good_before, bool overwrite ) noexcept
+        {
+            using namespace std;
+
+            assert( pos < elements_.size() );
+
+            try
+            {
+                Element e{ digest, move( value ), good_before, InvalidNodeUid };
+
+                // open transaction
+                if ( auto transaction = file_->open_transaction(); RetCode::Ok == transaction.status() )
+                {
+                    // get uid of chldren containing b-tree
+                    auto children_uid = elements_[ pos ].children_;
+
+                    // if this is not the 1st child?
+                    if ( InvalidNodeUid != children_uid )
+                    {
+                        assert( cache_ );
+
+                        // load children b-tree
+                        if ( auto[ rc, children_btree ] = cache_->get_node( children_uid ); RetCode::Ok == rc )
+                        {
+                            // and insert new element
+                            if ( auto rc = children_btree->insert_element( transaction, move( e ), overwrite ); RetCode::Ok != rc )
+                            {
+                                return rc;
+                            }
+                        }
+                        else
+                        {
+                            return rc;
+                        }
+                    }
+                    else
+                    {
+                        // create new b-tree
+                        auto children_btree = make_shared< BTree >();
+
+                        // insert new element (it causes saving)
+                        if ( auto rc = children_btree->insert_element( transaction, move( e ) ); RetCode::Ok != rc )
+                        {
+                            return rc;
+                        }
+
+                        // get children b-tree uid
+                        elements_[ pos ].children_ = children_btree->uid_;
+
+                        // and save this b-tree node with preservation of uid
+                        //save_with_preservation();
+                    }
+
+                    // commit transaction
+                    return transaction.commit();
+
+                }
+                else
+                {
+                    return transaction.status();
+                }
+            }
+            catch ( ... )
+            {
+            }
+
+            return RetCode::UnknownError;
         }
     };
 }

@@ -272,7 +272,7 @@ TEST_F( TestStorageFile, Overwriting )
             uid_2 = t.get_first_written_chunk();
         }
 
-        t.commit();
+        EXPECT_EQ( SmallChunkStorage::RetCode::Ok, t.commit() );
     }
 
     {
@@ -287,8 +287,7 @@ TEST_F( TestStorageFile, Overwriting )
         os.flush();
 
         EXPECT_EQ( SmallChunkStorage::RetCode::Ok, t.status() );
-
-        t.commit();
+        EXPECT_EQ( SmallChunkStorage::RetCode::Ok, t.commit() );
     }
 
     {
@@ -370,7 +369,7 @@ TEST_F( TestStorageFile, GarbageCollector )
             uid_2 = t.get_first_written_chunk();
         }
 
-        t.commit();
+        EXPECT_EQ( SmallChunkStorage::RetCode::Ok, t.commit() );
     }
 
     // erase 2nd
@@ -381,7 +380,9 @@ TEST_F( TestStorageFile, GarbageCollector )
         auto b = t.erase_chain( uid_1 );
         EXPECT_EQ( SmallChunkStorage::RetCode::Ok, t.status() );
 
-        t.commit(); // now 2nd chain marked as free space
+        // now 2nd chain marked as free space
+        EXPECT_EQ( SmallChunkStorage::RetCode::Ok, t.commit() );
+
     }
 
     // add one more chain
@@ -402,7 +403,7 @@ TEST_F( TestStorageFile, GarbageCollector )
         EXPECT_LE( uid_0, uid_3 );
         EXPECT_LE( uid_3, uid_2 );
 
-        t.commit();
+        EXPECT_EQ( SmallChunkStorage::RetCode::Ok, t.commit() );
     }
 
     {

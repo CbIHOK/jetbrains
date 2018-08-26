@@ -218,5 +218,4 @@ namespace jb
     };
 }
 
-
 #endif

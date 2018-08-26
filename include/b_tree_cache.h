@@ -8,7 +8,7 @@
 #include <boost/thread/shared_mutex.hpp>
 #include <boost/thread/locks.hpp>
 #include <boost/thread/lock_types.hpp>
-
+#include <boost/archive/binary_iarchive.hpp>
 
 namespace jb
 {
@@ -28,12 +28,14 @@ namespace jb
         using BTreeP = typename BTree::BTreeP;
         using NodeUid = typename BTree::NodeUid;
         using StorageFile = typename PhysicalVolumeImpl::StorageFile;
+        using shared_lock = boost::upgrade_lock< boost::upgrade_mutex >;
+        using exclusive_lock = boost::upgrade_to_unique_lock< boost::upgrade_mutex >;
 
         RetCode status_ = RetCode::Ok;
         StorageFile * file_;
 
         using MruOrder = std::list< NodeUid >;
-        using MruItems = std::unordered_map< NodeUid, std::pair< BTreeP, typename MruOrder::const_iterator > >;
+        using MruItems = std::unordered_map< NodeUid, std::pair< BTreeP, typename MruOrder::iterator > >;
 
         boost::upgrade_mutex mru_mutex_;
         MruOrder mru_order_;
@@ -90,19 +92,20 @@ namespace jb
         @retval BTreeP - if operation succeeds holds shared pointer to requested item
         @throw nothing
         */
+        [[nodiscard]]
         std::tuple< RetCode, BTreeP > get_node( NodeUid uid ) noexcept
         {
-            using namespace boost;
+            using namespace std;
 
             try
             {
                 // shared lock over the cache
-                upgrade_lock< upgrade_mutex > shared_lock{ mru_mutex_ };
+                shared_lock s{ mru_mutex_ };
 
-                if ( auto item_it = mru_items_.find( uid ); item_it != mru_items_.end( ) )
+                if ( auto item_it = mru_items_.find( uid ); item_it != end( mru_items_ ) )
                 {
                     // get exclusive lock over the cache
-                    upgrade_to_unique_lock< upgrade_mutex > exclusive_lock{ shared_lock };
+                    exclusive_lock e{ s };
 
                     // mark the item as MRU
                     mru_order_.splice( end( mru_order_ ), mru_order_, item_it->second.second );
@@ -111,52 +114,50 @@ namespace jb
                 }
                 else
                 {
+                    assert( file_ );
+
+                    auto p = make_shared< BTree >();
+                    auto isbuf = file_->get_chain_reader( uid );
+                    istream is( &isbuf );
+                    boost::archive::binary_iarchive ar( is );
+                    ar & *p;
+
                     // through the order list
                     for ( auto order_it = begin( mru_order_ ); order_it != end( mru_order_ ); ++order_it )
                     {
                         // is free?
                         if ( InvalidNodeUid == *order_it )
                         {
-                            break;
+                            // get exclusive lock over the cache
+                            exclusive_lock e{ s };
+
+                            // insert new item and mark is at MRU
+                            mru_items_.emplace( uid, move( pair{ p, order_it } ) );
+                            mru_order_.splice( end( mru_order_ ), mru_order_, order_it );
+                            *order_it = uid;
+
+                            return { RetCode::Ok, p };
                         }
 
                         // if item is not used anymore
                         if ( auto item_it = mru_items_.find( *order_it ); item_it->second.first.use_count( ) == 1 )
                         {
                             // get exclusive lock over the cache
-                            upgrade_to_unique_lock< upgrade_mutex > exclusive_lock{ shared_lock };
+                            exclusive_lock e{ s };
 
-                            // drop the item from cache
+                            // drop useless item from cache
                             mru_items_.erase( item_it );
-                            *order_it = InvalidNodeUid;
 
-                            // move order record to the end of the list
+                            // insert new item and mark as MRU
+                            mru_items_.emplace( uid, move( pair{ p, order_it } ) );
                             mru_order_.splice( end( mru_order_ ), mru_order_, order_it );
+                            *order_it = uid;
 
-                            break;
+                            return { RetCode::Ok, p };
                         }
                     }
 
-                    // if cache is still full that means that there are too many concurrent operations on the physical volume
-                    if ( mru_order_.back( ) != InvalidNodeUid )
-                    {
-                        return { RetCode::TooManyConcurrentOps, BTreeP{} };
-                    }
-
-                    if ( uid == InvalidNodeUid )
-                    {
-
-                    }
-                    {
-                        // get exclusive lock over the cache
-                        upgrade_to_unique_lock< upgrade_mutex > exclusive_lock{ shared_lock };
-
-                        auto root = std::make_shared< BTree >();
-                        mru_order_.front() = RootNodeUid;
-                        mru_items_.emplace( RootNodeUid, std::move( std::pair{ root, mru_order_.begin() } ) );
-
-                        return { RetCode::Ok, root };
-                    }
+                    return { RetCode::TooManyConcurrentOps, BTreeP{} };
                 }
             }
             catch ( ... )
@@ -167,9 +168,72 @@ namespace jb
             return { RetCode::UnknownError, BTreeP{} };
         }
 
+
+        /** Update item uid and mark the item as MRU
+
+        @param [in] old_uid - obsolete uid
+        @param [in] new_uid - actual uid
+        @retval RetCode - operation status
+        @throw nothing
+        */
+        [[nodiscard]]
         auto update_uid( NodeUid old_uid, NodeUid new_uid ) noexcept
         {
-            using namespace boost;
+            using namespace std;
+
+            try
+            {
+                shared_lock s{ mru_mutex_ };
+
+                if ( auto item_it = mru_items_.find( old_uid ); item_it != end( mru_items_ ) )
+                {
+                    exclusive_lock e{ s };
+
+                    // update uid and mark as MRU
+                    auto item = mru_items_.extract( item_it );
+                    auto order_it = item.mapped().second;
+                    item.key() = new_uid;
+                    *order_it = new_uid;
+                    mru_items_.insert( move( item ) );
+                    mru_order_.splice( end( mru_order_ ), mru_order_, order_it );
+
+                    return RetCode::Ok;
+                }
+            }
+            catch ( ... )
+            {
+            }
+
+            return RetCode::UnknownError;
+        }
+
+
+        auto drop( NodeUid uid )
+        {
+            using namespace std;
+
+            try
+            {
+                shared_lock s{ mru_mutex_ };
+
+                if ( auto item_it = mru_items_.find( uid ); item_it != end( mru_items_ ) )
+                {
+                    exclusive_lock{ s };
+
+                    // remove item from cache and free order slot
+                    auto order_it = item_it->second.second;
+                    mru_items_.erase( item_it );
+                    *order_it = InvalidNodeUid;
+                    mru_order_.splice( begin( mru_order_ ), mru_order_, order_it );
+                }
+
+                return RetCode::Ok;
+            }
+            catch ( ... )
+            {
+            }
+
+            return RetCode::UnknownError;
         }
     };
 }
