@@ -263,7 +263,7 @@ TEST_F( TestBloom, Store_Restore )
         for ( auto & generator : generators ) { generator.second.wait(); }
 
         // through all the keys - berak them in digest and put into the filter
-        for_each( begin( present_ ), end( present_ ), [&] ( const auto & key_str )
+        for_each( execution::par, begin( present_ ), end( present_ ), [&] ( const auto & key_str )
         {
             Key key( key_str );
 
@@ -299,7 +299,7 @@ TEST_F( TestBloom, Store_Restore )
         EXPECT_EQ( RetCode::Ok, bloom->status() );
 
         atomic< size_t > positive_counter( 0 );
-        for_each( begin( present_ ), end( present_ ), [&] ( const auto & str ) {
+        for_each( execution::par, begin( present_ ), end( present_ ), [&] ( const auto & str ) {
             auto[ k1, k2 ] = split_to_keys( str );
             static_vector< Digest, MaxTreeDepth > digests;
             if ( auto[ ret, may_present ] = bloom->test( k1, k2, digests ); may_present )

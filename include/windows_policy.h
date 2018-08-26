@@ -198,6 +198,7 @@ namespace jb
         @param [in] handle - file to be read
         @param [out] size - desired size
         @retval bool - true if the operation succeeds
+        @retval uint64_t - new file size
         @throw nothing
         */
         static std::tuple< bool, uint64_t > resize_file( HandleT handle, uint64_t size ) noexcept

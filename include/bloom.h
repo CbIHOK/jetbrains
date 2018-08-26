@@ -72,7 +72,7 @@ namespace jb
 
         /** Declaration of single digest that is actually just hash value of a key segment
         */
-        using Digest = size_t;
+        using Digest = uint32_t;
 
 
         /** Generate digest for a key considering level and stem
@@ -85,7 +85,7 @@ namespace jb
         {
             assert( level < BloomFnCount );
             assert( key.is_leaf() );
-            return variadic_hash( level, key );
+            return variadic_hash( level, key ) & std::numeric_limits< uint32_t >::max();
         }
 
 

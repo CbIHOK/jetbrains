@@ -4,7 +4,7 @@ set(CMAKE_CXX_FLAGS_RELEASE "${CMAKE_CXX_FLAGS_RELEASE} /MT")
 set(CMAKE_CXX_FLAGS_DEBUG "${CMAKE_CXX_FLAGS_DEBUG} /MTd")
 set(CMAKE_CXX_FLAGS_DEBUG "${CMAKE_CXX_FLAGS_DEBUG} /MTd")
 
-add_executable( tests 
+add_executable( regression 
     main.cpp
     key.cpp
     node_locker.cpp
@@ -15,6 +15,8 @@ add_executable( tests
     b_tree.cpp
 )
 
-target_link_libraries( tests gtest gtest_main )
+target_link_libraries( regression gtest gtest_main )
 
-add_test( tests tests )
+install( TARGETS regression DESTINATION . )
+
+add_test( NAME regression COMMAND regression )

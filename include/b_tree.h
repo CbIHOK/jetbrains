@@ -51,6 +51,10 @@ namespace jb
 
     private:
 
+
+        //
+        // represent b-tree element
+        //
         struct Element
         {
             friend class boost::serialization::access;
@@ -60,6 +64,10 @@ namespace jb
             uint64_t good_before_;
             NodeUid children_;
 
+
+            //
+            // serializes b-tree element
+            //
             template < class Archive >
             void save( Archive & ar, const unsigned int version ) const
             {
@@ -75,6 +83,10 @@ namespace jb
                 }, value_ );
             }
 
+
+            //
+            // deserializes element's value bsed on index
+            //
             template < size_t I, class Archive >
             Value try_deserialize_variant( size_t index, Archive & ar, const unsigned int version )
             {
@@ -97,6 +109,10 @@ namespace jb
                 }
             }
 
+
+            //
+            // deserializes b-tree element
+            //
             template < class Archive >
             void load( Archive & ar, const unsigned int version )
             {
@@ -110,23 +126,24 @@ namespace jb
             }
             BOOST_SERIALIZATION_SPLIT_MEMBER()
 
+
+            //
+            // variant comparer
+            // 
             struct var_cmp
             {
                 bool value = true;
 
                 template < typename U, typename V >
-                void operator () ( const U &, const V & )
-                {
-                    value = false;
-                }
+                void operator () ( const U &, const V & ) { value = false; }
 
                 template < typename T >
-                void operator () ( const T & l, const T & r )
-                {
-                    value = ( l == r );
-                }
+                void operator () ( const T & l, const T & r ) { value = ( l == r ); }
             };
 
+            //
+            // compare b-tree element, need only for UT
+            //
             friend bool operator == ( const Element & l, const Element & r )
             {
                 if ( l.digest_ != r.digest_ || l.good_before_ != r.good_before_ || l.children_ != r.children_ ) return false;
@@ -135,14 +152,23 @@ namespace jb
                 return cmp.value;
             }
 
+
+            //
+            // provides LESSER relation for b-tree elements
+            //
             friend bool operator < ( const Element & l, const Element & r ) noexcept
             {
                 return l.digest_ < r.digest_;
             }
         };
 
+
+        //
+        // more aliases
+        //
         using ElementCollection = boost::container::static_vector< Element, BTreeMax + 1 >;
         using LinkCollection = boost::container::static_vector< NodeUid, BTreeMax + 2 >;
+
 
         //
         // data members
@@ -153,6 +179,7 @@ namespace jb
         mutable boost::upgrade_mutex guard_;
         ElementCollection elements_;
         LinkCollection links_;
+
 
         //
         // serialization
@@ -186,6 +213,7 @@ namespace jb
                     );
             }
         }
+
 
         //
         // deserialization
@@ -228,6 +256,11 @@ namespace jb
         BOOST_SERIALIZATION_SPLIT_MEMBER()
 
 
+        /* Stores b-tree node to file
+
+        @param [in] t - transaction
+        @throw may throw std::exception for different reasons
+        */
         auto save( typename StorageFile::Transaction & t ) const
         {
             if ( !file_ || !cache_ ) throw std::logic_error( "Attempt to save dummy b-tree" );
@@ -289,10 +322,29 @@ namespace jb
             }
         }
 
+
+        /** Provides b-tree node uid
+
+        @retval NodeUid - uid
+        @throw nothing
+        */
         auto uid() const noexcept { return uid_; }
 
+
+        /** Provides access to b-tree node guard
+
+        @retval boost::upgrade_mutex - guard
+        @throw nothing
+        */
         auto & guard() const noexcept { return guard_; }
 
+
+        /** Provides value of an element at given position
+
+        @param [in] ndx - position
+        @param Value - value of the element
+        @throw nothing
+        */
         const auto & value( size_t ndx ) const noexcept
         {
             assert( ndx < elements_.size() );
