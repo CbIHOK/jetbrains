@@ -208,7 +208,7 @@ namespace jb
         }
 
 
-        auto drop( NodeUid uid )
+        auto drop( NodeUid uid ) noexcept
         {
             using namespace std;
 

@@ -83,7 +83,6 @@ namespace jb
         Handle writer_ = InvalidHandle;
 
         // bloom writer
-        mutable std::mutex bloom_mutex_;
         Handle bloom_ = InvalidHandle;
 
         // readers
@@ -684,6 +683,7 @@ namespace jb
         @param [in] byte - value to be written
         @retval - operation status
         @thrown nothing
+        @note the function is not thread safe, but it's guaranied by the caller
         */
         [[nodiscard]]
         RetCode add_bloom_digest( size_t byte_no, uint8_t byte ) const noexcept
@@ -691,8 +691,6 @@ namespace jb
             using namespace std;
 
             assert( byte_no < BloomSize );
-
-            scoped_lock l( bloom_mutex_ );
 
             RetCode status = RetCode::Ok;
             auto ce = [&] ( const auto & f ) noexcept { if ( RetCode::Ok == status ) status = f(); };
