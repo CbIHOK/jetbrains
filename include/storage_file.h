@@ -549,7 +549,6 @@ namespace jb
 
             // reserve and invalidate reader handles
             readers_.resize( ReaderNumber, InvalidHandle );
-            reader_stack_ = move( std::stack< Handle, boost::container::static_vector< Handle, ReaderNumber > >{ readers_ } );
 
             //
             // Unfortunately MS does not care about standards as usual and HANDLED exceptions easily leaves

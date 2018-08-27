@@ -41,23 +41,33 @@ namespace jb
 
             try
             {
-                auto exists = filesystem::exists( path );
-                auto trying_create = ! exists && create;
+                bool creating = false;
+                string p = path.string();
 
-                if ( exists || trying_create )
+                HandleT handle = ::CreateFileA(
+                    p.c_str(),
+                    GENERIC_READ | GENERIC_WRITE,
+                    FILE_SHARE_READ | FILE_SHARE_WRITE,
+                    NULL,
+                    OPEN_EXISTING,
+                    FILE_ATTRIBUTE_ARCHIVE | FILE_FLAG_RANDOM_ACCESS | FILE_FLAG_WRITE_THROUGH,
+                    NULL );
+
+                if ( InvalidHandle == handle && create )
                 {
-                    HandleT handle = ::CreateFileA(
-                        path.string().c_str(),
+                    creating = true;
+
+                    handle = ::CreateFileA(
+                        p.c_str(),
                         GENERIC_READ | GENERIC_WRITE,
                         FILE_SHARE_READ | FILE_SHARE_WRITE,
                         NULL,
                         OPEN_ALWAYS,
                         FILE_ATTRIBUTE_ARCHIVE | FILE_FLAG_RANDOM_ACCESS | FILE_FLAG_WRITE_THROUGH,
                         NULL );
-
-                    auto le = ::GetLastError();
-                    return { handle != InvalidHandle, ! le, handle };
                 }
+
+                return { handle != InvalidHandle, creating, handle };
             }
             catch ( ... )
             {
