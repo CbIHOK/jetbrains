@@ -8,7 +8,7 @@
 #include <list>
 #include <functional>
 #include <exception>
-
+#include <execution>
 
 namespace jb
 {
@@ -138,7 +138,7 @@ namespace jb
         */
         auto unlock_all( )
         {
-            std::for_each( rbegin( unlocks_ ), rend( unlocks_ ), [=] ( auto & unlock ) {
+            std::for_each( execution::seq, rbegin( unlocks_ ), rend( unlocks_ ), [=] ( auto & unlock ) {
                 assert( unlock );
                 unlock( );
             } );

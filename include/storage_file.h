@@ -523,7 +523,7 @@ namespace jb
 
             // release readers
             assert( readers_.size() == ReaderNumber );
-            for_each( execution::par, begin( readers_ ), end( readers_ ), [] ( auto h ) {
+            for_each( begin( readers_ ), end( readers_ ), [] ( auto h ) {
                 if ( h != InvalidHandle ) OsPolicy::close_file( h );
             } );
 
@@ -663,7 +663,13 @@ namespace jb
             }
             else
             {
-                std::fill( std::execution::par, bloom_buffer, bloom_buffer + BloomSize, 0 );
+                assert( bloom_buffer % sizeof( uint64_t ) == 0 && BloomSize % sizeof( uint64_t ) == 0 );
+
+                // STOSB -> STOSQ
+                const auto start = reinterpret_cast< uint64_t* >( bloom_buffer );
+                const auto end = start + BloomSize / sizeof( uint64_t );
+                std::fill( start, end, 0 );
+
                 return RetCode::Ok;
             }
         }

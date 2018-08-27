@@ -29,7 +29,7 @@ namespace jb
 
         RetCode status_ = RetCode::Ok;
         StorageFile * file_ = nullptr;
-        std::array< uint8_t, BloomSize > filter_;
+        std::array< uint8_t, BloomSize > alignas( sizeof( uint64_t ) ) filter_;
         mutable std::atomic_flag lock_ = ATOMIC_FLAG_INIT;
 
 
@@ -53,7 +53,10 @@ namespace jb
             }
             else
             {
-                std::fill( std::execution::par, filter_.data(), filter_.data() + filter_.size(), 0 );
+                // STOS m8 -> STOS m64
+                const auto start = reinterpret_cast< uint64_t* >( filter_.data() );
+                const auto end = start + filter_.size() / sizeof( uint64_t );
+                std::fill( start, end, 0 );
             }
         }
         catch ( ... )

@@ -210,7 +210,7 @@ namespace jb
             };
 
             // sort mount points by physical volume priority
-            sort( execution::par, begin( mount_points ), end( mount_points ), lesser_mp );
+            sort( begin( mount_points ), end( mount_points ), lesser_mp );
 
             return mount_points;
         }

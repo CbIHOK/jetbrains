@@ -70,8 +70,6 @@ namespace jb
         enum class RetCode
         {
             Ok,                     ///< Operation succedded
-            UnknownError,           ///< Something wrong happened
-            InsufficientMemory,     ///< Operation failed due to low memory
             InvalidHandle,          ///< Given handle does not address valid object
             LimitReached,           ///< All handles of a type are alreay exhausted
             VolumeAlreadyMounted,   ///< Attempt to mount the same physical volume at the same logical path
@@ -81,16 +79,17 @@ namespace jb
             NotFound,               ///< Such path does not have a physical representation
             InUse,                  ///< The handler is currently used by concurrent operation and cannot be closed
             HasDependentMounts,     ///< There are underlaying mount
-            TooManyConcurrentOps,   ///< The limit of concurent operations over physical volume is reached
             MaxTreeDepthExceeded,   ///< Cannot search such deep inside
             AlreadyExpired,         ///< Given timestamp already in the past
             AlreadyExists,          ///< Key already exists
+            IncompatibleFile,       ///< File is incompatible
             AlreadyOpened,          ///< Physical file is already opened
             UnableToOpen,           ///< Cannot open specified file
-            UnableToCreate,         ///< Unable to create file of a name
+            TooManyConcurrentOps,   ///< The limit of concurent operations over physical volume is reached
             IoError,                ///< General I/O error
-            IncompatibleFile,       ///< File is incompatible
-            ///
+            InsufficientMemory,     ///< Operation failed due to low memory
+            UnknownError,           ///< Something wrong happened
+                                    ///
             NotYetImplemented
         };
 
@@ -342,7 +341,8 @@ namespace jb
                 {
                     auto volume_priority = volume_it->second;
 
-                    for_each( execution::par, begin( collection ), end( collection ), [=] ( auto & pv ) {
+                    // explicitly prevent parallelism cuz it will cause a lot of cache misses
+                    for_each( execution::seq, begin( collection ), end( collection ), [=] ( auto & pv ) {
                         if ( pv.second == volume_priority )
                         {
                             pv.second = 0;
@@ -382,7 +382,7 @@ namespace jb
                 {
                     auto volume_priority = volume_it->second;
 
-                    for_each( execution::par, begin( collection ), end( collection ), [=] ( auto & pv ) {
+                    for_each( execution::seq, begin( collection ), end( collection ), [=] ( auto & pv ) {
                         if ( pv.second == volume_priority )
                         {
                             pv.second = static_cast< int >( collection.size() ) - 1;
@@ -431,7 +431,7 @@ namespace jb
                             tuple{ volume_priority + 1, before_priority, -1, before_priority - 1, before_priority } :
                             tuple{ before_priority + 1, volume_priority,  1, before_priority, before_priority + 1 };
 
-                        for_each( execution::par, begin( collection ), end( collection ), [=]( auto & pv ){
+                        for_each( execution::seq, begin( collection ), end( collection ), [=] ( auto & pv ) {
                             if ( pv.second == volume_priority )
                             {
                                 pv.second = set_volume;
@@ -489,7 +489,7 @@ namespace jb
                             tuple{ volume_priority + 1, after_priority,  -1, after_priority,     after_priority - 1  } :
                             tuple{ after_priority + 1,  volume_priority,  1, after_priority + 1, after_priority      };
 
-                        for_each( execution::par, begin( collection ), end( collection ), [=] ( auto & pv ) {
+                        for_each( execution::seq, begin( collection ), end( collection ), [=] ( auto & pv ) {
                             if ( pv.second == volume_priority )
                             {
                                 pv.second = set_volume;
