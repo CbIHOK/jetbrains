@@ -244,7 +244,7 @@ TEST_F( TestBloom, Store_Restore )
     constexpr size_t PresentNumber = 1'000;
 
     {
-        StorageFile file( "TestBloom_Store_Restore.jb", true );
+        StorageFile file( "TestBloom_Store_Restore.jb" );
         ASSERT_EQ( RetCode::Ok, file.status() );
 
         auto bloom = make_shared< Bloom >( &file );
@@ -307,7 +307,7 @@ TEST_F( TestBloom, Store_Restore )
     }
     // reopen storage and retrieve filter data
     {
-        StorageFile file( "TestBloom_Store_Restore.jb", true );
+        StorageFile file( "TestBloom_Store_Restore.jb" );
         ASSERT_EQ( RetCode::Ok, file.status() );
 
         auto bloom = make_shared< Bloom >( &file );

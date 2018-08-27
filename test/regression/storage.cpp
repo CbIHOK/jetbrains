@@ -72,7 +72,7 @@ TEST_F( TestStorage, PhysicalVolume_Dummy )
 
 TEST_F( TestStorage, PhysicalVolume_Base )
 {
-    auto[ ret, v ] = Storage::OpenPhysicalVolume( "foo", true );
+    auto[ ret, v ] = Storage::OpenPhysicalVolume( "foo" );
     EXPECT_EQ( RetCode::Ok, ret );
     EXPECT_TRUE( v );
 

@@ -73,7 +73,7 @@ TEST_F( TestBTree, Serialization )
     LinkCollection etalon_links{ 0, 2, 3, 4, 5 };
 
     {
-        StorageFile f( "foo.jb", true );
+        StorageFile f( "foo.jb" );
         ASSERT_EQ( RetCode::Ok, f.status() );
 
         BTreeCache c( &f );
@@ -92,7 +92,7 @@ TEST_F( TestBTree, Serialization )
     }
 
     {
-        StorageFile f( "foo.jb", true );
+        StorageFile f( "foo.jb" );
         ASSERT_EQ( RetCode::Ok, f.status() );
 
         BTreeCache c( &f );
@@ -110,7 +110,7 @@ TEST_F( TestBTree, Insert_Find )
     using namespace std;
 
     // open starage
-    StorageFile f( "foo.jb", true );
+    StorageFile f( "foo.jb" );
     ASSERT_EQ( RetCode::Ok, f.status() );
 
     // prepare cache
@@ -183,7 +183,7 @@ TEST_F( TestBTree, Insert_Ovewrite )
     using namespace std;
 
     // open starage
-    StorageFile f( "foo.jb", true );
+    StorageFile f( "foo.jb" );
     ASSERT_EQ( RetCode::Ok, f.status() );
 
     // prepare cache

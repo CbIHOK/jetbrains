@@ -35,13 +35,12 @@ namespace jb
         @retval handle of opened file
         @throw nothing
         */
-        static std::tuple< bool, bool, HandleT > open_file( const std::filesystem::path & path, bool create ) noexcept
+        static std::tuple< bool, bool, HandleT > open_file( const std::filesystem::path & path ) noexcept
         {
             using namespace std;
 
             try
             {
-                bool creating = false;
                 string p = path.string();
 
                 HandleT handle = ::CreateFileA(
@@ -49,23 +48,12 @@ namespace jb
                     GENERIC_READ | GENERIC_WRITE,
                     FILE_SHARE_READ | FILE_SHARE_WRITE,
                     NULL,
-                    OPEN_EXISTING,
+                    OPEN_ALWAYS,
                     FILE_ATTRIBUTE_ARCHIVE | FILE_FLAG_RANDOM_ACCESS | FILE_FLAG_WRITE_THROUGH,
                     NULL );
 
-                if ( InvalidHandle == handle && create )
-                {
-                    creating = true;
-
-                    handle = ::CreateFileA(
-                        p.c_str(),
-                        GENERIC_READ | GENERIC_WRITE,
-                        FILE_SHARE_READ | FILE_SHARE_WRITE,
-                        NULL,
-                        OPEN_ALWAYS,
-                        FILE_ATTRIBUTE_ARCHIVE | FILE_FLAG_RANDOM_ACCESS | FILE_FLAG_WRITE_THROUGH,
-                        NULL );
-                }
+                auto err = ::GetLastError();
+                bool creating = ( err != ERROR_ALREADY_EXISTS );
 
                 return { handle != InvalidHandle, creating, handle };
             }

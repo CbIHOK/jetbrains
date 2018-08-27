@@ -615,7 +615,7 @@ namespace jb
         @todo implement
         */
         [[nodiscard]]
-        static auto OpenPhysicalVolume( const std::filesystem::path & path, bool create = false ) noexcept
+        static auto OpenPhysicalVolume( const std::filesystem::path & path ) noexcept
         {
             using namespace std;
             try
@@ -624,7 +624,7 @@ namespace jb
                 static mutex mtx;
                 scoped_lock lock( mtx );
 
-                if ( auto[ ret, volume ] = open< PhysicalVolume >( filesystem::absolute( path ), create );  RetCode::Ok == ret )
+                if ( auto[ ret, volume ] = open< PhysicalVolume >( filesystem::absolute( path ) );  RetCode::Ok == ret )
                 {
                     assert( volume );
 

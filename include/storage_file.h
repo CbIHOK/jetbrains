@@ -542,13 +542,11 @@ namespace jb
         @param [in] create - create new if given file foes not exist
         @throw nothing
         */
-        explicit StorageFile( const std::filesystem::path & path, bool create ) try
+        explicit StorageFile( const std::filesystem::path & path ) try
             : file_lock_name_{ "jb_lock_" + std::to_string( std::filesystem::hash_value( path ) ) }
+            , readers_( ReaderNumber, InvalidHandle )
         {
             using namespace std;
-
-            // reserve and invalidate reader handles
-            readers_.resize( ReaderNumber, InvalidHandle );
 
             //
             // Unfortunately MS does not care about standards as usual and HANDLED exceptions easily leaves
@@ -569,17 +567,12 @@ namespace jb
 
             // open writter
             ce( [&] {
-                auto[ opened, tried_create, handle ] = OsPolicy::open_file( path, create );
+                auto[ opened, tried_create, handle ] = OsPolicy::open_file( path );
 
-                if ( !opened )
-                {
-                    return tried_create ? RetCode::UnableToCreate : RetCode::UnableToOpen;
-                }
-
-                newly_created_ = opened && tried_create;
+                newly_created_ = tried_create;
                 writer_ = handle;
 
-                return RetCode::Ok;
+                return opened ? RetCode::Ok : RetCode::UnableToOpen;
             } );
 
             // deploy new file
@@ -607,7 +600,7 @@ namespace jb
 
             // open Bloom writer
             ce( [&] {
-                auto[ opened, tried_create, handle ] = OsPolicy::open_file( path, false );
+                auto[ opened, tried_create, handle ] = OsPolicy::open_file( path );
                 return ( bloom_ = handle ) != InvalidHandle ? RetCode::Ok : RetCode::UnableToOpen;
             } );
 
@@ -615,7 +608,7 @@ namespace jb
             for ( auto & reader : readers_ )
             {
                 ce( [&] {
-                    auto[ opened, tried_create, handle ] = OsPolicy::open_file( path, false );
+                    auto[ opened, tried_create, handle ] = OsPolicy::open_file( path );
                     return ( reader = handle ) != InvalidHandle ? RetCode::Ok : RetCode::UnableToOpen;
                 } );
             }

@@ -584,8 +584,19 @@ namespace jb
         }
 
 
-        /* Checks if the node is leaf
+        /* Checks if b-tree node is a leaf
+
+        @retval bool - true if the node is a leaf
+        @throw nothing (or, theoretically, die)
         */
+        bool is_leaf() const noexcept
+        {
+            using namespace std;
+
+            // do not see a reason to parallel here, cuz the cost of parallelization is much more than
+            // the cost of operation
+            return find_if_not( begin( links_ ), end( links ), InvalidNodeUid ) == end( links );
+        }
 
 
     public:
@@ -811,6 +822,10 @@ namespace jb
                 // open transaction
                 if ( auto transaction = file_->open_transaction(); RetCode::Ok == transaction.status() )
                 {
+                    if ( is_leaf )
+                    {
+
+                    }
                 }
                 else
                 {
