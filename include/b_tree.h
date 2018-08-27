@@ -584,6 +584,10 @@ namespace jb
         }
 
 
+        /* Checks if the node is leaf
+        */
+
+
     public:
 
         /** Default constructor, creates dummy b-tree node
@@ -743,6 +747,7 @@ namespace jb
         /** Inserts new subkey with given parameters to the key at specified position
 
         @param [in] pos - position of key
+        @param [in] bpath - path to the insert position in b-tree
         @param [in] subkey - subkey digest
         @param [in] value - value to be assigned to new subkey
         @param [in] good_before - expiration mark for the subkey
@@ -771,6 +776,41 @@ namespace jb
                     {
                         return rc;
                     }
+                }
+                else
+                {
+                    return transaction.status();
+                }
+            }
+            catch ( ... )
+            {
+            }
+
+            return RetCode::UnknownError;
+        }
+
+
+        /** Erases specified key from b-tree
+
+        @param [in] pos - position of key
+        @param [in] subkey - subkey digest
+        @param [in] value - value to be assigned to new subkey
+        @param [in] good_before - expiration mark for the subkey
+        @param [in] overwrite - overwrite existing subkey
+        @return RetCode - operation status
+        @throw nothing
+        */
+        RetCode erase( Pos pos, BTreePath bpath ) noexcept
+        {
+            using namespace std;
+
+            assert( pos <= elements_.size() );
+
+            try
+            {
+                // open transaction
+                if ( auto transaction = file_->open_transaction(); RetCode::Ok == transaction.status() )
+                {
                 }
                 else
                 {
