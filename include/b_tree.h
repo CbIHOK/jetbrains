@@ -58,7 +58,12 @@ namespace jb
         using Pos = size_t;
         static constexpr auto Npos = Pos{ std::numeric_limits< size_t >::max() };
 
-        using BTreePath = static_vector< std::pair< NodeUid, Pos >, BTreeMaxDepth >;
+        //using BTreePath = static_vector< std::pair< NodeUid, Pos >, BTreeMaxDepth >;
+
+        struct BTreePath : public std::vector< std::pair< NodeUid, Pos > >
+        {
+            BTreePath() { reserve(100); }
+        };
 
 
     private:
@@ -178,9 +183,11 @@ namespace jb
         //
         // more aliases
         //
-        using ElementCollection = static_vector< Element, BTreeMax  >;
-        using LinkCollection = static_vector< NodeUid, BTreeMax + 1 >;
+        //using ElementCollection = static_vector< Element, BTreeMax  >;
+        //using LinkCollection = static_vector< NodeUid, BTreeMax + 1 >;
 
+        using ElementCollection = std::vector< Element  >;
+        using LinkCollection = std::vector< NodeUid >;
 
         //
         // data members
@@ -468,7 +475,7 @@ namespace jb
 
                 split_node( l, r );
 
-                if ( auto[ rc1, rc2 ] = tuple{ l->save( t ), r->save( t ) }; rc1 != rc2 )
+                if ( auto[ rc1, rc2 ] = tuple{ l->save( t ), r->save( t ) }; RetCode::Ok != rc1 || RetCode::Ok != rc2 )
                 {
                     return max( rc1, rc2 );
                 }
@@ -516,7 +523,7 @@ namespace jb
 
                 split_node( l, r );
 
-                if ( auto[ rc1, rc2 ] = tuple{ l->save( t ), r->save( t ) }; rc1 != rc2 )
+                if ( auto[ rc1, rc2 ] = tuple{ l->save( t ), r->save( t ) }; RetCode::Ok != rc1 || RetCode::Ok != rc2 )
                 {
                     return max( rc1, rc2 );
                 }
@@ -525,7 +532,7 @@ namespace jb
                 BTreePath::value_type parent_path = move( bpath.back() ); bpath.pop_back();
 
                 // remove this node from storage and drop it from cache
-                if ( auto[ rc1, rc2 ] = tuple{ cache_->drop( uid_ ), t.erase_chain( uid_ ) }; rc1 != rc2 )
+                if ( auto[ rc1, rc2 ] = tuple{ cache_->drop( uid_ ), t.erase_chain( uid_ ) }; RetCode::Ok != rc1 || RetCode::Ok != rc2 )
                 {
                     return max( rc1, rc2 );
                 }
@@ -617,7 +624,7 @@ namespace jb
         /* Checks if b-tree node is a leaf
 
         @retval bool - true if the node is a leaf
-        @throw nothing (or, theoretically, die)
+        @throw nothing (if exception fired - dies immediately)
         */
         bool is_leaf() const noexcept
         {
@@ -625,31 +632,162 @@ namespace jb
 
             // do not see a reason to parallel here, cuz the cost of parallelization is much more than
             // the cost of operation
-            return find_if_not( begin( links_ ), end( links ), InvalidNodeUid ) == end( links );
+            return find_if_not( begin( links_ ), end( links_ ), [] ( auto l ) {
+                return InvalidNodeUid == l;
+            } ) == end( links_ );
         }
 
 
         /*
         */
-        auto erase_element( Transaction & t, Pos pos, BTreePath bpath ) noexcept
+        auto erase_element( Transaction & t, Pos pos, BTreePath bpath, size_t entry_level ) noexcept
         {
             using namespace std;
 
             try
             {
-                if ( is_leaf() )
-                {
-                    erase( begin( elements_ ) + pos );
-                    erase( begin( links_ ) + pos );
+                assert( elements_.size() );
+                assert( pos < elements_.size() );
+                assert( cache_ );
+                assert( t.status() == RetCode::Ok );
+                assert( entry_level <= bpath.size() );
 
-                    if ( elements_.size() < BTreMin && ! bpath.empty() )
+                if ( ! is_leaf() )
+                {
+                    assert( pos + 1 < links_.size() );
+                    assert( links_[ pos ] != InvalidNodeUid );
+                    assert( links_[ pos + 1 ] != InvalidNodeUid );
+
+                    // get left child node
+                    BTreeP left_child;
+
+                    if ( auto[ rc, node ] = cache_->get_node( links_[ pos ] ); RetCode::Ok != rc )
                     {
-                        process_underflow( t, bpath );
+                        return rc;
+                    }
+                    else
+                    {
+                        assert( node );
+                        left_child = node;
+                    }
+
+                    // if left child is rich enough
+                    if ( left_child->elements_.size() > BTreeMin )
+                    {
+                        // bring the first element
+                        elements_[ pos ] = move( left_child->elements_[ 0 ] );
+
+                        // recursively remove the first element from source
+                        bpath.emplace_back( uid_, pos );
+                        if ( auto rc = left_child->erase_element( t, 0, bpath, entry_level ); RetCode::Ok != rc )
+                        {
+                            return rc;
+                        }
+
+                        // update link to the left child
+                        links_[ pos ] = left_child->uid_;
+
+                        // save this one
+                        if ( entry_level < bpath.size() )
+                        {
+                            return save( t );
+                        }
+                        else
+                        {
+                            return overwrite( t );
+                        }
+                    }
+
+                    // get right child node
+                    BTreeP right_child;
+
+                    if ( auto[ rc, node ] = cache_->get_node( links_[ pos + 1 ] ); RetCode::Ok != rc )
+                    {
+                        return rc;
+                    }
+                    else
+                    {
+                        assert( node );
+                        right_child = node;
+                    }
+
+                    // if right child is rich enough
+                    if ( right_child->elements_.size() > BTreeMin )
+                    {
+                        // bring the first element
+                        elements_[ pos ] = move( right_child->elements_[ 0 ] );
+
+                        // recursively remove the first element from source
+                        bpath.emplace_back( uid_, pos + 1 );
+                        if ( auto rc = right_child->erase_element( t, 0, bpath, entry_level ); RetCode::Ok != rc )
+                        {
+                            return rc;
+                        }
+
+                        // update link to the left child
+                        links_[ pos + 1 ] = right_child->uid_;
+
+                        // save this one
+                        if ( entry_level < bpath.size() )
+                        {
+                            return save( t );
+                        }
+                        else
+                        {
+                            return overwrite( t );
+                        }
+                    }
+
+                    // left child absorbs this element and right child
+                    left_child->absorb( move( elements_[ pos ] ), *right_child );
+                    elements_.erase( begin( elements_ ) + pos );
+                    links_.erase( begin( links_ ) + pos );
+
+                    if ( auto rc = t.erase_chain( right_child->uid_ ); RetCode::Ok == rc )
+                    {
+                        cache_->drop( right_child->uid_ );
+                    }
+                    else
+                    {
+                        return rc;
+                    }
+
+                    bpath.emplace_back( uid_, pos );
+                    if ( auto rc = left_child->erase_element( t, BTreeMin, bpath, entry_level ); RetCode::Ok != rc )
+                    {
+                        return rc;
+                    }
+                    bpath.pop_back();
+
+                    if ( entry_level < bpath.size() )
+                    {
+                        return save( t );
+                    }
+                    else
+                    {
+                        return overwrite( t );
                     }
                 }
                 else
                 {
+                    elements_.erase( begin( elements_ ) + pos );
+                    links_.erase( begin( links_ ) + pos );
 
+                    if ( elements_.size() < BTreeMin )
+                    {
+                        return process_leaf_underflow( t, bpath, entry_level );
+                    }
+                    else
+                    {
+                        if ( entry_level < bpath.size() )
+                        {
+                            return save( t );
+                        }
+                        else
+                        {
+                            return overwrite( t );
+                        }
+                    }
                 }
             }
             catch ( ... )
@@ -657,31 +795,38 @@ namespace jb
             }
 
             return RetCode::UnknownError;
-
         }
 
-        auto process_underflow( Transaction & t, BTreePath & bpath ) noexcept
+
+        auto process_leaf_underflow( Transaction & t, BTreePath & bpath, size_t entry_level ) noexcept
         {
             using namespace std;
 
             try
             {
-                assert( elements_.size() < BTreMin && !bpath.empty() );
+                assert( cache_ );
+                assert( elements_.size() < BTreeMin );
+                assert( is_leaf() );
 
-                // this is root node
+                // if the leaf is the root
                 if ( bpath.empty() )
                 {
-                    erase( begin( elements_ ) + pos );
-
-                    // since this is leaf node -> all links are invalid -> we can use pop_back()
-                    links_.pop_back();
+                    // do nothing
+                    return overwrite( t );
                 }
 
                 // exract parent info from the path
-                auto parent_ref = move( bpath.back() ); bpath.pop_back();
+                auto parent_ref = move( bpath.back() );
 
                 // get parent node
-                if ( auto[ rc, parent ] = cache_->get_node( parent_ref.first ); RetCode::Ok != rc )
+                BTreeP parent;
+
+                if ( auto[ rc, node ] = cache_->get_node( parent_ref.first ); RetCode::Ok == rc )
+                {
+                    assert( node );
+                    parent = node;
+                }
+                else
                 {
                     return rc;
                 }
@@ -702,18 +847,19 @@ namespace jb
                 if ( left_sibling && left_sibling->elements_.size() > BTreeMin )
                 {
                     // prepend parent key to this node
-                    insert( begin( elements_ ), move( parent->element_[ parent_ref.second ] ) );
-                    links_.push_back( InvalidNodeUid  )
+                    elements_.insert( begin( elements_ ), move( parent->elements_[ parent_ref.second ] ) );
+                    links_.push_back( InvalidNodeUid );
 
                     // set parent key to the last of left sibling
-                    parent->element_[ parent_ref.second ] = move( left_sibling->elements.back() );
+                    parent->elements_[ parent_ref.second ] = move( left_sibling->elements_.back() );
 
                     // consume the last of left sibling
-                    erase( rbegin( right_sibling->elements_ ) );
-                    right_sibling->links_.pop_back()
+                    auto e = left_sibling->elements_.back().digest_;
+                    left_sibling->elements_.pop_back();
+                    left_sibling->links_.pop_back();
 
                     // save this b-tree node
-                    if ( auto[ rc1, rc2 ] = tuple{ save( t ), left_sibling->save( t ) }; rc1 != rc2 )
+                    if ( auto[ rc1, rc2 ] = tuple{ save( t ), left_sibling->save( t ) }; RetCode::Ok != rc1 || RetCode::Ok != rc2 )
                     {
                         return max( rc1, rc2 );
                     }
@@ -723,13 +869,20 @@ namespace jb
                     parent->links_[ parent_ref.second - 1 ] = left_sibling->uid_;
 
                     // done: save parent 
-                    return parent->overwrite( t );
+                    if ( entry_level < bpath.size() - 1 )
+                    {
+                        return parent->save( t );
+                    }
+                    else
+                    {
+                        return parent->overwrite( t );
+                    }
                 }
 
                 // get right sibling node
                 BTreeP right_sibling;
 
-                if ( parent_ref.second + 1 < parent.elements_.size()  && InvalidNodeUid != parent->links_[ parent_ref.second + 1 ] )
+                if ( parent_ref.second + 1 < parent->elements_.size()  && InvalidNodeUid != parent->links_[ parent_ref.second + 1 ] )
                 {
                     if ( auto[ rc, node ] = cache_->get_node( parent->links_[ parent_ref.second + 1 ] ); RetCode::Ok == rc )
                     {
@@ -738,21 +891,22 @@ namespace jb
                 }
 
                 // if right sibling is rich
-                if ( right_sibling && right_sibling->element_.size() > BtreeMin )
+                if ( right_sibling && right_sibling->elements_.size() > BTreeMin )
                 {
                     // append parent key
-                    insert( end( elements_ ), move( parent->element_[ parent_ref.second + 1 ] ) );
+                    elements_.push_back( move( parent->elements_[ parent_ref.second + 1 ] ) );
                     links_.push_back( InvalidNodeUid );
 
                     // assign parent key with the first of right sibling
-                    parent->element_[ parent_ref.second + 1 ] = move( right_sibling->elements.front() );
+                    parent->elements_[ parent_ref.second + 1 ] = move( right_sibling->elements_.front() );
 
                     // consume the first element of right sibling
-                    erase( begin( right_sibling->elements_ ) );
-                    right_sibling->links_.pop_back();
+                    auto e = right_sibling->elements_[ 0 ].digest_;
+                    right_sibling->elements_.erase( begin( right_sibling->elements_ ) );
+                    right_sibling->links_.pop_back(); // all links = InvalidNodeUid
 
                     // save this b-tree node
-                    if ( auto[ rc1, rc2 ] = tuple{ save( t ), right_sibling->save( t ) }; rc1 != rc2 )
+                    if ( auto[ rc1, rc2 ] = tuple{ save( t ), right_sibling->save( t ) }; RetCode::Ok != rc1 || RetCode::Ok != rc2 )
                     {
                         return max( rc1, rc2 );
                     }
@@ -762,15 +916,78 @@ namespace jb
                     parent->links_[ parent_ref.second + 1 ] = right_sibling->uid_;
 
                     // done: save parent 
-                    return parent->overwrite( t );
+                    if ( entry_level < bpath.size() - 1)
+                    {
+                        return parent->save( t );
+                    }
+                    else
+                    {
+                        return parent->overwrite( t );
+                    }
                 }
 
                 // if all poor and left sibling exists
                 if ( left_sibling )
                 {
-                    insert( end( left_sibling->elements_ ), move( parent->elements_[ parent_ref.second ] ) );
-                    insert( end( left_sibling->elements_ ), make_move_iterator( begin( elements_ ) ), make_move_iterator( end( elements_ ) ) );
+                    // merge this b-tree node with the left sibling
+                    left_sibling->absorb( move( parent->elements_[ parent_ref.second - 1 ] ), *this );
+                    
+                    auto e = parent->elements_[ parent_ref.second - 1 ].digest_;
+                    parent->elements_.erase( begin( parent->elements_ ) + parent_ref.second - 1 );
+                    parent->links_.erase( begin( parent->links_ ) + parent_ref.second );
 
+                    if ( auto[ rc1, rc2 ] = tuple{ t.erase_chain( uid_ ), left_sibling->save( t ) }; RetCode::Ok != rc1 || RetCode::Ok != rc2 )
+                    {
+                        return max( rc1, rc2 );
+                    }
+
+                    if ( auto rc = cache_->drop( uid_ ); RetCode::Ok != rc )
+                    {
+                        return rc;
+                    }
+
+                    parent->links_[ parent_ref.second - 1 ] = left_sibling->uid_;
+
+                    if ( entry_level < bpath.size() - 1)
+                    {
+                        return parent->save( t );
+                    }
+                    else
+                    {
+                        return parent->overwrite( t );
+                    }
+                }
+
+                // if all poor and right sibling exists
+                if ( right_sibling )
+                {
+                    // merge this b-tree node with the left sibling
+                    absorb( move( parent->elements_[ parent_ref.second ] ), *right_sibling );
+
+                    auto e = parent->elements_[ parent_ref.second ].digest_;
+                    parent->elements_.erase( begin( parent->elements_ ) + parent_ref.second  );
+                    parent->links_.erase( begin( parent->links_ ) + parent_ref.second );
+
+                    if ( auto[ rc1, rc2 ] = tuple{ save( t ), t.erase_chain( right_sibling->uid_ ) }; RetCode::Ok != rc1 || RetCode::Ok != rc2 )
+                    {
+                        return max( rc1, rc2 );
+                    }
+
+                    if ( auto rc = cache_->drop( right_sibling->uid_ ); RetCode::Ok != rc )
+                    {
+                        return rc;
+                    }
+
+                    parent->links_[ parent_ref.second ] = uid_;
+
+                    if ( entry_level < bpath.size() - 1 )
+                    {
+                        return parent->save( t );
+                    }
+                    else
+                    {
+                        return parent->overwrite( t );
+                    }
                 }
             }
             catch ( ... )
@@ -778,6 +995,42 @@ namespace jb
             }
 
             return RetCode::UnknownError;
+        }
+
+
+        auto absorb( Element && mediane, BTree & right_sibling ) noexcept
+        {
+            using namespace std;
+
+            assert( elements_.size() + right_sibling.elements_.size() + 1 <= BTreeMax );
+
+            if ( mediane.digest_ == 920 )
+            {
+                assert( true );
+            }
+
+            if ( lower_bound( begin( elements_ ), end( elements_ ), Element{ 920 } ) != elements_.end() )
+            {
+                assert( true );
+            }
+
+            if ( lower_bound( begin( right_sibling.elements_ ), end( right_sibling.elements_ ), Element{ 920 } ) != right_sibling.elements_.end() )
+            {
+                assert( true );
+            }
+
+            elements_.insert( end( elements_ ), move( mediane ) );
+
+            elements_.insert( end( elements_ ), 
+                make_move_iterator( begin( right_sibling.elements_ ) ), 
+                make_move_iterator( end( right_sibling.elements_ ) ) 
+            );
+
+            links_.insert( 
+                end( links_ ), 
+                begin( right_sibling.links_ ), 
+                end( right_sibling.links_ ) 
+            );
         }
 
 
@@ -888,6 +1141,8 @@ namespace jb
 
                 assert( elements_.size() + 1 == links_.size() );
 
+                auto es = elements_.size();
+
                 auto lower = lower_bound( begin( elements_ ), end( elements_ ), e );
                 size_t d = static_cast< size_t >( std::distance( begin( elements_ ), lower ) );
 
@@ -983,7 +1238,7 @@ namespace jb
         }
 
 
-        /** Erases specified b-tree node
+        /** Erases specified b-tree node element
 
         @param [in] pos - position of element to be removed
         @param [in] bpath - path from b-tree root
@@ -994,18 +1249,29 @@ namespace jb
         {
             using namespace std;
 
-            assert( pos <= elements_.size() );
+            if ( pos >= elements_.size() )
+            {
+                assert( pos < elements_.size() );
+            }
+            assert( cache_ );
 
             try
             {
                 // open transaction
-                if ( auto t = file_->open_transaction(); RetCode::Ok == transaction.status() )
+                if ( auto t = file_->open_transaction(); RetCode::Ok == t.status() )
                 {
-                    return erase_element( t, pos, bpath );
+                    if ( auto rc = erase_element( t, pos, bpath, bpath.size() ); RetCode::Ok == rc )
+                    {
+                        return t.commit();
+                    }
+                    else
+                    {
+                        return rc;
+                    }
                 }
                 else
                 {
-                    return transaction.status();
+                    return t.status();
                 }
             }
             catch ( ... )

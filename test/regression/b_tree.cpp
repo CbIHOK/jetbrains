@@ -109,72 +109,83 @@ TEST_F( TestBTree, Insert_Find )
 {
     using namespace std;
 
-    // open starage
-    StorageFile f( "foo.jb" );
-    ASSERT_EQ( RetCode::Ok, f.status() );
-
-    // prepare cache
-    BTreeCache c( &f );
-    ASSERT_EQ( RetCode::Ok, f.status() );
-
-    // get root node
-    auto[ rc, root ] = c.get_node( RootNodeUid );
-    EXPECT_EQ( RetCode::Ok, rc );
-    EXPECT_TRUE( root );
-
-    // inserts 1000 elements into /root
-    for ( size_t i = 0; i < 1000; ++i )
     {
-        string key = "jb_" + to_string( i );
-        Digest digest = Bloom::generate_digest( 1, Key{ key } );
+        // open starage
+        StorageFile f( "foo.jb" );
+        ASSERT_EQ( RetCode::Ok, f.status() );
 
-        // find place to insertion
-        BTreePath bpath;
-        auto[ rc, found ] = root->find_digest( digest, bpath );
+        // prepare cache
+        BTreeCache c( &f );
+        ASSERT_EQ( RetCode::Ok, f.status() );
+
+        // get root node
+        auto[ rc, root ] = c.get_node( RootNodeUid );
         EXPECT_EQ( RetCode::Ok, rc );
-        EXPECT_FALSE( found );
+        EXPECT_TRUE( root );
 
+        // inserts 1000 elements into /root
+        for ( Digest digest = 0; digest < 1000; ++digest )
         {
-            auto target = bpath.back(); bpath.pop_back();
-
-            auto[ rc, node ] = c.get_node( target.first );
+            // find place to insertion
+            BTreePath bpath;
+            auto[ rc, found ] = root->find_digest( digest, bpath );
             EXPECT_EQ( RetCode::Ok, rc );
+            EXPECT_FALSE( found );
 
-            EXPECT_EQ( RetCode::Ok, node->insert( target.second, bpath, digest, Value{ key }, 0, false ) );
-        }
-    }
-
-    // collect b-tree leaf depths (balance check)
-    std::set< size_t > depth;
-
-    for ( size_t i = 0; i < 1000; ++i )
-    {
-        string key = "jb_" + to_string( i );
-        Digest digest = Bloom::generate_digest( 1, Key{ key } );
-
-        // find the node
-        BTreePath bpath;
-        auto[ rc, found ] = root->find_digest( digest, bpath );
-        EXPECT_EQ( RetCode::Ok, rc );
-        EXPECT_TRUE( found );
-
-        {
-            auto[ rc, node ] = c.get_node( bpath.back().first );
-            EXPECT_EQ( RetCode::Ok, rc );
-
-            // validate value
-            EXPECT_EQ( Value{ key }, node->value( bpath.back().second ) );
-
-            // if node is leaf - insert depth into unique collection
-            if ( is_leaf_element( *node, bpath.back().second ) )
             {
-                depth.insert( bpath.size() );
+                auto target = bpath.back(); bpath.pop_back();
+
+                auto[ rc, node ] = c.get_node( target.first );
+                EXPECT_EQ( RetCode::Ok, rc );
+
+                EXPECT_EQ( RetCode::Ok, node->insert( target.second, bpath, digest, Value{ to_string( digest ) }, 0, false ) );
             }
         }
     }
 
-    // check that tree is balanced
-    EXPECT_GE( 2, depth.size() );
+    {
+        // open starage
+        StorageFile f( "foo.jb" );
+        ASSERT_EQ( RetCode::Ok, f.status() );
+
+        // prepare cache
+        BTreeCache c( &f );
+        ASSERT_EQ( RetCode::Ok, f.status() );
+
+        // get root node
+        auto[ rc, root ] = c.get_node( RootNodeUid );
+        EXPECT_EQ( RetCode::Ok, rc );
+        EXPECT_TRUE( root );
+
+        // collect b-tree leaf depths (balance check)
+        std::set< size_t > depth;
+
+        for ( Digest digest = 0; digest < 1000; ++digest )
+        {
+            // find the node
+            BTreePath bpath;
+            auto[ rc, found ] = root->find_digest( digest, bpath );
+            EXPECT_EQ( RetCode::Ok, rc );
+            EXPECT_TRUE( found );
+
+            {
+                auto[ rc, node ] = c.get_node( bpath.back().first );
+                EXPECT_EQ( RetCode::Ok, rc );
+
+                // validate value
+                EXPECT_EQ( Value{ to_string( digest ) }, node->value( bpath.back().second ) );
+
+                // if node is leaf - insert depth into unique collection
+                if ( is_leaf_element( *node, bpath.back().second ) )
+                {
+                    depth.insert( bpath.size() );
+                }
+            }
+        }
+
+        // check that tree is balanced
+        EXPECT_GE( 2, depth.size() );
+    }
 }
 
 
@@ -196,14 +207,11 @@ TEST_F( TestBTree, Insert_Ovewrite )
     EXPECT_TRUE( root );
 
     // inserts 10 elements into /root
-    for ( unsigned i = 0; i < 10; ++i )
+    for ( Digest digest = 0; digest < 10; ++digest )
     {
-        string key = "jb_" + to_string( i );
-        Digest digest = Bloom::generate_digest( 1, Key{ key } );
-
         // find place to insertion
         BTreePath bpath;
-        auto[ rc, found ] = root->find_digest( i, bpath );
+        auto[ rc, found ] = root->find_digest( digest, bpath );
         EXPECT_EQ( RetCode::Ok, rc );
         EXPECT_FALSE( found );
 
@@ -213,18 +221,17 @@ TEST_F( TestBTree, Insert_Ovewrite )
             auto[ rc, node ] = c.get_node( target.first );
             EXPECT_EQ( RetCode::Ok, rc );
 
-            EXPECT_EQ( RetCode::Ok, node->insert( target.second, bpath, i, Value{ key }, 0, false ) );
+            EXPECT_EQ( RetCode::Ok, node->insert( target.second, bpath, digest, Value{ to_string( digest ) }, 0, false ) );
         }
     }
 
     // insert one more node with already present key
     {
-        string key = "jb_" + to_string( 7 );
-        Digest digest = Bloom::generate_digest( 1, Key{ key } );
+        Digest digest = 7;
 
         // find place to insertion
         BTreePath bpath;
-        auto[ rc, found ] = root->find_digest( 7, bpath );
+        auto[ rc, found ] = root->find_digest( digest, bpath );
         EXPECT_EQ( RetCode::Ok, rc );
         EXPECT_TRUE( found );
 
@@ -235,16 +242,18 @@ TEST_F( TestBTree, Insert_Ovewrite )
             EXPECT_EQ( RetCode::Ok, rc );
 
             // try to insert
-            EXPECT_EQ( RetCode::AlreadyExists, node->insert( target.second, bpath, 7, Value{ key }, 0, false ) );
-            EXPECT_EQ( RetCode::Ok, node->insert( target.second, bpath, 7, Value{ 7. }, 1, true ) );
+            EXPECT_EQ( RetCode::AlreadyExists, node->insert( target.second, bpath, digest, Value{ ( uint32_t )7 }, 0, false ) );
+            EXPECT_EQ( RetCode::Ok, node->insert( target.second, bpath, digest, Value{ 7. }, 1, true ) );
         }
     }
 
     // find node and validate value & exiration mark
     {
+        Digest digest = 7;
+
         // find the node
         BTreePath bpath;
-        auto[ rc, found ] = root->find_digest( 7, bpath );
+        auto[ rc, found ] = root->find_digest( digest, bpath );
         EXPECT_EQ( RetCode::Ok, rc );
         EXPECT_TRUE( found );
 
@@ -258,15 +267,17 @@ TEST_F( TestBTree, Insert_Ovewrite )
 
             // overwrite node without expiration mark
             auto target = bpath.back(); bpath.pop_back();
-            EXPECT_EQ( RetCode::Ok, node->insert( target.second, bpath, 7, Value{ "Ok" }, 0, true ) );
+            EXPECT_EQ( RetCode::Ok, node->insert( target.second, bpath, digest, Value{ "Ok" }, 0, true ) );
         }
     }
 
     // find node and validate value & UNTOUCHED exiration mark
     {
+        Digest digest = 7;
+
         // find the node
         BTreePath bpath;
-        auto[ rc, found ] = root->find_digest( 7, bpath );
+        auto[ rc, found ] = root->find_digest( digest, bpath );
         EXPECT_EQ( RetCode::Ok, rc );
         EXPECT_TRUE( found );
 
@@ -277,6 +288,66 @@ TEST_F( TestBTree, Insert_Ovewrite )
             // validate value and expiration time
             EXPECT_EQ( Value{ "Ok" }, node->value( bpath.back().second ) );
             EXPECT_EQ( 1, node->good_before( bpath.back().second ) );
+        }
+    }
+}
+
+
+TEST_F( TestBTree, Insert_Erase )
+{
+    using namespace std;
+
+    // open starage
+    StorageFile f( "foo21.jb" );
+    ASSERT_EQ( RetCode::Ok, f.status() );
+
+    // prepare cache
+    BTreeCache c( &f );
+    ASSERT_EQ( RetCode::Ok, f.status() );
+
+    // get root node
+    auto[ rc, root ] = c.get_node( RootNodeUid );
+    EXPECT_EQ( RetCode::Ok, rc );
+    EXPECT_TRUE( root );
+
+    // inserts 1000 elements into /root
+    for ( Digest digest = 0; digest < 1000; ++digest )
+    {
+        // find place to insertion
+        BTreePath bpath;
+        auto[ rc, found ] = root->find_digest( digest, bpath );
+        EXPECT_EQ( RetCode::Ok, rc );
+        EXPECT_FALSE( found );
+
+        {
+            auto target = bpath.back(); bpath.pop_back();
+
+            auto[ rc, node ] = c.get_node( target.first );
+            EXPECT_EQ( RetCode::Ok, rc );
+
+            EXPECT_EQ( RetCode::Ok, node->insert( target.second, bpath, digest, Value{ to_string( digest ) }, 0, false ) );
+        }
+    }
+
+    // erase each 10th element
+    for ( Digest digest = 0; digest < 1000; ++digest )
+    {
+        if ( digest % 10 == 0 )
+        {
+            // find element
+            BTreePath bpath;
+            auto[ rc, found ] = root->find_digest( digest, bpath );
+            EXPECT_EQ( RetCode::Ok, rc );
+            EXPECT_TRUE( found );
+
+            {
+                auto target = bpath.back(); bpath.pop_back();
+
+                auto[ rc, node ] = c.get_node( target.first );
+                EXPECT_EQ( RetCode::Ok, rc );
+
+                EXPECT_EQ( RetCode::Ok, node->erase( target.second, bpath ) );
+            }
         }
     }
 }
