@@ -138,7 +138,9 @@ namespace jb
         */
         auto unlock_all( )
         {
-            std::for_each( execution::seq, rbegin( unlocks_ ), rend( unlocks_ ), [=] ( auto & unlock ) {
+            using namespace std;
+
+            for_each( execution::seq, rbegin( unlocks_ ), rend( unlocks_ ), [=] ( auto & unlock ) {
                 assert( unlock );
                 unlock( );
             } );

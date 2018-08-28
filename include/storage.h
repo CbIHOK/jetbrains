@@ -33,13 +33,18 @@ namespace jb
     template < typename Policies >
     class Storage
     {
+
     public:
 
+        //
+        //
+        //
         template < typename T >
         struct Hash
         {
             size_t operator() ( const T & v ) const noexcept { return std::hash< T >{}( v ); }
         };
+
 
     private:
 
@@ -100,12 +105,19 @@ namespace jb
         class MountPoint;
 
 
+        //
+        //
+        //
         template <>
         struct Hash< Key >
         {
             size_t operator() ( const Key & v ) const noexcept { return std::hash< typename Key::ViewT >{}( v.view_ ); }
         };
 
+
+        //
+        //
+        //
         template <>
         struct Hash< PhysicalVolume >
         {
@@ -115,12 +127,13 @@ namespace jb
             }
         };
 
+
         //
         // Provides hash combining constant depending on size of size_t type
         //
         static constexpr size_t hash_constant() noexcept
         {
-            static_assert( sizeof( size_t ) == 8 || sizeof( size_t ) == 4, "Cannot detect 32-bit or 64-bit platform" );
+            static_assert( sizeof( size_t ) == sizeof( uint32_t ) || sizeof( size_t ) == sizeof( uint64_t ), "Cannot detect 32-bit or 64-bit platform" );
 
             if constexpr ( sizeof( size_t ) == 8 )
             {

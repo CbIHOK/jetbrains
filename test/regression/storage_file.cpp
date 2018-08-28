@@ -4,15 +4,15 @@
 #include <mutex>
 
 
-struct OtherPolicies : public ::jb::DefaultPolicies
+struct OtherPolicies : public ::jb::DefaultPolicies<>
 {
     using KeyCharT = wchar_t;
     using ValueT = std::variant< uint32_t, uint64_t, float, double >;
 };
 
-struct SmallChunkPolicies : public ::jb::DefaultPolicies
+struct SmallChunkPolicies : public ::jb::DefaultPolicies<>
 {
-    struct PhysicalVolumePolicy : public ::jb::DefaultPolicies::PhysicalVolumePolicy
+    struct PhysicalVolumePolicy : public ::jb::DefaultPolicies<>::PhysicalVolumePolicy
     {
         static constexpr size_t ChunkSize = 32;
         static constexpr size_t BloomSize = 1024;
@@ -24,9 +24,8 @@ class TestStorageFile : public ::testing::Test
 
 protected:
 
-    using Policies = ::jb::DefaultPolicies;
-    using Pad = ::jb::DefaultPad;
-    using Storage = ::jb::Storage<Policies >;
+    using Policies = ::jb::DefaultPolicies<>;
+    using Storage = ::jb::Storage< Policies >;
     using RetCode = typename Storage::RetCode;
     using StorageFile = typename Storage::PhysicalVolumeImpl::StorageFile;
     using OtherStorage = jb::Storage< OtherPolicies >;

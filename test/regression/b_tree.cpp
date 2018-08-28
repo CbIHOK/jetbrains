@@ -1,11 +1,11 @@
 #include <gtest/gtest.h>
 #include <storage.h>
-#include <policies.h>
+#include "policies.h"
 
 
-struct TestBTreePolicy : public ::jb::DefaultPolicies
+struct TestBTreePolicy : public ::jb::DefaultPolicies<>
 {
-    struct PhysicalVolumePolicy : public ::jb::DefaultPolicies::PhysicalVolumePolicy
+    struct PhysicalVolumePolicy : public ::jb::DefaultPolicies<>::PhysicalVolumePolicy
     {
         static constexpr size_t BTreeMinPower = 3;
     };

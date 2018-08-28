@@ -30,7 +30,6 @@ namespace jb
         RetCode status_ = RetCode::Ok;
         StorageFile * file_ = nullptr;
         std::array< uint8_t, BloomSize > alignas( sizeof( uint64_t ) ) filter_;
-        mutable std::atomic_flag lock_ = ATOMIC_FLAG_INIT;
 
 
     public:
@@ -105,14 +104,24 @@ namespace jb
             const auto bit_no = digest % 8;
 
             // update memory and file
-            static mutex guard;
-            scoped_lock lock( guard );
-
-            filter_[ byte_no ] |= ( 1 << bit_no );
-
-            if ( file_ && RetCode::Ok == file_->status() )
+            if ( file_ )
             {
-                return file_->add_bloom_digest( byte_no, filter_[ byte_no ] ) ;
+                static mutex guard;
+                scoped_lock lock( guard );
+
+                filter_[ byte_no ] |= ( 1 << bit_no );
+
+                if ( file_ && RetCode::Ok == file_->status() )
+                {
+                    return file_->add_bloom_digest( byte_no, filter_[ byte_no ] );
+                }
+            }
+            else // optimized for UT
+            {
+                static atomic_flag spinlock = ATOMIC_FLAG_INIT;
+                while ( spinlock.test_and_set( memory_order_acquire ) );
+                filter_[ byte_no ] |= ( 1 << bit_no );
+                spinlock.clear( memory_order_release );
             }
 
             return RetCode::Ok;

@@ -9,6 +9,7 @@
 
 namespace jb
 {
+    template < typename OsPolicy = USE_OS_POLICY >
     struct DefaultPolicies
     {
         using KeyCharT   = char;
@@ -40,7 +41,7 @@ namespace jb
             static constexpr size_t ReaderNumber = 32;              /*!< maximum number of parallel readings */
         };
 
-        using OSPolicy = WindowsPolicy;
+        using Os = OsPolicy;
     };
 }
 
