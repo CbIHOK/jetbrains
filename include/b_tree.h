@@ -15,7 +15,7 @@
 #include <boost/serialization/split_member.hpp>
 #include <boost/serialization/nvp.hpp>
 #include <boost/serialization/collection_size_type.hpp>
-#include <boost/archive/binary_oarchive.hpp>
+#include <boost/archive/text_oarchive.hpp>
 
 
 template < typename T > class TestBTree;
@@ -204,36 +204,9 @@ namespace jb
         // serialization
         //
         template<class Archive>
-        void save( Archive & ar, const unsigned int version ) const
+        void save( std::streambuf & buf ) const
         {
-            using namespace boost::serialization;
 
-            if ( elements_.size() >= BTreeMax || elements_.size() + 1 != links_.size() )
-            {
-                throw std::logic_error( "Broken b-tree" );
-            }
-
-            const collection_size_type element_count( elements_.size() );
-            ar << BOOST_SERIALIZATION_NVP( element_count );
-
-            if ( !elements_.empty() )
-            {
-                ar << make_array< const Element, collection_size_type >( 
-                    static_cast< const Element* >( &elements_[ 0 ] ),
-                    element_count
-                    );
-            }
-
-            const collection_size_type link_count( links_.size() );
-            ar << BOOST_SERIALIZATION_NVP( link_count );
-
-            if ( !links_.empty() )
-            {
-                ar << make_array< const NodeUid, collection_size_type >(
-                    static_cast< const NodeUid* >( &links_[ 0 ] ),
-                    link_count
-                    );
-            }
         }
 
 
@@ -272,6 +245,7 @@ namespace jb
             }
 
             links_.resize( link_count );
+            if ( !links_.empty() )
             {
                 ar >> make_array< NodeUid, collection_size_type >(
                     static_cast< NodeUid* >( &links_[ 0 ] ),
@@ -302,15 +276,6 @@ namespace jb
             }
 
             auto osbuf = t.get_chain_writer();
-            std::ostream os( &osbuf );
-            boost::archive::binary_oarchive ar( os );
-            ar & *this;
-            os.flush();
-
-            if ( RetCode::Ok != t.status() )
-            {
-                return t.status();
-            }
 
             NodeUid uid = t.get_first_written_chunk();
             std::swap( uid, const_cast< BTree* >( this )->uid_ );
@@ -332,11 +297,17 @@ namespace jb
                 return RetCode::UnknownError;
             }
 
-            auto osbuf = t.get_chain_overwriter( uid_ );
-            std::ostream os( &osbuf );
-            boost::archive::binary_oarchive ar( os );
-            ar & *this;
-            os.flush();
+            if ( auto[ rc, osbuf ] = t.get_chain_overwriter( uid_ ); rc != RetCode::Ok )
+            {
+                return rc;
+            }
+            else
+            {
+                std::ostream os( &osbuf );
+                boost::archive::binary_oarchive ar( os );
+                ar & *this;
+                //os.flush();
+            }
 
             return t.status();
         }

@@ -14,7 +14,7 @@
 #include <boost/container/static_vector.hpp>
 #include <boost/interprocess/sync/named_mutex.hpp>
 #include <boost/interprocess/exceptions.hpp>
-#include <boost/archive/binary_oarchive.hpp>
+#include <boost/archive/text_oarchive.hpp>
 
 #ifndef BOOST_ENDIAN_DEPRECATED_NAMES
 #define BOOST_ENDIAN_DEPRECATED_NAMES
@@ -25,15 +25,12 @@
 #endif
 
 
-class TestStorageFile;
-
-
 namespace jb
 {
     template < typename Policies >
     class Storage< Policies >::PhysicalVolumeImpl::StorageFile
     {
-        friend class TestStorageFile;
+        template < typename T > friend class TestStorageFile;
 
         using RetCode = Storage::RetCode;
         using KeyCharT = typename Policies::KeyCharT;
@@ -58,7 +55,7 @@ namespace jb
 
         // declares chunk uid
         using ChunkUid = uint64_t;
-        static constexpr ChunkUid InvalidChunkUid = std::numeric_limits< ChunkUid >::max();
+        static constexpr ChunkUid InvalidChunkUid = 0xFEFEFEFEFEFEFEFE;//std::numeric_limits< ChunkUid >::max();
 
         //
         // few forwarding declarations
@@ -334,6 +331,7 @@ namespace jb
                         boost::archive::binary_oarchive ar( os );
                         BTree root;
                         ar & root;
+                        //os.flush();
                     }
                     return t.commit();
                 }
@@ -539,27 +537,30 @@ namespace jb
         /** Constructs an instance
 
         @param [in] path - path to physical file
-        @param [in] create - create new if given file foes not exist
+        @param [in] suppress_lock - do not lock the file (test mode)
         @throw nothing
         */
-        explicit StorageFile( const std::filesystem::path & path ) try
+        explicit StorageFile( const std::filesystem::path & path, bool suppress_lock = false ) try
             : file_lock_name_{ "jb_lock_" + std::to_string( std::filesystem::hash_value( path ) ) }
             , readers_( ReaderNumber, InvalidHandle )
         {
             using namespace std;
 
-            //
-            // Unfortunately MS does not care about standards as usual and HANDLED exceptions easily leaves
-            // try-catch constructors by an rethrow. That is why I have to use such workaround
-            //
-            try
+            if ( !suppress_lock )
             {
-                // lock file
-                file_lock_ = std::make_shared< boost::interprocess::named_mutex >( boost::interprocess::create_only_t{}, file_lock_name_.c_str() );
-            }
-            catch ( const boost::interprocess::interprocess_exception & )
-            {
-                status_ = RetCode::AlreadyOpened;
+                //
+                // Unfortunately MS does not care about standards as usual and HANDLED exceptions easily leaves
+                // try-catch constructors by an rethrow. That is why I have to use such workaround
+                //
+                try
+                {
+                    // lock file
+                    file_lock_ = std::make_shared< boost::interprocess::named_mutex >( boost::interprocess::create_only_t{}, file_lock_name_.c_str() );
+                }
+                catch ( const boost::interprocess::interprocess_exception & )
+                {
+                    status_ = RetCode::AlreadyOpened;
+                }
             }
 
             // conditional executor
@@ -752,7 +753,7 @@ namespace jb
     template < typename Policies >
     class Storage< Policies >::PhysicalVolumeImpl::StorageFile::Transaction
     {
-        friend class TestStorageFile;
+        template < typename T > friend class TestStorageFile;
         friend class StorageFile;
         friend class ostreambuf;
 
@@ -1018,7 +1019,7 @@ namespace jb
         @retval output stream buffer object
         @throw nothing
         */
-        ostreambuf get_chain_overwriter( ChunkUid uid ) noexcept
+        std::tuple< RetCode, ostreambuf > get_chain_overwriter( ChunkUid uid ) noexcept
         {
             assert( uid != InvalidChunkUid );
 
@@ -1070,7 +1071,7 @@ namespace jb
 
 
 
-            return ostreambuf( const_cast< Transaction* >( this ) );
+            return { status_, move( ostreambuf{ const_cast< Transaction* >( this ) } ) };
         }
 
 
@@ -1242,13 +1243,15 @@ namespace jb
         friend class Transaction;
 
         Transaction * transaction_ = nullptr;
-        std::array< char, ChunkOffsets::sz_Space > buffer_;
+        //std::array< char, ChunkOffsets::sz_Space > buffer_;
+        std::vector< char > buffer_;
 
         //
         // Explicit constructor available only for Transaction
         //
         explicit ostreambuf( Transaction * transaction ) noexcept : transaction_( transaction )
         {
+            buffer_.resize( ChunkOffsets::sz_Space );
             assert( transaction_ );
             setp( buffer_.data(), buffer_.data() + buffer_.size() - 1 );
         }
@@ -1330,7 +1333,8 @@ namespace jb
         RetCode status_ = RetCode::Ok;
 
         static constexpr size_t putb_limit = 10;
-        std::array< char, putb_limit + ChunkOffsets::sz_Space > buffer_;
+        //std::array< char, putb_limit + ChunkOffsets::sz_Space > buffer_;
+        std::vector< char > buffer_;
 
 
         /* Exlplicit constructor
@@ -1346,6 +1350,8 @@ namespace jb
             , current_chunk_( start_chunk )
         {
             assert( file_ && handle != InvalidHandle && current_chunk_ != InvalidChunkUid );
+
+            buffer_.resize( putb_limit + ChunkOffsets::sz_Space );
 
             // initialize pointer like all data is currently read-out
             auto start = buffer_.data() + putb_limit;

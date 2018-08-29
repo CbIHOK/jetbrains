@@ -117,10 +117,6 @@ namespace jb
                     assert( file_ );
 
                     auto p = make_shared< BTree >( uid, file_, this );
-                    auto isbuf = file_->get_chain_reader( uid );
-                    istream is( &isbuf );
-                    boost::archive::binary_iarchive ar( is );
-                    ar & *p;
 
                     // through the order list
                     for ( auto order_it = begin( mru_order_ ); order_it != end( mru_order_ ); ++order_it )

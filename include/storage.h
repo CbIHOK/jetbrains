@@ -19,7 +19,7 @@ class TestStorage;
 class TestKey;
 class TestNodeLocker;
 class TestBloom;
-class TestStorageFile;
+template < typename T > class TestStorageFile;
 template < typename T > class TestBTree;
 
 namespace jb
@@ -54,7 +54,7 @@ namespace jb
         friend class TestKey;
         friend class TestNodeLocker;
         friend class TestBloom;
-        friend class TestStorageFile;
+        template < typename T > friend class TestStorageFile;
         template < typename T > friend class TestBTree;
 
         friend class VirtualVolume;

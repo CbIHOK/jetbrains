@@ -7,8 +7,9 @@ struct TBT_Min : public ::jb::DefaultPolicies<>
 {
     struct PhysicalVolumePolicy : public ::jb::DefaultPolicies<>::PhysicalVolumePolicy
     {
+        static constexpr size_t BloomSize = 1024;
         static constexpr size_t BTreeMinPower = 3;
-        static constexpr size_t ChunkSize = 512;
+        static constexpr size_t ChunkSize = 32;
     };
 };
 
@@ -17,6 +18,7 @@ struct TBT_Odd : public ::jb::DefaultPolicies<>
 {
     struct PhysicalVolumePolicy : public ::jb::DefaultPolicies<>::PhysicalVolumePolicy
     {
+        static constexpr size_t BloomSize = 1024;
         static constexpr size_t BTreeMinPower = 4;
         static constexpr size_t ChunkSize = 2048;
     };
@@ -27,6 +29,7 @@ struct TBT_Prime : public ::jb::DefaultPolicies<>
 {
     struct PhysicalVolumePolicy : public ::jb::DefaultPolicies<>::PhysicalVolumePolicy
     {
+        static constexpr size_t BloomSize = 1024;
         static constexpr size_t BTreeMinPower = 5;
     };
 };
@@ -36,6 +39,7 @@ struct TBT_Regular : public ::jb::DefaultPolicies<>
 {
     struct PhysicalVolumePolicy : public ::jb::DefaultPolicies<>::PhysicalVolumePolicy
     {
+        static constexpr size_t BloomSize = 1024;
         static constexpr size_t BTreeMinPower = 1024;
     };
 };
@@ -107,7 +111,38 @@ TYPED_TEST( TestBTree, Serialization )
     LinkCollection etalon_links{ 0, 2, 3, 4, 5 };
 
     {
-        StorageFile f( "foo.jb" );
+        StorageFile f( "serialization.jb", true );
+        ASSERT_EQ( RetCode::Ok, f.status() );
+
+        BTreeCache c( &f );
+        ASSERT_EQ( RetCode::Ok, f.status() );
+
+        BTree tree( InvalidNodeUid, &f, &c );
+        links( tree ).push_back( InvalidNodeUid );
+
+        auto t = f.open_transaction();
+        EXPECT_NO_THROW( save( tree, t ) );
+        EXPECT_EQ( RetCode::Ok, t.status() );
+        uid = tree.uid();
+        EXPECT_NE( InvalidNodeUid, uid );
+        EXPECT_EQ( RetCode::Ok, t.commit() );
+    }
+
+    {
+        StorageFile f( "serialization.jb", true );
+        ASSERT_EQ( RetCode::Ok, f.status() );
+
+        BTreeCache c( &f );
+        ASSERT_EQ( RetCode::Ok, f.status() );
+
+        BTree tree( uid, &f, &c );
+        EXPECT_EQ( 0, elements( tree ).size() );
+        EXPECT_EQ( 1, links( tree ).size() );
+        EXPECT_EQ( InvalidNodeUid, links( tree ).back() );
+    }
+
+    {
+        StorageFile f( "serialization.jb", true );
         ASSERT_EQ( RetCode::Ok, f.status() );
 
         BTreeCache c( &f );
@@ -126,7 +161,7 @@ TYPED_TEST( TestBTree, Serialization )
     }
 
     {
-        StorageFile f( "foo.jb" );
+        StorageFile f( "serialization.jb", true );
         ASSERT_EQ( RetCode::Ok, f.status() );
 
         BTreeCache c( &f );
@@ -145,7 +180,7 @@ TYPED_TEST( TestBTree, Insert_Find )
 
     {
         // open starage
-        StorageFile f( "foo10.jb" );
+        StorageFile f( "Insert_Find_3.jb", true );
         ASSERT_EQ( RetCode::Ok, f.status() );
 
         // prepare cache
@@ -179,7 +214,7 @@ TYPED_TEST( TestBTree, Insert_Find )
 
     {
         // open starage
-        StorageFile f( "foo10.jb" );
+        StorageFile f( "Insert_Find_3.jb", true );
         ASSERT_EQ( RetCode::Ok, f.status() );
 
         // prepare cache
@@ -228,7 +263,7 @@ TYPED_TEST( TestBTree, Insert_Ovewrite )
     using namespace std;
 
     // open starage
-    StorageFile f( "foo.jb" );
+    StorageFile f( "Insert_Ovewrite.jb", true );
     ASSERT_EQ( RetCode::Ok, f.status() );
 
     // prepare cache
@@ -332,7 +367,7 @@ TYPED_TEST( TestBTree, Insert_Erase )
     using namespace std;
 
     // open starage
-    StorageFile f( "foo21.jb" );
+    StorageFile f( "Insert_Erase.jb", true );
     ASSERT_EQ( RetCode::Ok, f.status() );
 
     // prepare cache

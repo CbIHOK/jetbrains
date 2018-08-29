@@ -24,7 +24,7 @@ namespace jb
     {
         friend class TestNodeLocker;
         friend class TestBloom;
-        friend class TestStorageFile;
+
 
     public:
 

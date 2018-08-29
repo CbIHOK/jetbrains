@@ -1,4 +1,11 @@
 #include <gtest/gtest.h>
+#include <windows_policy.h>
+
+namespace jb
+{
+    uint64_t WindowsPolicy::_offset = 0;
+}
+
 
 int main( int argc, char **argv )
 {
