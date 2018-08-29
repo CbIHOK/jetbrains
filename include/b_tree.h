@@ -18,7 +18,7 @@
 #include <boost/archive/binary_oarchive.hpp>
 
 
-class TestBTree;
+template < typename T > class TestBTree;
 
 
 namespace jb
@@ -26,7 +26,7 @@ namespace jb
     template < typename Policies >
     class Storage< Policies >::PhysicalVolumeImpl::BTree
     {
-        friend class TestBTree;
+        template < typename T > friend class TestBTree;
         friend class boost::serialization::access;
 
         //
@@ -183,11 +183,11 @@ namespace jb
         //
         // more aliases
         //
-        //using ElementCollection = static_vector< Element, BTreeMax  >;
-        //using LinkCollection = static_vector< NodeUid, BTreeMax + 1 >;
+        using ElementCollection = static_vector< Element, BTreeMax  >;
+        using LinkCollection = static_vector< NodeUid, BTreeMax + 1 >;
 
-        using ElementCollection = std::vector< Element  >;
-        using LinkCollection = std::vector< NodeUid >;
+        //using ElementCollection = std::vector< Element  >;
+        //using LinkCollection = std::vector< NodeUid >;
 
         //
         // data members

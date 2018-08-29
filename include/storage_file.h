@@ -1437,7 +1437,19 @@ namespace jb
             // re-initialize pointers
             setg( start, start, start + read_bytes );
 
-            return read_bytes > 0 ? *gptr() : traits_type::eof();
+            if ( read_bytes > 0 )
+            {
+                return *gptr();
+            }
+            else
+            {
+                return traits_type::eof();
+            }
+        }
+
+        virtual int_type  pbackfail( int_type  c ) override
+        {
+            return traits_type::eof();
         }
 
     public:

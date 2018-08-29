@@ -160,9 +160,12 @@ namespace jb
                     return { RetCode::TooManyConcurrentOps, BTreeP{} };
                 }
             }
+            catch ( const std::exception & e )
+            {
+                cout << e.what() << endl;
+            }
             catch ( ... )
             {
-
             }
 
             return { RetCode::UnknownError, BTreeP{} };

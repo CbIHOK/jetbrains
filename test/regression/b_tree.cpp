@@ -3,21 +3,51 @@
 #include "policies.h"
 
 
-struct TestBTreePolicy : public ::jb::DefaultPolicies<>
+struct TBT_Min : public ::jb::DefaultPolicies<>
 {
     struct PhysicalVolumePolicy : public ::jb::DefaultPolicies<>::PhysicalVolumePolicy
     {
         static constexpr size_t BTreeMinPower = 3;
+        static constexpr size_t ChunkSize = 512;
     };
 };
 
 
+struct TBT_Odd : public ::jb::DefaultPolicies<>
+{
+    struct PhysicalVolumePolicy : public ::jb::DefaultPolicies<>::PhysicalVolumePolicy
+    {
+        static constexpr size_t BTreeMinPower = 4;
+        static constexpr size_t ChunkSize = 2048;
+    };
+};
+
+
+struct TBT_Prime : public ::jb::DefaultPolicies<>
+{
+    struct PhysicalVolumePolicy : public ::jb::DefaultPolicies<>::PhysicalVolumePolicy
+    {
+        static constexpr size_t BTreeMinPower = 5;
+    };
+};
+
+
+struct TBT_Regular : public ::jb::DefaultPolicies<>
+{
+    struct PhysicalVolumePolicy : public ::jb::DefaultPolicies<>::PhysicalVolumePolicy
+    {
+        static constexpr size_t BTreeMinPower = 1024;
+    };
+};
+
+
+template < typename Policy >
 class TestBTree : public ::testing::Test
 {
 
 protected:
 
-    using Storage = jb::Storage< TestBTreePolicy >;
+    using Storage = jb::Storage< Policy >;
     using Key = typename Storage::Key;
     using RetCode = typename Storage::RetCode;
     using Value = typename Storage::Value;
@@ -27,26 +57,25 @@ protected:
     using NodeUid = typename BTree::NodeUid;
     using ElementCollection = typename BTree::ElementCollection;
     using LinkCollection = typename BTree::LinkCollection;
-    using StorageFile = Storage::PhysicalVolumeImpl::StorageFile;
-    using BTreeCache = Storage::PhysicalVolumeImpl::BTreeCache;
-    using Bloom = Storage::PhysicalVolumeImpl::Bloom;
+    using StorageFile = typename Storage::PhysicalVolumeImpl::StorageFile;
+    using BTreeCache = typename Storage::PhysicalVolumeImpl::BTreeCache;
+    using Bloom = typename Storage::PhysicalVolumeImpl::Bloom;
     using BTreePath = typename BTree::BTreePath;
+    using Transaction = typename StorageFile::Transaction;
 
     static constexpr auto RootNodeUid = BTree::RootNodeUid;
     static constexpr auto InvalidNodeUid = BTree::InvalidNodeUid;
 
     static auto & elements( BTree & t ) noexcept { return t.elements_; }
     static auto & links( BTree & t ) noexcept { return t.links_; }
-    static auto save( BTree & tree, StorageFile::Transaction & t ) { return tree.save( t ); }
+    static auto save( BTree & tree, Transaction & t ) { return tree.save( t ); }
 
     bool is_leaf_element( BTree & node, size_t pos )
     {
         return node.links_[ pos ] == InvalidNodeUid && node.links_[ pos + 1 ] == InvalidNodeUid;
     }
 
-public:
-
-    ~TestBTree()
+    void TearDown() override
     {
         using namespace std;
 
@@ -60,7 +89,12 @@ public:
     }
 };
 
-TEST_F( TestBTree, Serialization )
+
+typedef ::testing::Types< TBT_Min, TBT_Odd, TBT_Prime, TBT_Regular > TestingPolicies;
+TYPED_TEST_CASE( TestBTree, TestingPolicies );
+
+
+TYPED_TEST( TestBTree, Serialization )
 {
     NodeUid uid;
 
@@ -105,13 +139,13 @@ TEST_F( TestBTree, Serialization )
 }
 
 
-TEST_F( TestBTree, Insert_Find )
+TYPED_TEST( TestBTree, Insert_Find )
 {
     using namespace std;
 
     {
         // open starage
-        StorageFile f( "foo.jb" );
+        StorageFile f( "foo10.jb" );
         ASSERT_EQ( RetCode::Ok, f.status() );
 
         // prepare cache
@@ -145,7 +179,7 @@ TEST_F( TestBTree, Insert_Find )
 
     {
         // open starage
-        StorageFile f( "foo.jb" );
+        StorageFile f( "foo10.jb" );
         ASSERT_EQ( RetCode::Ok, f.status() );
 
         // prepare cache
@@ -189,7 +223,7 @@ TEST_F( TestBTree, Insert_Find )
 }
 
 
-TEST_F( TestBTree, Insert_Ovewrite )
+TYPED_TEST( TestBTree, Insert_Ovewrite )
 {
     using namespace std;
 
@@ -293,7 +327,7 @@ TEST_F( TestBTree, Insert_Ovewrite )
 }
 
 
-TEST_F( TestBTree, Insert_Erase )
+TYPED_TEST( TestBTree, Insert_Erase )
 {
     using namespace std;
 
