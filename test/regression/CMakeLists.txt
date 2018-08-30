@@ -11,9 +11,9 @@ add_executable( regression EXCLUDE_FROM_ALL
     #node_locker.cpp
     #virtual_volume.cpp 
     #storage.cpp
-    #storage_file.cpp
+    storage_file.cpp
     #bloom.cpp
-    b_tree.cpp
+    #b_tree.cpp
 )
 
 target_link_libraries( regression gtest gtest_main )

@@ -12,10 +12,6 @@
 #include <boost/container/static_vector.hpp>
 #include <boost/thread/shared_mutex.hpp>
 #include <boost/thread/condition_variable.hpp>
-#include <boost/serialization/split_member.hpp>
-#include <boost/serialization/nvp.hpp>
-#include <boost/serialization/collection_size_type.hpp>
-#include <boost/archive/text_oarchive.hpp>
 
 
 template < typename T > class TestBTree;
@@ -27,7 +23,6 @@ namespace jb
     class Storage< Policies >::PhysicalVolumeImpl::BTree
     {
         template < typename T > friend class TestBTree;
-        friend class boost::serialization::access;
 
         //
         // few aliases
@@ -36,6 +31,7 @@ namespace jb
         using Value = typename Storage::Value;
         using Digest = typename Bloom::Digest;
         using Transaction = typename StorageFile::Transaction;
+        using BlobUid = typename StorageFile::ChunkUid;
 
         static constexpr auto BTreeMinPower = Policies::PhysicalVolumePolicy::BTreeMinPower;
         static_assert( BTreeMinPower >= 2, "B-tree power must be > 1" );
@@ -68,38 +64,156 @@ namespace jb
 
     private:
 
+        struct PackedValue
+        {
+            static constexpr uint64_t no_value = std::numeric_limits< uint64_t >::max() - 1;
+            uint64_t index_;
+            uint64_t value_;
+        };
+
+        template < typename T >
+        static std::tuple< RetCode, BlobUid > pack_blob( Transaction & t, const T & v ) noexcept
+        {
+            using namespace std;
+
+            {
+                StorageFile::ostreambuf< char > osbuf = t.get_chain_writer< char >();
+                ostream os( &osbuf );
+                os << v;
+                os.flush();
+            }
+
+            return t.status();
+        }
+
+        template < typename CharT >
+        static std::tuple< RetCode, BlobUid > pack_blob( Transaction & t, const std::basic_string< CharT > & v ) noexcept
+        {
+            using namespace std;
+
+            {
+                StorageFile::ostreambuf< CharT > osbuf = t.get_chain_writer< CharT >();
+                ostream os( &osbuf );
+                os << v;
+                os.flush();
+            }
+
+            return t.status();
+        }
+
+        static std::tuple< RetCode, PackedValue > pack_value( Transaction & t, const Value & v ) noexcept
+        {
+            using namespace std;
+
+            static constexpr uint64_t max_v_size = numeric_limits< uint64_t >::max() >> 2;
+            static_assert( variant_size_v< Value > < max_v_size, "Too many alternatives" );
+
+            PackedValue packed;
+
+            if ( ( packed.index_ = v.index() ) == variant_npos )
+            {
+                packed.index_ = PackedValue::no_value;
+                return { RetCode::Ok, packed };
+            }
+
+            packed.index_ = packed.index_ << 1;
+            auto ret = RetCode::Ok;
+
+            //visit( [&] ( auto arg ) {
+
+            //    using type = std::decay_t< decltype( a ) >;
+
+            //    if ( std::is_integral< type > )
+            //    {
+            //        packed.value_ = static_cast< int64_t >( v.get( index ) );
+            //    }
+            //    //else if ( auto[ rc, chunk ] = pack_blob( t, v.get( index ) ); RetCode::Ok != rc )
+            //    //{
+            //    //    ret = rc;
+            //    //}
+            //    //else
+            //    //{
+            //    //    packed.index_ |= 1;
+            //    //    packed.value_ = chunk;
+            //    //}
+            //}, v );
+
+            return { ret, packed };
+        }
+
+
+        template < typename T >
+        static std::tuple< RetCode > unpack_blob( BlobUid uid, T & v ) noexcept
+        {
+            using namespace std;
+
+            assert( file_ );
+
+            StorageFile::istreambuf< char > isbuf = file_->get_chain_reader< char >();
+            istream is( &isbuf );
+            is >> v;
+
+            return is.status();
+        }
+
+
+        template < typename CharT >
+        static std::tuple< RetCode > unpack_blob( Transaction & t, BlobUid uid, const std::basic_string< CharT > & v ) noexcept
+        {
+            using namespace std;
+
+            {
+                StorageFile::ostreambuf< CharT > osbuf = t.get_chain_writer< CharT >();
+                ostream os( &osbuf );
+                os << v;
+                os.flush();
+            }
+
+            return t.status();
+        }
+
+        static std::tuple< RetCode, Value > unpack_value( StorageFile * file, const PackedValue & packed )
+        {
+            if ( PackedValue::no_value == packed.index_ )
+            {
+                return { RetCode::Ok, Value{} };
+            }
+            
+            auto is_blob = ( packed.index_ & 1 ) != 0;
+            auto index = packed.index_ >> 1;
+        }
 
         //
         // represent b-tree element
         //
         struct Element
         {
-            friend class boost::serialization::access;
-
             Digest digest_;
-            Value value_;
+            PackedValue packed_value_;
             uint64_t good_before_;
             NodeUid children_;
 
-
-            //
-            // serializes b-tree element
-            //
-            template < class Archive >
-            void save( Archive & ar, const unsigned int version ) const
+            friend std::basic_ostream< int64_t > & operator << ( std::basic_ostream< int64_t > & os, const Element & e )
             {
-                ar << BOOST_SERIALIZATION_NVP( digest_ );
-                ar << BOOST_SERIALIZATION_NVP( good_before_ );
-                ar << BOOST_SERIALIZATION_NVP( children_ );
-                
-                size_t var_index = value_.index();
-                ar << BOOST_SERIALIZATION_NVP( var_index );
+                os  << e.digest_
+                    << e.packed_value_.index_
+                    << e.packed_value_.value_
+                    << e.good_before_
+                    << e.children_;
 
-                std::visit( [&] ( const auto & v ) {
-                    ar << BOOST_SERIALIZATION_NVP( v );
-                }, value_ );
+                return os;
             }
 
+            friend std::basic_istream< int64_t > & operator >> ( std::basic_istream< int64_t > & is, Element & e )
+            {
+                is  >> e.digest_
+                    >> e.packed_value_.index_
+                    >> e.packed_value_.value_
+                    >> e.good_before_
+                    >> e.children_;
+
+                return is;
+            }
 
             //
             // deserializes element's value based on index of variant alternative
@@ -125,24 +239,6 @@ namespace jb
                     throw std::runtime_error( "Unable to deserialize variant object" );
                 }
             }
-
-
-            //
-            // deserializes b-tree element
-            //
-            template < class Archive >
-            void load( Archive & ar, const unsigned int version )
-            {
-                ar >> BOOST_SERIALIZATION_NVP( digest_ );
-                ar >> BOOST_SERIALIZATION_NVP( good_before_ );
-                ar >> BOOST_SERIALIZATION_NVP( children_ );
-
-                size_t var_index;
-                ar >> BOOST_SERIALIZATION_NVP( var_index );
-                value_ = std::move( try_deserialize_variant< 0 >( var_index, ar, version ) );
-            }
-            BOOST_SERIALIZATION_SPLIT_MEMBER()
-
 
             //
             // variant comparer
@@ -200,67 +296,6 @@ namespace jb
         LinkCollection links_;
 
 
-        //
-        // serialization
-        //
-        template<class Archive>
-        void save( std::streambuf & buf ) const
-        {
-
-        }
-
-
-        //
-        // deserialization
-        //
-        template<class Archive>
-        void load( Archive & ar, const unsigned int version )
-        {
-            using namespace boost::serialization;
-
-            collection_size_type element_count;
-            ar >> BOOST_SERIALIZATION_NVP( element_count );
-
-            if ( element_count >= BTreeMax )
-            {
-                throw std::runtime_error( "Maximum number of elements exceeded" );
-            }
-
-            elements_.resize( element_count );
-
-            if ( !elements_.empty() )
-            {
-                ar >> make_array< Element, collection_size_type >(
-                    static_cast< Element* >( &elements_[ 0 ] ),
-                    element_count
-                    );
-            }
-            
-            collection_size_type link_count;
-            ar >> BOOST_SERIALIZATION_NVP( link_count );
-
-            if ( link_count >= BTreeMax + 1 )
-            {
-                throw std::runtime_error( "Maximum number of links exceeded" );
-            }
-
-            links_.resize( link_count );
-            if ( !links_.empty() )
-            {
-                ar >> make_array< NodeUid, collection_size_type >(
-                    static_cast< NodeUid* >( &links_[ 0 ] ),
-                    link_count
-                    );
-            }
-
-            if ( elements_.size() + 1 != links_.size() )
-            {
-                throw std::runtime_error( "Broken b-tree" );
-            }
-        }
-        BOOST_SERIALIZATION_SPLIT_MEMBER()
-
-
         /* Stores b-tree node to file
 
         @param [in] t - transaction
@@ -268,19 +303,42 @@ namespace jb
         @throw may throw std::exception for different reasons
         */
         [[nodiscard]]
-        auto save( Transaction & t ) const
+        auto save( Transaction & t ) const noexcept
         {
-            if ( !file_ || !cache_ )
+            using namespace std;
+
+            try
             {
-                return RetCode::UnknownError;
+                if ( !file_ || !cache_ )
+                {
+                    return RetCode::UnknownError;
+                }
+
+                {
+                    auto osbuf = t.get_chain_writer< int64_t >();
+                    std::basic_ostream< int64_t > os( &osbuf );
+
+                    os << elements_.size();
+                    for ( const auto & e : elements_ ) { os << e; }
+                    for ( auto l : links_ ) { os << l; }
+                    os.flush();
+                }
+
+                if ( auto rc = t.status(); RetCode::Ok != rc )
+                {
+                    return rc;
+                }
+
+                NodeUid uid = t.get_first_written_chunk();
+                std::swap( uid, const_cast< BTree* >( this )->uid_ );
+
+                return cache_->update_uid( uid, uid_ );
+            }
+            catch ( ... )
+            {
             }
 
-            auto osbuf = t.get_chain_writer();
-
-            NodeUid uid = t.get_first_written_chunk();
-            std::swap( uid, const_cast< BTree* >( this )->uid_ );
-            
-            return cache_->update_uid( uid, uid_ );
+            return RetCode::UnknownError;
         }
 
 
@@ -292,24 +350,36 @@ namespace jb
         [[nodiscard]]
         auto overwrite( Transaction & t ) const
         {
-            if ( !file_ )
-            {
-                return RetCode::UnknownError;
-            }
+            using namespace std;
 
-            if ( auto[ rc, osbuf ] = t.get_chain_overwriter( uid_ ); rc != RetCode::Ok )
+            try
             {
-                return rc;
-            }
-            else
-            {
-                std::ostream os( &osbuf );
-                boost::archive::binary_oarchive ar( os );
-                ar & *this;
-                //os.flush();
-            }
+                if ( !file_ )
+                {
+                    return RetCode::UnknownError;
+                }
 
-            return t.status();
+                if ( auto[ rc, osbuf ] = t.get_chain_overwriter< int64_t >( uid_ ); RetCode::Ok == rc)
+                {
+                    std::basic_ostream< int64_t > os( &osbuf );
+
+                    os << elements_.size();
+                    for ( const auto & e : elements_ ) { os << e; }
+                    for ( auto l : links_ ) { os << l; }
+                    os.flush();
+                }
+                else
+                {
+                    return rc;
+                }
+
+                return t.status();
+            }
+            catch ( ... )
+            {
+
+            }
+            return RetCode::UnknownError;
         }
 
 
@@ -1071,10 +1141,12 @@ namespace jb
         @param Value - value of the element
         @throw nothing
         */
-        const auto & value( size_t ndx ) const noexcept
+        const auto & value( size_t ndx ) noexcept
         {
             assert( ndx < elements_.size() );
-            return elements_[ ndx ].value_;
+            assert( file_ );
+
+            return unpack_value( file_, elements_[ ndx ].packed_value_ );
         }
 
         const auto & good_before( size_t ndx ) const noexcept
@@ -1182,14 +1254,21 @@ namespace jb
 
             try
             {
-                Element e{ digest, move( value ), good_before, InvalidNodeUid };
-
                 // open transaction
-                if ( auto transaction = file_->open_transaction(); RetCode::Ok == transaction.status() )
+                if ( auto t = file_->open_transaction(); RetCode::Ok == t.status() )
                 {
-                    if ( auto rc = insert_element( transaction, pos, bpath, move( e ), overwrite ); RetCode::Ok == rc )
+                    if ( auto[ rc, packed ] = pack_value( t, value ); RetCode::Ok == rc )
                     {
-                        return transaction.commit();
+                        Element e{ digest, packed, good_before, InvalidNodeUid };
+
+                        if ( auto rc = insert_element( t, pos, bpath, move( e ), overwrite ); RetCode::Ok == rc )
+                        {
+                            return t.commit();
+                        }
+                        else
+                        {
+                            return rc;
+                        }
                     }
                     else
                     {
@@ -1198,7 +1277,7 @@ namespace jb
                 }
                 else
                 {
-                    return transaction.status();
+                    return t.status();
                 }
             }
             catch ( ... )

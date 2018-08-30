@@ -192,7 +192,7 @@ TYPED_TEST( TestStorageFile, Transaction_Rollback )
         auto t = f.open_transaction();
         ASSERT_EQ( RetCode::Ok, t.status() );
 
-        auto b = t.get_chain_writer();
+        auto b = t.get_chain_writer< char >();
         EXPECT_EQ( RetCode::Ok, t.status() );
 
         ostream os( &b );
@@ -204,7 +204,7 @@ TYPED_TEST( TestStorageFile, Transaction_Rollback )
     }
 
     {
-        auto b = f.get_chain_reader( uid );
+        auto b = f.get_chain_reader< char >( uid );
         istream is( &b );
         string str;
         is >> str;
@@ -238,7 +238,7 @@ TYPED_TEST( TestStorageFile, Transaction_Commit )
             size_t sz = static_cast< size_t >( Policy::PhysicalVolumePolicy::ChunkSize * factor[ i ] );
             string data( sz, '0' + char( i ) );
 
-            auto b = t.get_chain_writer();
+            auto b = t.get_chain_writer< char >();
             EXPECT_EQ( RetCode::Ok, t.status() );
 
             ostream os( &b );
@@ -258,7 +258,7 @@ TYPED_TEST( TestStorageFile, Transaction_Commit )
             string data( sz, '0' + char( i ) );
             string read_data;
 
-            auto b = f.get_chain_reader( uid[ i ] );
+            auto b = f.get_chain_reader< char >( uid[ i ] );
             istream is( &b );
             string str;
             is >> read_data;
@@ -281,7 +281,7 @@ TYPED_TEST( TestStorageFile, Transaction_RollbackOnOpen )
         auto t = f.open_transaction();
         ASSERT_EQ( RetCode::Ok, t.status() );
 
-        auto b = t.get_chain_writer();
+        auto b = t.get_chain_writer< char >();
         EXPECT_EQ( RetCode::Ok, t.status() );
 
         ostream os( &b );
@@ -296,7 +296,7 @@ TYPED_TEST( TestStorageFile, Transaction_RollbackOnOpen )
         StorageFile f{ std::filesystem::path{ "Transaction_RollbackOnOpen.jb" }, true };
         ASSERT_EQ( RetCode::Ok, f.status() );
 
-        auto b = f.get_chain_reader( uid );
+        auto b = f.get_chain_reader< char >( uid );
         istream is( &b );
         string str;
         is >> str;
@@ -330,7 +330,7 @@ TYPED_TEST( TestStorageFile, Overwriting )
             size_t sz = static_cast< size_t >( Policy::PhysicalVolumePolicy::ChunkSize * factor[ i ] );
             string data( sz, '0' + char( i ) );
 
-            auto b = t.get_chain_writer();
+            auto b = t.get_chain_writer< char >();
             EXPECT_EQ( RetCode::Ok, t.status() );
 
             ostream os( &b );
@@ -351,7 +351,7 @@ TYPED_TEST( TestStorageFile, Overwriting )
         size_t sz = static_cast< size_t >( Policy::PhysicalVolumePolicy::ChunkSize * factor[ 9 - i ] );
         string data( sz, 'A' + char( i ) );
 
-        auto [ rc, b ] = t.get_chain_overwriter( uid[ i ] );
+        auto [ rc, b ] = t.get_chain_overwriter< char >( uid[ i ] );
         EXPECT_EQ( RetCode::Ok, rc );
 
         ostream os( &b );
@@ -368,7 +368,7 @@ TYPED_TEST( TestStorageFile, Overwriting )
         string data( sz, 'A' + char( i ) );
         string read_data;
 
-        auto b = f.get_chain_reader( uid[ i ] );
+        auto b = f.get_chain_reader< char >( uid[ i ] );
         istream is( &b );
         string str;
         is >> read_data;
@@ -389,12 +389,12 @@ TYPED_TEST( TestStorageFile, Sequent_Overwriting )
     ASSERT_EQ( RetCode::Ok, t.status() );
 
     {
-        auto[ rc, b ] = t.get_chain_overwriter( StorageFile::RootChunkUid );
+        auto[ rc, b ] = t.get_chain_overwriter< char >( StorageFile::RootChunkUid );
         EXPECT_EQ( RetCode::Ok, rc );
     }
 
     {
-        auto[ rc, b ] = t.get_chain_overwriter( StorageFile::RootChunkUid );
+        auto[ rc, b ] = t.get_chain_overwriter< char >( StorageFile::RootChunkUid );
         EXPECT_EQ( RetCode::UnknownError, rc );
     }
 }
@@ -416,7 +416,7 @@ TYPED_TEST( TestStorageFile, GarbageCollector )
         EXPECT_EQ( RetCode::Ok, t.status() );
 
         {
-            auto b = t.get_chain_writer();
+            auto b = t.get_chain_writer< char >();
 
             ostream os( &b );
             os << "0000000";
@@ -427,7 +427,7 @@ TYPED_TEST( TestStorageFile, GarbageCollector )
             uid_0 = t.get_first_written_chunk();
         }
         {
-            auto b = t.get_chain_writer();
+            auto b = t.get_chain_writer< char >();
 
             ostream os( &b );
             os << "1111111111";
@@ -438,7 +438,7 @@ TYPED_TEST( TestStorageFile, GarbageCollector )
             uid_1 = t.get_first_written_chunk();
         }
         {
-            auto b = t.get_chain_writer();
+            auto b = t.get_chain_writer< char >();
 
             ostream os( &b );
             os << "2222222222222";
@@ -470,7 +470,7 @@ TYPED_TEST( TestStorageFile, GarbageCollector )
         auto t = f.open_transaction();
         EXPECT_EQ( RetCode::Ok, t.status() );
 
-        auto b = t.get_chain_writer();
+        auto b = t.get_chain_writer< char >();
 
         ostream os( &b );
         os << "3333333333333333333333333333333333333333333333333";
@@ -489,7 +489,7 @@ TYPED_TEST( TestStorageFile, GarbageCollector )
     {
         string str;
 
-        auto b = f.get_chain_reader( uid_3 );
+        auto b = f.get_chain_reader< char >( uid_3 );
         istream is( &b );
         is >> str;
 
