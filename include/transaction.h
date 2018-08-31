@@ -349,7 +349,7 @@ namespace jb
         @throw nothing
         */
         template< typename CharT >
-        ostreambuf< CharT > get_chain_writer()
+        auto get_chain_writer()
         {
             try
             {

@@ -8,7 +8,7 @@
 #include <boost/thread/shared_mutex.hpp>
 #include <boost/thread/locks.hpp>
 #include <boost/thread/lock_types.hpp>
-#include <boost/archive/binary_iarchive.hpp>
+
 
 namespace jb
 {
@@ -25,14 +25,16 @@ namespace jb
     class Storage< Policies >::PhysicalVolumeImpl::BTreeCache
     {
         using BTree = typename PhysicalVolumeImpl::BTree;
+        using btree_error = typename BTree::btree_error;
         using BTreeP = typename BTree::BTreeP;
         using NodeUid = typename BTree::NodeUid;
         using StorageFile = typename PhysicalVolumeImpl::StorageFile;
+        using storage_file_error = typename StorageFile::storage_file_error;
         using shared_lock = boost::upgrade_lock< boost::upgrade_mutex >;
         using exclusive_lock = boost::upgrade_to_unique_lock< boost::upgrade_mutex >;
 
         RetCode status_ = RetCode::Ok;
-        StorageFile * file_;
+        StorageFile & file_;
 
         using MruOrder = std::list< NodeUid >;
         using MruItems = std::unordered_map< NodeUid, std::pair< BTreeP, typename MruOrder::iterator > >;
@@ -44,6 +46,16 @@ namespace jb
 
 
     public:
+
+        struct btree_cache_error : public std::runtime_error
+        {
+            btree_cache_error( RetCode rc, const char * what ) : std::runtime_error( what ), rc_( rc ) {}
+            RetCode code() const { return rc_; }
+
+        private:
+            RetCode rc_;
+        };
+
 
         /** The class is not default constructible
         */
@@ -61,7 +73,7 @@ namespace jb
         @throw nothing
         @note check object validity by status()
         */
-        explicit BTreeCache( StorageFile * file ) try
+        explicit BTreeCache( StorageFile & file ) try
             : file_( file )
             , mru_order_( CacheSize, InvalidNodeUid )
             , mru_items_( CacheSize )
@@ -92,8 +104,7 @@ namespace jb
         @retval BTreeP - if operation succeeds holds shared pointer to requested item
         @throw nothing
         */
-        [[nodiscard]]
-        std::tuple< RetCode, BTreeP > get_node( NodeUid uid ) noexcept
+        auto get_node( NodeUid uid )
         {
             using namespace std;
 
@@ -110,13 +121,11 @@ namespace jb
                     // mark the item as MRU
                     mru_order_.splice( end( mru_order_ ), mru_order_, item_it->second.second );
 
-                    return { RetCode::Ok, item_it->second.first };
+                    return item_it->second.first;
                 }
                 else
                 {
-                    assert( file_ );
-
-                    auto p = make_shared< BTree >( uid, file_, this );
+                    auto p = make_shared< BTree >( uid, file_, *this );
 
                     // through the order list
                     for ( auto order_it = begin( mru_order_ ); order_it != end( mru_order_ ); ++order_it )
@@ -132,11 +141,11 @@ namespace jb
                             mru_order_.splice( end( mru_order_ ), mru_order_, order_it );
                             *order_it = uid;
 
-                            return { RetCode::Ok, p };
+                            return p;
                         }
 
                         // if item is not used anymore
-                        if ( auto item_it = mru_items_.find( *order_it ); item_it->second.first.use_count( ) == 1 )
+                        if ( auto item_it = mru_items_.find( *order_it ); item_it->second.first.use_count() == 1 )
                         {
                             // get exclusive lock over the cache
                             exclusive_lock e{ s };
@@ -149,22 +158,29 @@ namespace jb
                             mru_order_.splice( end( mru_order_ ), mru_order_, order_it );
                             *order_it = uid;
 
-                            return { RetCode::Ok, p };
+                            return p;
                         }
                     }
 
-                    return { RetCode::TooManyConcurrentOps, BTreeP{} };
+                    return BTreeP{};
                 }
             }
-            catch ( const std::exception & e )
+            catch ( const storage_file_error & e )
             {
-                cout << e.what() << endl;
+                throw e;
+            }
+            catch ( const btree_error & e )
+            {
+                throw e;
+            }
+            catch ( const btree_cache_error & e )
+            {
+                throw e;
             }
             catch ( ... )
             {
+                throw btree_cache_error( RetCode::UnknownError, "Unable to get b-tree node" );
             }
-
-            return { RetCode::UnknownError, BTreeP{} };
         }
 
 
@@ -175,8 +191,7 @@ namespace jb
         @retval RetCode - operation status
         @throw nothing
         */
-        [[nodiscard]]
-        auto update_uid( NodeUid old_uid, NodeUid new_uid ) noexcept
+        auto update_uid( NodeUid old_uid, NodeUid new_uid )
         {
             using namespace std;
 
@@ -196,18 +211,15 @@ namespace jb
                     mru_items_.insert( move( item ) );
                     mru_order_.splice( end( mru_order_ ), mru_order_, order_it );
                 }
-
-                return RetCode::Ok;
             }
             catch ( ... )
             {
+                throw btree_cache_error( RetCode::UnknownError, "Unable to update b-tree node UID" );
             }
-
-            return RetCode::UnknownError;
         }
 
 
-        auto drop( NodeUid uid ) noexcept
+        auto drop( NodeUid uid )
         {
             using namespace std;
 
@@ -225,14 +237,11 @@ namespace jb
                     *order_it = InvalidNodeUid;
                     mru_order_.splice( begin( mru_order_ ), mru_order_, order_it );
                 }
-
-                return RetCode::Ok;
             }
             catch ( ... )
             {
+                throw btree_cache_error( RetCode::UnknownError, "Unable to drop b-tree node" );
             }
-
-            return RetCode::UnknownError;
         }
     };
 }

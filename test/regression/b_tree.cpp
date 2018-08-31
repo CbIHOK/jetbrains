@@ -371,12 +371,11 @@ TYPED_TEST( TestBTree, Insert_Erase )
     ASSERT_EQ( RetCode::Ok, f.status() );
 
     // prepare cache
-    BTreeCache c( &f );
+    BTreeCache c( f );
     ASSERT_EQ( RetCode::Ok, f.status() );
 
     // get root node
-    auto[ rc, root ] = c.get_node( RootNodeUid );
-    EXPECT_EQ( RetCode::Ok, rc );
+    auto root = c.get_node( RootNodeUid );
     EXPECT_TRUE( root );
 
     // inserts 1000 elements into /root
@@ -391,8 +390,7 @@ TYPED_TEST( TestBTree, Insert_Erase )
         {
             auto target = bpath.back(); bpath.pop_back();
 
-            auto[ rc, node ] = c.get_node( target.first );
-            EXPECT_EQ( RetCode::Ok, rc );
+            auto node = c.get_node( target.first );
 
             EXPECT_EQ( RetCode::Ok, node->insert( target.second, bpath, digest, Value{ to_string( digest ) }, 0, false ) );
         }

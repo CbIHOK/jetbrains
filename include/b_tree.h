@@ -8,10 +8,10 @@
 #include <limits>
 #include <exception>
 #include <execution>
+#include <iostream>
 
 #include <boost/container/static_vector.hpp>
 #include <boost/thread/shared_mutex.hpp>
-#include <boost/thread/condition_variable.hpp>
 
 
 template < typename T > class TestBTree;
@@ -30,20 +30,25 @@ namespace jb
         using Storage = Storage< Policies >;
         using Value = typename Storage::Value;
         using Digest = typename Bloom::Digest;
+        using StorageFile = typename PhysicalVolumeImpl::StorageFile;
         using Transaction = typename StorageFile::Transaction;
         using BlobUid = typename StorageFile::ChunkUid;
+        using istream64 = typename std::basic_istream< uint64_t, ::jb::streambuf_traits< uint64_t >::traits_type >;
+        using ostream64 = typename std::basic_ostream< uint64_t, ::jb::streambuf_traits< uint64_t >::traits_type >;
+
 
         static constexpr auto BTreeMinPower = Policies::PhysicalVolumePolicy::BTreeMinPower;
         static_assert( BTreeMinPower >= 2, "B-tree power must be > 1" );
         static constexpr auto BTreeMin = BTreeMinPower - 1;
         static constexpr auto BTreeMax = 2 * BTreeMinPower - 1;
-
         static constexpr auto BTreeMaxDepth = Policies::PhysicalVolumePolicy::BTreeMaxDepth;
 
         template < typename T, size_t C > using static_vector = boost::container::static_vector< T, C >;
 
 
     public:
+
+        class PackedValue;
 
         using BTreeP = std::shared_ptr< BTree >;
         using NodeUid = typename StorageFile::ChunkUid;
@@ -61,126 +66,21 @@ namespace jb
             BTreePath() { reserve(100); }
         };
 
+        struct btree_error : public std::runtime_error
+        {
+            btree_error( RetCode rc, const char * what ) : std::runtime_error( what ), rc_( rc ) {}
+            RetCode code() const { return rc_; }
+
+        private:
+            RetCode rc_;
+        };
+
 
     private:
 
-        struct PackedValue
+        auto static throw_btree_error( bool condition, RetCode rc, const char * what = "" )
         {
-            static constexpr uint64_t no_value = std::numeric_limits< uint64_t >::max() - 1;
-            uint64_t index_;
-            uint64_t value_;
-        };
-
-        template < typename T >
-        static std::tuple< RetCode, BlobUid > pack_blob( Transaction & t, const T & v ) noexcept
-        {
-            using namespace std;
-
-            {
-                StorageFile::ostreambuf< char > osbuf = t.get_chain_writer< char >();
-                ostream os( &osbuf );
-                os << v;
-                os.flush();
-            }
-
-            return t.status();
-        }
-
-        template < typename CharT >
-        static std::tuple< RetCode, BlobUid > pack_blob( Transaction & t, const std::basic_string< CharT > & v ) noexcept
-        {
-            using namespace std;
-
-            {
-                StorageFile::ostreambuf< CharT > osbuf = t.get_chain_writer< CharT >();
-                ostream os( &osbuf );
-                os << v;
-                os.flush();
-            }
-
-            return t.status();
-        }
-
-        static std::tuple< RetCode, PackedValue > pack_value( Transaction & t, const Value & v ) noexcept
-        {
-            using namespace std;
-
-            static constexpr uint64_t max_v_size = numeric_limits< uint64_t >::max() >> 2;
-            static_assert( variant_size_v< Value > < max_v_size, "Too many alternatives" );
-
-            PackedValue packed;
-
-            if ( ( packed.index_ = v.index() ) == variant_npos )
-            {
-                packed.index_ = PackedValue::no_value;
-                return { RetCode::Ok, packed };
-            }
-
-            packed.index_ = packed.index_ << 1;
-            auto ret = RetCode::Ok;
-
-            //visit( [&] ( auto arg ) {
-
-            //    using type = std::decay_t< decltype( a ) >;
-
-            //    if ( std::is_integral< type > )
-            //    {
-            //        packed.value_ = static_cast< int64_t >( v.get( index ) );
-            //    }
-            //    //else if ( auto[ rc, chunk ] = pack_blob( t, v.get( index ) ); RetCode::Ok != rc )
-            //    //{
-            //    //    ret = rc;
-            //    //}
-            //    //else
-            //    //{
-            //    //    packed.index_ |= 1;
-            //    //    packed.value_ = chunk;
-            //    //}
-            //}, v );
-
-            return { ret, packed };
-        }
-
-
-        template < typename T >
-        static std::tuple< RetCode > unpack_blob( BlobUid uid, T & v ) noexcept
-        {
-            using namespace std;
-
-            assert( file_ );
-
-            StorageFile::istreambuf< char > isbuf = file_->get_chain_reader< char >();
-            istream is( &isbuf );
-            is >> v;
-
-            return is.status();
-        }
-
-
-        template < typename CharT >
-        static std::tuple< RetCode > unpack_blob( Transaction & t, BlobUid uid, const std::basic_string< CharT > & v ) noexcept
-        {
-            using namespace std;
-
-            {
-                StorageFile::ostreambuf< CharT > osbuf = t.get_chain_writer< CharT >();
-                ostream os( &osbuf );
-                os << v;
-                os.flush();
-            }
-
-            return t.status();
-        }
-
-        static std::tuple< RetCode, Value > unpack_value( StorageFile * file, const PackedValue & packed )
-        {
-            if ( PackedValue::no_value == packed.index_ )
-            {
-                return { RetCode::Ok, Value{} };
-            }
-            
-            auto is_blob = ( packed.index_ & 1 ) != 0;
-            auto index = packed.index_ >> 1;
+            if ( !condition ) throw btree_error( rc, what );
         }
 
         //
@@ -193,11 +93,10 @@ namespace jb
             uint64_t good_before_;
             NodeUid children_;
 
-            friend std::basic_ostream< int64_t > & operator << ( std::basic_ostream< int64_t > & os, const Element & e )
+            friend ostream64 & operator << ( ostream64 & os, const Element & e )
             {
                 os  << e.digest_
-                    << e.packed_value_.index_
-                    << e.packed_value_.value_
+                    << e.packed_value_
                     << e.good_before_
                     << e.children_;
 
@@ -207,38 +106,37 @@ namespace jb
             friend std::basic_istream< int64_t > & operator >> ( std::basic_istream< int64_t > & is, Element & e )
             {
                 is  >> e.digest_
-                    >> e.packed_value_.index_
-                    >> e.packed_value_.value_
+                    >> e.packed_value_
                     >> e.good_before_
                     >> e.children_;
 
                 return is;
             }
 
-            //
-            // deserializes element's value based on index of variant alternative
-            //
-            template < size_t I, class Archive >
-            Value try_deserialize_variant( size_t index, Archive & ar, const unsigned int version )
-            {
-                if constexpr ( I < std::variant_size_v< Value > )
-                {
-                    if ( index == I )
-                    {
-                        std::variant_alternative_t< I, Value > v;
-                        ar >> BOOST_SERIALIZATION_NVP( v );
-                        return Value( v );
-                    }
-                    else
-                    {
-                        return try_deserialize_variant< I + 1 >( index, ar, version );
-                    }
-                }
-                else
-                {
-                    throw std::runtime_error( "Unable to deserialize variant object" );
-                }
-            }
+            ////
+            //// deserializes element's value based on index of variant alternative
+            ////
+            //template < size_t I, class Archive >
+            //Value try_deserialize_variant( size_t index, Archive & ar, const unsigned int version )
+            //{
+            //    if constexpr ( I < std::variant_size_v< Value > )
+            //    {
+            //        if ( index == I )
+            //        {
+            //            std::variant_alternative_t< I, Value > v;
+            //            ar >> BOOST_SERIALIZATION_NVP( v );
+            //            return Value( v );
+            //        }
+            //        else
+            //        {
+            //            return try_deserialize_variant< I + 1 >( index, ar, version );
+            //        }
+            //    }
+            //    else
+            //    {
+            //        throw std::runtime_error( "Unable to deserialize variant object" );
+            //    }
+            //}
 
             //
             // variant comparer
@@ -289,8 +187,8 @@ namespace jb
         // data members
         //
         NodeUid uid_;
-        StorageFile * file_ = nullptr;
-        BTreeCache * cache_ = nullptr;
+        StorageFile & file_;
+        BTreeCache & cache_;
         mutable boost::upgrade_mutex guard_;
         ElementCollection elements_;
         LinkCollection links_;
@@ -302,43 +200,21 @@ namespace jb
         @retval RetCode - operation status
         @throw may throw std::exception for different reasons
         */
-        [[nodiscard]]
         auto save( Transaction & t ) const noexcept
         {
-            using namespace std;
+            throw_btree_error( elements_.size() + 1 == links_.size(), RetCode::UnknownError, "Broken b-tree node" );
+            
+            auto buffer = t.get_chain_writer< uint64_t >();
+            ostream64 stream( &buffer );
+            stream << elements_.size();
+            for ( const auto & element : elements_ ) stream << element;
+            for ( const auto & link : links_ ) stream << link;
+            stream.flush();
 
-            try
-            {
-                if ( !file_ || !cache_ )
-                {
-                    return RetCode::UnknownError;
-                }
+            NodeUid uid = t.get_first_written_chunk();
+            std::swap( uid, const_cast< BTree* >( this )->uid_ );
 
-                {
-                    auto osbuf = t.get_chain_writer< int64_t >();
-                    std::basic_ostream< int64_t > os( &osbuf );
-
-                    os << elements_.size();
-                    for ( const auto & e : elements_ ) { os << e; }
-                    for ( auto l : links_ ) { os << l; }
-                    os.flush();
-                }
-
-                if ( auto rc = t.status(); RetCode::Ok != rc )
-                {
-                    return rc;
-                }
-
-                NodeUid uid = t.get_first_written_chunk();
-                std::swap( uid, const_cast< BTree* >( this )->uid_ );
-
-                return cache_->update_uid( uid, uid_ );
-            }
-            catch ( ... )
-            {
-            }
-
-            return RetCode::UnknownError;
+            cache_.update_uid( uid, uid_ );
         }
 
 
@@ -347,39 +223,16 @@ namespace jb
         @param [in] t - transaction
         @throw may throw std::exception for different reasons
         */
-        [[nodiscard]]
         auto overwrite( Transaction & t ) const
         {
-            using namespace std;
+            throw_btree_error( elements_.size() + 1 == links_.size(), RetCode::UnknownError, "Broken b-tree node" );
 
-            try
-            {
-                if ( !file_ )
-                {
-                    return RetCode::UnknownError;
-                }
-
-                if ( auto[ rc, osbuf ] = t.get_chain_overwriter< int64_t >( uid_ ); RetCode::Ok == rc)
-                {
-                    std::basic_ostream< int64_t > os( &osbuf );
-
-                    os << elements_.size();
-                    for ( const auto & e : elements_ ) { os << e; }
-                    for ( auto l : links_ ) { os << l; }
-                    os.flush();
-                }
-                else
-                {
-                    return rc;
-                }
-
-                return t.status();
-            }
-            catch ( ... )
-            {
-
-            }
-            return RetCode::UnknownError;
+            auto buffer = t.get_chain_overwriter( uid_ );
+            ostream64 stream( buffer );
+            stream << elements_.size();
+            for ( const auto & element : elements_ ) stream << element;
+            for ( const auto & link : links_ ) stream << links;
+            os.flush();
         }
 
 
@@ -573,13 +426,13 @@ namespace jb
                 BTreePath::value_type parent_path = move( bpath.back() ); bpath.pop_back();
 
                 // remove this node from storage and drop it from cache
-                if ( auto[ rc1, rc2 ] = tuple{ cache_->drop( uid_ ), t.erase_chain( uid_ ) }; RetCode::Ok != rc1 || RetCode::Ok != rc2 )
+                if ( auto[ rc1, rc2 ] = tuple{ cache_.drop( uid_ ), t.erase_chain( uid_ ) }; RetCode::Ok != rc1 || RetCode::Ok != rc2 )
                 {
                     return max( rc1, rc2 );
                 }
 
                 // and insert mediane element to parent
-                if ( auto[ rc, parent ] = cache_->get_node( parent_path.first ); RetCode::Ok != rc )
+                if ( auto[ rc, parent ] = cache_.get_node( parent_path.first ); RetCode::Ok != rc )
                 {
                     return rc;
                 }
@@ -689,7 +542,6 @@ namespace jb
             {
                 assert( elements_.size() );
                 assert( pos < elements_.size() );
-                assert( cache_ );
                 assert( t.status() == RetCode::Ok );
                 assert( entry_level <= bpath.size() );
 
@@ -700,17 +552,7 @@ namespace jb
                     assert( links_[ pos + 1 ] != InvalidNodeUid );
 
                     // get left child node
-                    BTreeP left_child;
-
-                    if ( auto[ rc, node ] = cache_->get_node( links_[ pos ] ); RetCode::Ok != rc )
-                    {
-                        return rc;
-                    }
-                    else
-                    {
-                        assert( node );
-                        left_child = node;
-                    }
+                    BTreeP left_child = cache_.get_node( links_[ pos ] );
 
                     // if left child is rich enough
                     if ( left_child->elements_.size() > BTreeMin )
@@ -742,7 +584,7 @@ namespace jb
                     // get right child node
                     BTreeP right_child;
 
-                    if ( auto[ rc, node ] = cache_->get_node( links_[ pos + 1 ] ); RetCode::Ok != rc )
+                    if ( auto[ rc, node ] = cache_.get_node( links_[ pos + 1 ] ); RetCode::Ok != rc )
                     {
                         return rc;
                     }
@@ -786,7 +628,7 @@ namespace jb
 
                     if ( auto rc = t.erase_chain( right_child->uid_ ); RetCode::Ok == rc )
                     {
-                        cache_->drop( right_child->uid_ );
+                        cache_.drop( right_child->uid_ );
                     }
                     else
                     {
@@ -862,7 +704,7 @@ namespace jb
                 // get parent node
                 BTreeP parent;
 
-                if ( auto[ rc, node ] = cache_->get_node( parent_ref.first ); RetCode::Ok == rc )
+                if ( auto[ rc, node ] = cache_.get_node( parent_ref.first ); RetCode::Ok == rc )
                 {
                     assert( node );
                     parent = node;
@@ -878,7 +720,7 @@ namespace jb
                 // if left sibling exists - load it
                 if ( 0 < parent_ref.second && InvalidNodeUid != parent->links_[ parent_ref.second - 1 ] )
                 {
-                    if ( auto[ rc, node ] = cache_->get_node( parent->links_[ parent_ref.second - 1 ] ); RetCode::Ok == rc )
+                    if ( auto[ rc, node ] = cache_.get_node( parent->links_[ parent_ref.second - 1 ] ); RetCode::Ok == rc )
                     {
                         left_sibling = node->is_leaf() ? node : BTreeP{};
                     }
@@ -925,7 +767,7 @@ namespace jb
 
                 if ( parent_ref.second + 1 < parent->elements_.size()  && InvalidNodeUid != parent->links_[ parent_ref.second + 1 ] )
                 {
-                    if ( auto[ rc, node ] = cache_->get_node( parent->links_[ parent_ref.second + 1 ] ); RetCode::Ok == rc )
+                    if ( auto[ rc, node ] = cache_.get_node( parent->links_[ parent_ref.second + 1 ] ); RetCode::Ok == rc )
                     {
                         right_sibling = node->is_leaf() ? node : BTreeP{};
                     }
@@ -982,7 +824,7 @@ namespace jb
                         return max( rc1, rc2 );
                     }
 
-                    if ( auto rc = cache_->drop( uid_ ); RetCode::Ok != rc )
+                    if ( auto rc = cache_.drop( uid_ ); RetCode::Ok != rc )
                     {
                         return rc;
                     }
@@ -1014,7 +856,7 @@ namespace jb
                         return max( rc1, rc2 );
                     }
 
-                    if ( auto rc = cache_->drop( right_sibling->uid_ ); RetCode::Ok != rc )
+                    if ( auto rc = cache_.drop( right_sibling->uid_ ); RetCode::Ok != rc )
                     {
                         return rc;
                     }
@@ -1215,7 +1057,7 @@ namespace jb
                 {
                     assert( cache_ );
 
-                    if ( auto[ rc, p ] = cache_->get_node( link ); RetCode::Ok == rc )
+                    if ( auto[ rc, p ] = cache_.get_node( link ); RetCode::Ok == rc )
                     {
                         assert( path.size() < path.capacity() );
                         assert( p );
@@ -1303,12 +1145,11 @@ namespace jb
             {
                 assert( pos < elements_.size() );
             }
-            assert( cache_ );
 
             try
             {
                 // open transaction
-                if ( auto t = file_->open_transaction(); RetCode::Ok == t.status() )
+                if ( auto t = file_.open_transaction(); RetCode::Ok == t.status() )
                 {
                     if ( auto rc = erase_element( t, pos, bpath, bpath.size() ); RetCode::Ok == rc )
                     {
@@ -1332,6 +1173,9 @@ namespace jb
         }
     };
 }
+
+
+#include "packed_value.h"
 
 
 #endif
