@@ -17,6 +17,34 @@
 
 namespace jb
 {
+
+    template < typename CharT > struct store_adaptor_type
+    {
+        using type = CharT;
+    };
+
+    template <> struct store_adaptor_type< char >
+    {
+        using type = char;
+    };
+
+    template <> struct store_adaptor_type< wchar_t >
+    {
+        using type = std::char_traits< wchar_t >::int_type;
+    };
+
+    template <> struct store_adaptor_type< char16_t >
+    {
+        using type = std::char_traits< char16_t >::int_type;
+    };
+
+    template <> struct store_adaptor_type< char32_t >
+    {
+        using type = std::char_traits< char32_t >::int_type;
+    };
+
+    template < typename CharT > using store_adaptor_type_t = typename store_adaptor_type< CharT >::type;
+
     //
     // provides stored type for Char_T
     //
@@ -24,7 +52,7 @@ namespace jb
     {
         using be_type = boost::endian::endian_arithmetic<
             boost::endian::order::big,
-            CharT,
+            store_adaptor_type_t< CharT >,
             sizeof( CharT ) * 8,
             boost::endian::align::yes
         >;
@@ -36,14 +64,31 @@ namespace jb
     };
 
     template <> struct stored_type< char > { using type = char; };
-    template <> struct stored_type< uint8_t > { using type = uint8_t; };
-    template <> struct stored_type< int8_t > { using type = int8_t; };
-
 
     //
     // short alias
     //
     template < typename CharT > using stored_type_t = typename stored_type< CharT >::type;
+
+
+    template< typename CharT >
+    struct streambuf_traits
+    {
+        using traits_type = std::char_traits< CharT >;
+    };
+
+    template<>
+    struct streambuf_traits< int64_t >
+    {
+        using traits_type = std::_Char_traits< int64_t, int64_t >;
+    };
+
+    template<>
+    struct streambuf_traits< uint64_t >
+    {
+        using traits_type = std::_Char_traits< uint64_t, uint64_t >;
+    };
+
 
 
     /** Represents input stream from storage file
@@ -53,7 +98,7 @@ namespace jb
     */
     template < typename Policies >
     template < typename CharT >
-    class Storage< Policies >::PhysicalVolumeImpl::StorageFile::istreambuf : public std::basic_streambuf< CharT >
+    class Storage< Policies >::PhysicalVolumeImpl::StorageFile::istreambuf : public std::basic_streambuf< CharT , typename streambuf_traits< CharT >::traits_type >
     {
         //
         // requires access to private explicit constructor
@@ -65,7 +110,8 @@ namespace jb
         // stored type for CharT
         //
         using StoredType = stored_type_t< CharT >;
-        using traits_type = typename std::basic_streambuf< CharT >::traits_type;
+        using AdaptorType = store_adaptor_type_t< CharT >;
+        using traits_type = typename streambuf_traits< CharT >::traits_type;
         using int_type = typename traits_type::int_type;
 
 
@@ -82,7 +128,6 @@ namespace jb
         StorageFile & file_;
         streamer_t reader_;
         ChunkUid current_chunk_ = InvalidChunkUid;
-        RetCode status_ = RetCode::Ok;
         Handle & handle_;
         buffer_t & buffer_;
 
@@ -107,7 +152,6 @@ namespace jb
             setg( start, end, end );
         }
 
-
         //
         // handles lack of data
         //
@@ -116,7 +160,7 @@ namespace jb
             using namespace std;
 
             // we ain't ok
-            if ( RetCode::Ok != status_ )
+            if ( RetCode::Ok != file_.status() )
             {
                 return traits_type::eof();
             }
@@ -160,14 +204,14 @@ namespace jb
             else
             {
                 // read from file to intermidiate array of stored type
-                std::array< StoredType, BufferSize > acceptor;
+                std::array< StoredType, BufferSize > typed_adaptor;
 
                 // read data from current chunk
                 auto[ read_bytes, next_chunk ] = file_.read_chunk(
                     reader_.first,
                     current_chunk_,
-                    reinterpret_cast< void* >( acceptor.data() ),
-                    acceptor.size() * sizeof( StoredType ) );
+                    reinterpret_cast< void* >( typed_adaptor.data() ),
+                    typed_adaptor.size() * sizeof( StoredType ) );
 
                 if ( read_bytes )
                 {
@@ -181,9 +225,9 @@ namespace jb
                     current_chunk_ = next_chunk;
 
                     // convert elements to platform specific representation
-                    for ( auto i = begin( acceptor ); begin( acceptor ) + read_chars; ++i )
+                    for ( size_t i = 0; i < read_chars; ++i )
                     {
-                        buffer_[ std::distance( begin( acceptor ), i ) ] = *i;
+                        buffer_[ i ] = static_cast< AdaptorType >( typed_adaptor[ i ] );
                     }
                 }
             }
@@ -209,20 +253,13 @@ namespace jb
         */
         istreambuf() = delete;
         istreambuf( const istreambuf & ) = delete;
+        istreambuf & operator = ( const istreambuf & ) = delete;
 
 
         /** ...but movable
         */
         istreambuf( istreambuf&& ) = default;
-
-
-        /** Provides object status
-
-        @return RetCode - status
-        @throw nothing
-        */
-        [[nodiscard]]
-        auto status() const noexcept { return status_; }
+        istreambuf & operator = ( istreambuf&& ) = default;
 
 
         /** Destructor, releases allocated handle
@@ -247,12 +284,13 @@ namespace jb
     */
     template < typename Policies >
     template < typename CharT >
-    class Storage< Policies >::PhysicalVolumeImpl::StorageFile::ostreambuf : public std::basic_streambuf< CharT >
+    class Storage< Policies >::PhysicalVolumeImpl::StorageFile::ostreambuf : public std::basic_streambuf< CharT, typename streambuf_traits< CharT >::traits_type >
     {
         friend class Transaction;
 
         using StoredType = stored_type_t< CharT >;
-        using traits_type = typename std::basic_streambuf< CharT >::traits_type;
+        using AdaptorType = store_adaptor_type_t< CharT >;
+        using traits_type = typename streambuf_traits< CharT >::traits_type;
         using int_type = typename traits_type::int_type;
 
         static constexpr auto BufferSize = ChunkOffsets::sz_Space / sizeof( StoredType );
@@ -325,10 +363,14 @@ namespace jb
             }
             else
             {
-                std::array< StoredType, BufferSize > convertor;
-                copy( execution::seq, begin( buffer_ ), begin( buffer_ ) + elements_to_write, begin( convertor ) );
+                std::array< StoredType, BufferSize > typed_adaptor;
 
-                auto bytes_written = transaction_.write( convertor.data(), elements_to_write * sizeof( StoredType ) );
+                for ( size_t i = 0 ; i < elements_to_write; ++i )
+                {
+                    typed_adaptor[ i ] = static_cast< AdaptorType >( buffer_[ i ] );
+                }
+
+                auto bytes_written = transaction_.write( typed_adaptor.data(), elements_to_write * sizeof( StoredType ) );
 
                 if ( bytes_written )
                 {
@@ -352,20 +394,17 @@ namespace jb
 
         /** Default constructor, creates dummy buffer
         */
-        ostreambuf()
-        {
-            setg( nullptr, nullptr, nullptr );
-            setp( nullptr, nullptr );
-        }
+        ostreambuf() = delete;
 
         /* The class is not copyable...
         */
         ostreambuf( const ostreambuf & ) = delete;
+        ostreambuf & operator = ( const ostreambuf & ) = delete;
 
         /** ...but movable
         */
-        ostreambuf( ostreambuf&& ) noexcept = default;
-        ostreambuf & operator = ( ostreambuf&& ) noexcept = default;
+        ostreambuf( ostreambuf&& ) = default;
+        ostreambuf & operator = ( ostreambuf&& ) = default;
     };
 
 }

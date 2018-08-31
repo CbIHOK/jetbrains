@@ -818,7 +818,8 @@ namespace jb
             throw_storage_file_error( RetCode::Ok == status_, RetCode::UnknownError, "Attempt to access invalid file" );
 
             // acquire reading handle
-            unique_lock lock( readers_mutex_ );
+            unique_lock lock{ readers_mutex_ };
+
             readers_cv_.wait( lock, [&] { return !reader_stack_.empty(); } );
 
             auto reader = move( reader_stack_.top() );
