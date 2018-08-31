@@ -84,7 +84,8 @@ namespace jb
             NotFound,               ///< Such path does not have a physical representation
             InUse,                  ///< The handler is currently used by concurrent operation and cannot be closed
             HasDependentMounts,     ///< There are underlaying mount
-            MaxTreeDepthExceeded,   ///< Cannot search such deep inside
+            MaxTreeDepthExceeded,   ///< Cannot search so deep inside
+            SubkeyLimitReached,
             AlreadyExpired,         ///< Given timestamp already in the past
             AlreadyExists,          ///< Key already exists
             IncompatibleFile,       ///< File is incompatible
