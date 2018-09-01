@@ -26,7 +26,7 @@ namespace jb
         std::unique_lock< std::mutex > write_lock_;
         streamer_t & writer_;
 
-        int64_t file_size_;
+        uint64_t file_size_;
         ChunkUid free_space_;
         ChunkUid released_head_ = InvalidChunkUid, released_tile_ = InvalidChunkUid;
         ChunkUid first_written_chunk = InvalidChunkUid;
@@ -55,7 +55,7 @@ namespace jb
                 throw_storage_file_error( InvalidHandle != handle, RetCode::UnknownError, "Invalid file handle" );
 
                 // read transactional data: file size...
-                big_int64_t file_size;
+                big_uint64_t file_size;
                 {
                     auto[ ok, pos ] = Os::seek_file( handle, HeaderOffsets::of_TransactionalData + TransactionDataOffsets::of_FileSize );
                     throw_storage_file_error( ok && pos == HeaderOffsets::of_TransactionalData + TransactionDataOffsets::of_FileSize, RetCode::IoError );
@@ -67,7 +67,7 @@ namespace jb
                 file_size_ = file_size;
 
                 // ... and free space
-                big_int64_t free_space;
+                big_uint64_t free_space;
                 {
                     auto[ ok, pos ] = Os::seek_file( handle, HeaderOffsets::of_TransactionalData + TransactionDataOffsets::of_FreeSpace );
                     throw_storage_file_error( ok && pos == HeaderOffsets::of_TransactionalData + TransactionDataOffsets::of_FreeSpace, RetCode::IoError );
@@ -84,7 +84,7 @@ namespace jb
                     throw_storage_file_error( ok && pos == HeaderOffsets::of_PreservedChunk + PreservedChunkOffsets::of_Target, RetCode::IoError );
                 }
                 {
-                    big_int64_t target = InvalidChunkUid;
+                    big_uint64_t target = InvalidChunkUid;
                     auto[ ok, written ] = Os::write_file( handle, &target, sizeof( target ) );
                     throw_storage_file_error( ok && written == sizeof( target ), RetCode::IoError );
                 }
@@ -187,7 +187,7 @@ namespace jb
                         throw_storage_file_error( ok && pos == last_written_chunk_ + ChunkOffsets::of_NextUsed, RetCode::IoError );
                     }
                     {
-                        big_int64_t next_used = chunk_uid;
+                        big_uint64_t next_used = chunk_uid;
                         auto[ ok, written ] = Os::write_file( handle, &next_used, sizeof( next_used ) );
                         throw_storage_file_error( ok && written == sizeof( next_used ), RetCode::IoError );
                     }
@@ -199,7 +199,7 @@ namespace jb
                     throw_storage_file_error( ok && pos == chunk_uid + ChunkOffsets::of_NextUsed, RetCode::IoError );
                 }
                 {
-                    big_int64_t next_used = InvalidChunkUid;
+                    big_uint64_t next_used = InvalidChunkUid;
                     auto[ ok, written ] = Os::write_file( handle, &next_used, sizeof( next_used ) );
                     throw_storage_file_error( ok && written == sizeof( next_used ), RetCode::IoError );
                 }
@@ -314,13 +314,13 @@ namespace jb
                     throw_storage_file_error( ok && pos == HeaderOffsets::of_PreservedChunk + PreservedChunkOffsets::of_Target, RetCode::IoError );
                 }
                 {
-                    big_int64_t preserved_chunk = overwritten_chunk_;
+                    big_uint64_t preserved_chunk = overwritten_chunk_;
                     auto[ ok, written ] = Os::write_file( handle, &preserved_chunk, sizeof( preserved_chunk ) );
                     throw_storage_file_error( ok && written == sizeof( preserved_chunk ), RetCode::IoError );
                 }
 
                 // mark 2nd and futher chunks of overwritten chain as released
-                big_int64_t second_chunk;
+                big_uint64_t second_chunk;
                 {
                     auto[ ok, pos ] = Os::seek_file( handle, overwritten_chunk_ + ChunkOffsets::of_NextUsed );
                     throw_storage_file_error( ok && pos == overwritten_chunk_ + ChunkOffsets::of_NextUsed, RetCode::IoError );
@@ -427,7 +427,7 @@ namespace jb
                 while ( chunk != InvalidChunkUid )
                 {
                     // get next used for current chunk
-                    big_int64_t next_used;
+                    big_uint64_t next_used;
                     {
                         auto[ ok, pos ] = Os::seek_file( handle, chunk + ChunkOffsets::of_NextUsed );
                         throw_storage_file_error( ok && pos == chunk + ChunkOffsets::of_NextUsed, RetCode::IoError );
@@ -438,7 +438,7 @@ namespace jb
                     }
 
                     // set next free to released head
-                    big_int64_t next_free = released_head_;
+                    big_uint64_t next_free = released_head_;
                     {
                         auto[ ok, pos ] = Os::seek_file( handle, chunk + ChunkOffsets::of_NextFree );
                         throw_storage_file_error( ok && pos == chunk + ChunkOffsets::of_NextFree, RetCode::IoError );
@@ -497,7 +497,7 @@ namespace jb
                         throw_storage_file_error( ok && pos == released_tile_ + ChunkOffsets::of_NextFree, RetCode::IoError );
                     }
                     {
-                        big_int64_t next_free = InvalidChunkUid;
+                        big_uint64_t next_free = InvalidChunkUid;
                         auto[ ok, written ] = Os::write_file( handle, &next_free, sizeof( next_free ) );
                         throw_storage_file_error( ok && written == sizeof( next_free ), RetCode::IoError );
                     }

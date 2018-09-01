@@ -41,7 +41,6 @@ namespace jb
         using Handle = typename Os::HandleT;
         using big_uint32_t = boost::endian::big_int32_at;
         using big_uint64_t = boost::endian::big_uint64_at;
-        using big_int64_t = boost::endian::big_int64_at;
         template < typename T, size_t C > using static_vector = boost::container::static_vector< T, C >;
 
         inline static const Handle InvalidHandle = Os::InvalidHandle;
@@ -148,7 +147,7 @@ namespace jb
 
             struct transactional_data_t
             {
-                big_int64_t file_size_;             //< current file size
+                big_uint64_t file_size_;             //< current file size
                 big_uint64_t free_space_;            //< pointer to first free chunk (garbage collector)
             };
 
@@ -318,7 +317,7 @@ namespace jb
                 throw_storage_file_error( ok && pos == HeaderOffsets::of_TransactionalData + TransactionDataOffsets::of_FileSize, RetCode::IoError );
             }
             {
-                big_int64_t file_size = HeaderOffsets::of_Root;
+                big_uint64_t file_size = HeaderOffsets::of_Root;
 
                 auto[ ok, written ] = Os::write_file( handle, &file_size, sizeof( file_size ) );
                 throw_storage_file_error( ok && written == sizeof( file_size ), RetCode::IoError );
@@ -479,7 +478,7 @@ namespace jb
                 throw_storage_file_error( InvalidHandle != handle, RetCode::UnknownError, "Invalid file handle" );
 
                 // just restore file size
-                big_int64_t file_size;
+                big_uint64_t file_size;
                 {
                     auto[ ok, pos ] = Os::seek_file( handle, HeaderOffsets::of_TransactionalData + TransactionDataOffsets::of_FileSize );
                     throw_storage_file_error( ok && pos == HeaderOffsets::of_TransactionalData + TransactionDataOffsets::of_FileSize, RetCode::IoError );

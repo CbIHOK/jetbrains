@@ -184,10 +184,12 @@ namespace jb
             //
             friend bool operator == ( const Element & l, const Element & r )
             {
-                if ( l.digest_ != r.digest_ || l.good_before_ != r.good_before_ || l.children_ != r.children_ ) return false;
-                var_cmp cmp;
-                std::visit( cmp, l.value_, r.value_ );
-                return cmp.value;
+                //if ( l.digest_ != r.digest_ || l.good_before_ != r.good_before_ || l.children_ != r.children_ ) return false;
+                //var_cmp cmp;
+                //std::visit( cmp, l.value_, r.value_ );
+                //return cmp.value;
+
+                return l.digest_ == r.digest_ && l.good_before_ == r.good_before_ && l.children_ == r.children_;
             }
 
 
@@ -579,11 +581,12 @@ namespace jb
                 if ( left_child->elements_.size() > BTreeMin )
                 {
                     // bring the first element from the left child
-                    elements_[ pos ] = move( left_child->elements_[ 0 ] );
+                    elements_[ pos ] = move( left_child->elements_.back() );
 
                     // recursively remove the first element from source
                     bpath.emplace_back( uid_, pos );
-                    left_child->erase_element( t, 0, bpath, entry_level );
+                    left_child->erase_element( t, left_child->elements_.size() - 1, bpath, entry_level );
+                    bpath.pop_back();
 
                     // update link to the left child
                     links_[ pos ] = left_child->uid_;
@@ -606,6 +609,7 @@ namespace jb
                     // recursively remove the first element from source
                     bpath.emplace_back( uid_, pos + 1 );
                     right_child->erase_element( t, 0, bpath, entry_level );
+                    bpath.pop_back();
 
                     // update link to the right child
                     links_[ pos + 1 ] = right_child->uid_;
@@ -622,12 +626,28 @@ namespace jb
                 elements_.erase( begin( elements_ ) + pos );
                 links_.erase( begin( links_ ) + pos );
 
-                t.erase_chain( right_child->uid_ );
-                cache_.drop( right_child->uid_ );
+                if ( elements_.size() )
+                {
+                    bpath.emplace_back( uid_, pos );
+                    left_child->erase_element( t, BTreeMin, bpath, entry_level );
+                    bpath.pop_back();
 
-                bpath.emplace_back( uid_, pos );
-                left_child->erase_element( t, BTreeMin, bpath, entry_level );
-                bpath.pop_back();
+                    t.erase_chain( right_child->uid_ );
+                    cache_.drop( right_child->uid_ );
+                }
+                else
+                {
+                    elements_ = left_child->elements_;
+                    links_ = left_child->links_;
+
+                    erase_element( t, BTreeMin, bpath, entry_level );
+
+                    t.erase_chain( left_child->uid_ );
+                    cache_.drop( left_child->uid_ );
+
+                    t.erase_chain( right_child->uid_ );
+                    cache_.drop( right_child->uid_ );
+                }
 
                 // save this one
                 entry_level < bpath.size() ? save( t ) : overwrite( t );
@@ -652,6 +672,8 @@ namespace jb
 
         void process_leaf_underflow( Transaction & t, BTreePath & bpath, size_t entry_level )
         {
+            using namespace std;
+
             throw_btree_error( elements_.size() < BTreeMin, RetCode::UnknownError, "Bad logic" );
             throw_btree_error( is_leaf(), RetCode::UnknownError, "Bad logic" );
 
@@ -666,7 +688,7 @@ namespace jb
             auto parent_ref = move( bpath.back() );
 
             // get parent node
-            auto parent = parent = cache_.get_node( parent_ref.first );
+            auto parent = cache_.get_node( parent_ref.first );
 
             // get left sibling node
             BTreeP left_sibling;
@@ -682,11 +704,11 @@ namespace jb
             if ( left_sibling && left_sibling->elements_.size() > BTreeMin )
             {
                 // prepend parent key to this node
-                elements_.insert( begin( elements_ ), move( parent->elements_[ parent_ref.second ] ) );
+                elements_.insert( begin( elements_ ), move( parent->elements_[ parent_ref.second - 1 ] ) );
                 links_.push_back( InvalidNodeUid );
 
                 // set parent key to the last of left sibling
-                parent->elements_[ parent_ref.second ] = move( left_sibling->elements_.back() );
+                parent->elements_[ parent_ref.second - 1 ] = move( left_sibling->elements_.back() );
 
                 // consume the last of left sibling
                 auto e = left_sibling->elements_.back().digest_;
@@ -702,7 +724,10 @@ namespace jb
                 parent->links_[ parent_ref.second - 1 ] = left_sibling->uid_;
 
                 // done: save parent 
-                entry_level < bpath.size() - 1 ? parent->save( t ) : parent->overwrite( t );
+                if ( entry_level == bpath.size() )
+                {
+                    parent->overwrite( t );
+                }
 
                 return;
             }
@@ -740,8 +765,11 @@ namespace jb
                 parent->links_[ parent_ref.second + 1 ] = right_sibling->uid_;
 
                 // done: save parent 
-                entry_level < bpath.size() - 1 ? parent->save( t ) : parent->overwrite( t );
-                    
+                if ( entry_level == bpath.size() )
+                {
+                    parent->overwrite( t );
+                }
+
                 return;
             }
 
@@ -750,19 +778,32 @@ namespace jb
             {
                 // merge this b-tree node with the left sibling
                 left_sibling->absorb( move( parent->elements_[ parent_ref.second - 1 ] ), *this );
-                    
-                auto e = parent->elements_[ parent_ref.second - 1 ].digest_;
+
                 parent->elements_.erase( begin( parent->elements_ ) + parent_ref.second - 1 );
                 parent->links_.erase( begin( parent->links_ ) + parent_ref.second );
 
-                left_sibling->save( t );
-                    
                 t.erase_chain( uid_ );
                 cache_.drop( uid_ );
 
-                parent->links_[ parent_ref.second - 1 ] = left_sibling->uid_;
+                if ( parent->elements_.size() )
+                {
+                    left_sibling->save( t );
+                    parent->links_[ parent_ref.second - 1 ] = left_sibling->uid_;
+                }
+                else
+                {
+                    parent->elements_ = left_sibling->elements_;
+                    parent->links_ = left_sibling->links_;
 
-                entry_level < bpath.size() - 1 ? parent->save( t ) : parent->overwrite( t );
+                    t.erase_chain( left_sibling->uid_ );
+                    cache_.drop( left_sibling->uid_ );
+                }
+
+                // done: save parent 
+                if ( entry_level == bpath.size() )
+                {
+                    parent->overwrite( t );
+                }
 
                 return;
             }
@@ -773,18 +814,31 @@ namespace jb
                 // merge this b-tree node with the left sibling
                 absorb( move( parent->elements_[ parent_ref.second ] ), *right_sibling );
 
-                auto e = parent->elements_[ parent_ref.second ].digest_;
-                parent->elements_.erase( begin( parent->elements_ ) + parent_ref.second  );
-                parent->links_.erase( begin( parent->links_ ) + parent_ref.second );
-
-                save( t );
+                parent->elements_.erase( begin( parent->elements_ ) + parent_ref.second );
+                parent->links_.erase( begin( parent->links_ ) + parent_ref.second + 1 );
 
                 t.erase_chain( right_sibling->uid_ );
                 cache_.drop( right_sibling->uid_ );
 
-                parent->links_[ parent_ref.second ] = uid_;
+                if ( parent->elements_.size() )
+                {
+                    save( t );
+                    parent->links_[ parent_ref.second ] = uid_;
+                }
+                else
+                {
+                    parent->elements_ = elements_;
+                    parent->links_ = links_;
 
-                entry_level < bpath.size() - 1 ? parent->save( t ) ? parent->overwrite( t );
+                    t.erase_chain( uid_ );
+                    cache_.drop( uid_ );
+                }
+
+                // done: save parent 
+                if ( entry_level == bpath.size() )
+                {
+                    parent->overwrite( t );
+                }
 
                 return;
             }
