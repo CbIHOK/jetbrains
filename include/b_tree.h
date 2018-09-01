@@ -280,6 +280,10 @@ namespace jb
         */
         void save( Transaction & t ) const
         {
+            if ( !std::is_sorted( elements_.begin(), elements_.end() ) && elements_.size() > 1 )
+            {
+                auto br = false;
+            }
             auto buffer = t.get_chain_writer< char >();
 
             std::ostream os( &buffer );
@@ -300,6 +304,10 @@ namespace jb
         */
         void overwrite( Transaction & t ) const
         {
+            if ( !std::is_sorted( elements_.begin(), elements_.end() ) && elements_ .size() > 1 )
+            {
+                auto br = false;
+            }
             throw_btree_error( InvalidNodeUid != uid_, RetCode::UnknownError, "Bad logic" );
 
             auto buffer = t.get_chain_overwriter< char >( uid_ );
@@ -580,19 +588,32 @@ namespace jb
                 // if left child is rich enough
                 if ( left_child->elements_.size() > BTreeMin )
                 {
-                    // bring the first element from the left child
-                    elements_[ pos ] = move( left_child->elements_.back() );
+                    auto bpath_size = bpath.size();
 
-                    // recursively remove the first element from source
-                    bpath.emplace_back( uid_, pos );
-                    left_child->erase_element( t, left_child->elements_.size() - 1, bpath, entry_level );
-                    bpath.pop_back();
+                    bpath.emplace_back( uid_, pos + 1 );
+                    auto node = left_child;
 
-                    // update link to the left child
-                    links_[ pos ] = left_child->uid_;
+                    while ( InvalidNodeUid != node->links_.back() )
+                    {
+                        bpath.emplace_back( node->uid_, node->elements_.size() );
+                        node = cache_.get_node( node->links_.back() );
+                    }
+
+                    // bring the minimum element of right subtree
+                    elements_[ pos ] = move( node->elements_.back() );
+
+                    // and erase it
+                    node->erase_element( t, node->elements_.size() - 1, bpath, entry_level );
+
+                    // update link to the right child
+                    links_[ pos + 1 ] = left_child->uid_;
+
+                    bpath.resize( bpath_size );
 
                     // save this one
-                    entry_level < bpath.size() ? save( t ) : overwrite( t );
+                    entry_level == bpath.size() ? overwrite( t ) : save( t );
+
+                    return;
 
                     return;
                 }
@@ -603,20 +624,30 @@ namespace jb
                 // if right child is rich enough
                 if ( right_child->elements_.size() > BTreeMin )
                 {
-                    // bring the first element
-                    elements_[ pos ] = move( right_child->elements_[ 0 ] );
+                    auto bpath_size = bpath.size();
 
-                    // recursively remove the first element from source
                     bpath.emplace_back( uid_, pos + 1 );
-                    right_child->erase_element( t, 0, bpath, entry_level );
-                    bpath.pop_back();
+                    auto node = right_child;
+
+                    while ( InvalidNodeUid != node->links_[ 0 ] )
+                    {
+                        bpath.emplace_back( node->uid_, 0 );
+                        node = cache_.get_node( node->links_[ 0 ] );
+                    }
+
+                    // bring the minimum element of right subtree
+                    elements_[ pos ] = move( node->elements_[ 0 ] );
+
+                    // and erase it
+                    node->erase_element( t, 0, bpath, entry_level );
 
                     // update link to the right child
                     links_[ pos + 1 ] = right_child->uid_;
 
+                    bpath.resize( bpath_size );
+
                     // save this one
-                    // save this one
-                    entry_level < bpath.size() ? save( t ) : overwrite( t );
+                    entry_level == bpath.size() ? overwrite( t ) : save( t );
 
                     return;
                 }
@@ -624,13 +655,15 @@ namespace jb
                 // left child absorbs this element and right child
                 left_child->absorb( move( elements_[ pos ] ), *right_child );
                 elements_.erase( begin( elements_ ) + pos );
-                links_.erase( begin( links_ ) + pos );
+                links_.erase( begin( links_ ) + pos + 1 );
 
                 if ( elements_.size() )
                 {
                     bpath.emplace_back( uid_, pos );
                     left_child->erase_element( t, BTreeMin, bpath, entry_level );
                     bpath.pop_back();
+
+                    links_[ pos ] = left_child->uid_;
 
                     t.erase_chain( right_child->uid_ );
                     cache_.drop( right_child->uid_ );
@@ -650,7 +683,7 @@ namespace jb
                 }
 
                 // save this one
-                entry_level < bpath.size() ? save( t ) : overwrite( t );
+                entry_level == bpath.size() ? overwrite( t ) : save( t );
             }
             else
             {
@@ -676,6 +709,7 @@ namespace jb
 
             throw_btree_error( elements_.size() < BTreeMin, RetCode::UnknownError, "Bad logic" );
             throw_btree_error( is_leaf(), RetCode::UnknownError, "Bad logic" );
+
 
             // if the leaf is the root
             if ( bpath.empty() )

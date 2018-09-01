@@ -98,6 +98,20 @@ protected:
         return node.is_leaf();
     }
 
+    void SetUp() override
+    {
+        using namespace std;
+
+        for ( auto & p : filesystem::directory_iterator( "." ) )
+        {
+            if ( p.is_regular_file() && p.path().extension() == ".jb" )
+            {
+                filesystem::remove( p.path() );
+            }
+        }
+    }
+
+
     void TearDown() override
     {
         using namespace std;
@@ -123,77 +137,77 @@ typedef ::testing::Types<
 TYPED_TEST_CASE( TestBTree, TestingPolicies );
 
 
-TYPED_TEST( TestBTree, Serialization )
-{
-    NodeUid uid;
-
-    ElementCollection etalon_elements{
-        { Digest{ 0 }, Value{ ( uint32_t )0 }, 0, 0 },
-        { Digest{ 2 }, Value{ 2.f }, 2, 2 },
-        { Digest{ 3 }, Value{ 3. }, 3, 3 },
-        { Digest{ 4 }, Value{ "4444" }, 4, 4 }
-    };
-    LinkCollection etalon_links{ 0, 2, 3, 4, 5 };
-
-    {
-        StorageFile f( "serialization.jb", true );
-        ASSERT_EQ( RetCode::Ok, f.status() );
-
-        BTreeCache c( f );
-        ASSERT_EQ( RetCode::Ok, f.status() );
-
-        BTree tree( f, c );
-        auto t = f.open_transaction();
-        EXPECT_NO_THROW( save( tree, t ) );
-        EXPECT_EQ( RetCode::Ok, t.status() );
-        uid = tree.uid();
-        EXPECT_NE( InvalidNodeUid, uid );
-        t.commit();
-    }
-
-    {
-        StorageFile f( "serialization.jb", true );
-        ASSERT_EQ( RetCode::Ok, f.status() );
-
-        BTreeCache c( f );
-        ASSERT_EQ( RetCode::Ok, f.status() );
-
-        BTreeP node = c.get_node( uid );
-        EXPECT_EQ( 0, elements( *node ).size() );
-        EXPECT_EQ( 1, links( *node ).size() );
-    }
-
-    {
-        StorageFile f( "serialization.jb", true );
-        ASSERT_EQ( RetCode::Ok, f.status() );
-
-        BTreeCache c( f );
-        ASSERT_EQ( RetCode::Ok, f.status() );
-
-        BTree tree( f, c );
-        elements( tree ) = etalon_elements;
-        links( tree ) = etalon_links;
-
-        auto t = f.open_transaction();
-        EXPECT_NO_THROW( save( tree, t ) );
-        EXPECT_EQ( RetCode::Ok, t.status() );
-        uid = tree.uid();
-        EXPECT_NE( InvalidNodeUid, uid );
-        t.commit();
-    }
-
-    {
-        StorageFile f( "serialization.jb", true );
-        ASSERT_EQ( RetCode::Ok, f.status() );
-
-        BTreeCache c( f );
-        ASSERT_EQ( RetCode::Ok, f.status() );
-
-        BTreeP tree = c.get_node( uid );
-        EXPECT_EQ( etalon_elements, elements( *tree ) );
-        EXPECT_EQ( etalon_links, links( *tree ) );
-    }
-}
+//TYPED_TEST( TestBTree, Serialization )
+//{
+//    NodeUid uid;
+//
+//    ElementCollection etalon_elements{
+//        { Digest{ 0 }, Value{ ( uint32_t )0 }, 0, 0 },
+//        { Digest{ 2 }, Value{ 2.f }, 2, 2 },
+//        { Digest{ 3 }, Value{ 3. }, 3, 3 },
+//        { Digest{ 4 }, Value{ "4444" }, 4, 4 }
+//    };
+//    LinkCollection etalon_links{ 0, 2, 3, 4, 5 };
+//
+//    {
+//        StorageFile f( "serialization.jb", true );
+//        ASSERT_EQ( RetCode::Ok, f.status() );
+//
+//        BTreeCache c( f );
+//        ASSERT_EQ( RetCode::Ok, f.status() );
+//
+//        BTree tree( f, c );
+//        auto t = f.open_transaction();
+//        EXPECT_NO_THROW( save( tree, t ) );
+//        EXPECT_EQ( RetCode::Ok, t.status() );
+//        uid = tree.uid();
+//        EXPECT_NE( InvalidNodeUid, uid );
+//        t.commit();
+//    }
+//
+//    {
+//        StorageFile f( "serialization.jb", true );
+//        ASSERT_EQ( RetCode::Ok, f.status() );
+//
+//        BTreeCache c( f );
+//        ASSERT_EQ( RetCode::Ok, f.status() );
+//
+//        BTreeP node = c.get_node( uid );
+//        EXPECT_EQ( 0, elements( *node ).size() );
+//        EXPECT_EQ( 1, links( *node ).size() );
+//    }
+//
+//    {
+//        StorageFile f( "serialization.jb", true );
+//        ASSERT_EQ( RetCode::Ok, f.status() );
+//
+//        BTreeCache c( f );
+//        ASSERT_EQ( RetCode::Ok, f.status() );
+//
+//        BTree tree( f, c );
+//        elements( tree ) = etalon_elements;
+//        links( tree ) = etalon_links;
+//
+//        auto t = f.open_transaction();
+//        EXPECT_NO_THROW( save( tree, t ) );
+//        EXPECT_EQ( RetCode::Ok, t.status() );
+//        uid = tree.uid();
+//        EXPECT_NE( InvalidNodeUid, uid );
+//        t.commit();
+//    }
+//
+//    {
+//        StorageFile f( "serialization.jb", true );
+//        ASSERT_EQ( RetCode::Ok, f.status() );
+//
+//        BTreeCache c( f );
+//        ASSERT_EQ( RetCode::Ok, f.status() );
+//
+//        BTreeP tree = c.get_node( uid );
+//        EXPECT_EQ( etalon_elements, elements( *tree ) );
+//        EXPECT_EQ( etalon_links, links( *tree ) );
+//    }
+//}
 
 
 //TYPED_TEST( TestBTree, Insert_Find )
@@ -407,10 +421,10 @@ TYPED_TEST( TestBTree, Insert_Erase )
     EXPECT_NO_THROW( root = c.get_node( RootNodeUid ) );
     EXPECT_TRUE( root );
 
-    EXPECT_NO_THROW(
+    //EXPECT_NO_THROW(
 
     // inserts 1000 elements into /root
-    for ( Digest digest = 0; digest < 20; ++digest )
+    for ( Digest digest = 0; digest < 1000; ++digest )
     {
         BTreePath bpath;
 
@@ -420,16 +434,24 @@ TYPED_TEST( TestBTree, Insert_Erase )
         auto target = bpath.back(); bpath.pop_back();
         auto node = c.get_node( target.first );
         node->insert( target.second, bpath, digest, Value{ to_string( digest ) }, 0, false );
+        {
+            auto found = root->find_digest( digest, bpath );
+            EXPECT_TRUE( found );
+        }
     }
 
-    );
+    BTreePath bpath;
+    auto found = root->find_digest( 900, bpath );
+    EXPECT_TRUE( found );
+
+    //);
 
 //    EXPECT_NO_THROW(
         
     // erase each 10th element
-    for ( Digest digest = 0; digest < 20; ++digest )
+    for ( Digest digest = 0; digest < 1000; ++digest )
     {
-        if ( digest % 2 == 0 )
+        if ( digest % 10 == 0 )
         {
             BTreePath bpath;
             auto found = root->find_digest( digest, bpath );
@@ -451,9 +473,9 @@ TYPED_TEST( TestBTree, Insert_Erase )
     std::set< size_t > depth;
 
     // inserts 1000 elements into /root
-    for ( Digest digest = 0; digest < 20; ++digest )
+    for ( Digest digest = 0; digest < 1000; ++digest )
     {
-        if ( digest % 2 == 0 )
+        if ( digest % 10 == 0 )
         {
             BTreePath bpath;
             auto found = root->find_digest( digest, bpath );
