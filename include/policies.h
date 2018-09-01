@@ -10,10 +10,10 @@
 namespace jb
 {
     template < typename OsPolicy = USE_OS_POLICY >
-    struct DefaultPolicies
+    struct DefaultPolicy
     {
-        using KeyCharT   = char;
-        using ValueT     = std::variant< uint32_t, uint64_t, float, double, std::string >;
+        using KeyCharT = char;
+        using ValueT = std::variant< uint32_t, uint64_t, float, double, std::string >;
 
         struct VirtualVolumePolicy
         {

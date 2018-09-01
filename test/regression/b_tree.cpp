@@ -3,9 +3,9 @@
 #include "policies.h"
 
 
-struct TBT_Min : public ::jb::DefaultPolicies<>
+struct TBT_Min : public ::jb::DefaultPolicy<>
 {
-    struct PhysicalVolumePolicy : public ::jb::DefaultPolicies<>::PhysicalVolumePolicy
+    struct PhysicalVolumePolicy : public ::jb::DefaultPolicy<>::PhysicalVolumePolicy
     {
         static constexpr size_t BloomSize = 1024;
         static constexpr size_t BTreeMinPower = 3;
@@ -14,9 +14,9 @@ struct TBT_Min : public ::jb::DefaultPolicies<>
 };
 
 
-struct TBT_Odd : public ::jb::DefaultPolicies<>
+struct TBT_Odd : public ::jb::DefaultPolicy<>
 {
-    struct PhysicalVolumePolicy : public ::jb::DefaultPolicies<>::PhysicalVolumePolicy
+    struct PhysicalVolumePolicy : public ::jb::DefaultPolicy<>::PhysicalVolumePolicy
     {
         static constexpr size_t BloomSize = 1024;
         static constexpr size_t BTreeMinPower = 4;
@@ -25,9 +25,9 @@ struct TBT_Odd : public ::jb::DefaultPolicies<>
 };
 
 
-struct TBT_Prime : public ::jb::DefaultPolicies<>
+struct TBT_Prime : public ::jb::DefaultPolicy<>
 {
-    struct PhysicalVolumePolicy : public ::jb::DefaultPolicies<>::PhysicalVolumePolicy
+    struct PhysicalVolumePolicy : public ::jb::DefaultPolicy<>::PhysicalVolumePolicy
     {
         static constexpr size_t BloomSize = 1024;
         static constexpr size_t BTreeMinPower = 5;
@@ -35,9 +35,9 @@ struct TBT_Prime : public ::jb::DefaultPolicies<>
 };
 
 
-struct TBT_Regular : public ::jb::DefaultPolicies<>
+struct TBT_Regular : public ::jb::DefaultPolicy<>
 {
-    struct PhysicalVolumePolicy : public ::jb::DefaultPolicies<>::PhysicalVolumePolicy
+    struct PhysicalVolumePolicy : public ::jb::DefaultPolicy<>::PhysicalVolumePolicy
     {
         static constexpr size_t BloomSize = 1024;
         static constexpr size_t BTreeMinPower = 1024;

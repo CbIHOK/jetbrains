@@ -10,7 +10,7 @@ class TestKey : public ::testing::Test
 {
 protected:
 
-    using Storage = ::jb::Storage< ::jb::DefaultPolicies<> >;
+    using Storage = ::jb::Storage< ::jb::DefaultPolicy<> >;
     using Key = typename Storage::Key;
     using KeyValue = typename Storage::KeyValue;
 };

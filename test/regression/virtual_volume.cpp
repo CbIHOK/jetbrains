@@ -8,7 +8,7 @@ class TestVirtualVolume : public ::testing::Test
 
 protected:
 
-    using Policies = ::jb::DefaultPolicies<>;
+    using Policies = ::jb::DefaultPolicy<>;
     using Storage = ::jb::Storage< Policies >;
     using RetCode = typename Storage::RetCode;
     using VirtualVolume = typename Storage::VirtualVolume;

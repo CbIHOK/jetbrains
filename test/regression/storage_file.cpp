@@ -12,63 +12,63 @@ struct OtherPolicy : public P
 };
 
 
-struct Chunk_31 : public ::jb::DefaultPolicies<>
+struct Chunk_31 : public ::jb::DefaultPolicy<>
 {
-    struct PhysicalVolumePolicy : public ::jb::DefaultPolicies<>::PhysicalVolumePolicy
+    struct PhysicalVolumePolicy : public ::jb::DefaultPolicy<>::PhysicalVolumePolicy
     {
         static constexpr size_t ChunkSize = 31;
         static constexpr size_t BloomSize = 1024;
     };
 };
 
-struct Chunk_32 : public ::jb::DefaultPolicies<>
+struct Chunk_32 : public ::jb::DefaultPolicy<>
 {
-    struct PhysicalVolumePolicy : public ::jb::DefaultPolicies<>::PhysicalVolumePolicy
+    struct PhysicalVolumePolicy : public ::jb::DefaultPolicy<>::PhysicalVolumePolicy
     {
         static constexpr size_t ChunkSize = 32;
         static constexpr size_t BloomSize = 1024;
     };
 };
 
-struct Chunk_33 : public ::jb::DefaultPolicies<>
+struct Chunk_33 : public ::jb::DefaultPolicy<>
 {
-    struct PhysicalVolumePolicy : public ::jb::DefaultPolicies<>::PhysicalVolumePolicy
+    struct PhysicalVolumePolicy : public ::jb::DefaultPolicy<>::PhysicalVolumePolicy
     {
         static constexpr size_t ChunkSize = 33;
         static constexpr size_t BloomSize = 1024;
     };
 };
 
-struct Chunk_64 : public ::jb::DefaultPolicies<>
+struct Chunk_64 : public ::jb::DefaultPolicy<>
 {
-    struct PhysicalVolumePolicy : public ::jb::DefaultPolicies<>::PhysicalVolumePolicy
+    struct PhysicalVolumePolicy : public ::jb::DefaultPolicy<>::PhysicalVolumePolicy
     {
         static constexpr size_t ChunkSize = 64;
         static constexpr size_t BloomSize = 1024;
     };
 };
 
-struct Chunk_512 : public ::jb::DefaultPolicies<>
+struct Chunk_512 : public ::jb::DefaultPolicy<>
 {
-    struct PhysicalVolumePolicy : public ::jb::DefaultPolicies<>::PhysicalVolumePolicy
+    struct PhysicalVolumePolicy : public ::jb::DefaultPolicy<>::PhysicalVolumePolicy
     {
         static constexpr size_t ChunkSize = 512;
         static constexpr size_t BloomSize = 1024;
     };
 };
 
-struct Chunk_2048 : public ::jb::DefaultPolicies<>
+struct Chunk_2048 : public ::jb::DefaultPolicy<>
 {
-    struct PhysicalVolumePolicy : public ::jb::DefaultPolicies<>::PhysicalVolumePolicy
+    struct PhysicalVolumePolicy : public ::jb::DefaultPolicy<>::PhysicalVolumePolicy
     {
         static constexpr size_t ChunkSize = 2048;
         static constexpr size_t BloomSize = 1024;
     };
 };
 
-struct Chunk_4096 : public ::jb::DefaultPolicies<>
+struct Chunk_4096 : public ::jb::DefaultPolicy<>
 {
-    struct PhysicalVolumePolicy : public ::jb::DefaultPolicies<>::PhysicalVolumePolicy
+    struct PhysicalVolumePolicy : public ::jb::DefaultPolicy<>::PhysicalVolumePolicy
     {
         static constexpr size_t ChunkSize = 4096;
         static constexpr size_t BloomSize = 1024;
