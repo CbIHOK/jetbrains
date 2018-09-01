@@ -190,7 +190,7 @@ TYPED_TEST( TestBTree, Insert_Find )
 
     {
         // open starage
-        StorageFile f( "Insert_Find_3.jb", true );
+        StorageFile f( "Insert_Find.jb", true );
         ASSERT_EQ( RetCode::Ok, f.status() );
         ASSERT_TRUE( f.newly_created() );
 
@@ -226,7 +226,7 @@ TYPED_TEST( TestBTree, Insert_Find )
 
     {
         // open starage
-        StorageFile f( "Insert_Find_3.jb", true );
+        StorageFile f( "Insert_Find.jb", true );
         ASSERT_EQ( RetCode::Ok, f.status() );
 
         // prepare cache

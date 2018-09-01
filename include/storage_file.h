@@ -59,7 +59,7 @@ namespace jb
     public:
 
         // declares chunk uid
-        using ChunkUid = int64_t;
+        using ChunkUid = uint64_t;
         static constexpr ChunkUid InvalidChunkUid = std::numeric_limits< ChunkUid >::max();
 
 
@@ -112,8 +112,8 @@ namespace jb
             uint8_t reserved_1_;
             uint8_t reserved_2_;
             big_uint32_t used_size_;                   //< number of utilized bytes in chunk
-            big_int64_t next_used_;                   //< next used chunk (takes sense for allocated chunks)
-            big_int64_t next_free_;                   //< next free chunk (takes sense for released chunks)
+            big_uint64_t next_used_;                   //< next used chunk (takes sense for allocated chunks)
+            big_uint64_t next_free_;                   //< next free chunk (takes sense for released chunks)
             std::array< int8_t, ChunkSize > space_;    //< available space
         };
 
@@ -142,14 +142,14 @@ namespace jb
         //
         struct header_t
         {
-            boost::endian::big_int64_t compatibility_stamp;        //< software compatibility stamp
+            boost::endian::big_uint64_t compatibility_stamp;        //< software compatibility stamp
 
             uint8_t bloom_[ BloomSize ];              //< bloom filter data
 
             struct transactional_data_t
             {
                 big_int64_t file_size_;             //< current file size
-                big_int64_t free_space_;            //< pointer to first free chunk (garbage collector)
+                big_uint64_t free_space_;            //< pointer to first free chunk (garbage collector)
             };
 
             transactional_data_t transactional_data_; //< original copy
@@ -158,7 +158,7 @@ namespace jb
 
             struct preserved_chunk_t
             {
-                big_int64_t target_;                  //< target chunk uid
+                big_uint64_t target_;                  //< target chunk uid
                 chunk_t chunk_;                       //< preserved chunk
             };
             preserved_chunk_t overwritten__chunk_;       //< let us make one writing per transaction with preservation of original chunk uid
@@ -330,7 +330,7 @@ namespace jb
                 throw_storage_file_error( ok && pos == HeaderOffsets::of_TransactionalData + TransactionDataOffsets::of_FreeSpace, RetCode::IoError );
             }
             {
-                big_int64_t free_space = InvalidChunkUid;
+                big_uint64_t free_space = InvalidChunkUid;
                 auto[ ok, written ] = Os::write_file( handle, &free_space, sizeof( free_space ) );
                 throw_storage_file_error( ok && written == sizeof( free_space ), RetCode::IoError );
             }
@@ -393,7 +393,7 @@ namespace jb
                 if ( valid_transaction )
                 {
                     // read preserved chunk target
-                    big_int64_t preserved_target;
+                    big_uint64_t preserved_target;
                     {
                         auto[ ok, pos ] = Os::seek_file( writer, HeaderOffsets::of_PreservedChunk + PreservedChunkOffsets::of_Target );
                         throw_storage_file_error( ok && pos == HeaderOffsets::of_PreservedChunk + PreservedChunkOffsets::of_Target, RetCode::IoError );
@@ -512,7 +512,7 @@ namespace jb
                 throw_storage_file_error( buffer && buffer_size, RetCode::UnknownError, "Invalid read buffer" );
 
                 // get next used
-                big_int64_t next_used;
+                big_uint64_t next_used;
                 {
                     auto[ ok, pos ] = Os::seek_file( handle, chunk + ChunkOffsets::of_NextUsed );
                     throw_storage_file_error( ok && pos == chunk + ChunkOffsets::of_NextUsed, RetCode::IoError );

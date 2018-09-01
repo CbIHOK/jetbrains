@@ -9,6 +9,7 @@ add_executable( regression EXCLUDE_FROM_ALL
     main.cpp
     storage_file.cpp
     b_tree.cpp
+    packed_value.cpp
     #bloom.cpp
     #key.cpp
     #node_locker.cpp
