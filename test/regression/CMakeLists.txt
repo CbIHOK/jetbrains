@@ -7,13 +7,13 @@ set(CMAKE_CXX_FLAGS_DEBUG "${CMAKE_CXX_FLAGS_DEBUG} /MTd")
 
 add_executable( regression EXCLUDE_FROM_ALL
     main.cpp
+    storage_file.cpp
+    b_tree.cpp
+    #bloom.cpp
     #key.cpp
     #node_locker.cpp
     #virtual_volume.cpp 
     #storage.cpp
-    #storage_file.cpp
-    #bloom.cpp
-    b_tree.cpp
 )
 
 target_link_libraries( regression gtest gtest_main )

@@ -109,7 +109,6 @@ public:
     {
         return f.write_mutex_;
     }
-
 };
 
 typedef ::testing::Types< Chunk_31, Chunk_32, Chunk_33, Chunk_64, Chunk_512, Chunk_2048, Chunk_4096 > TestingPolicies;
@@ -395,17 +394,40 @@ TYPED_TEST( TestStorageFile, Sequent_Overwriting )
     StorageFile f{ std::filesystem::path{ "Sequent_Overwriting.jb" }, true };
     ASSERT_EQ( RetCode::Ok, f.status() );
 
-    auto t = f.open_transaction();
-    ASSERT_EQ( RetCode::Ok, t.status() );
-
+    // create root record
+    ASSERT_NO_THROW(
     {
+        auto t = f.open_transaction();
+        ASSERT_EQ( RetCode::Ok, t.status() );
 
-        auto b = t.get_chain_overwriter< char >( StorageFile::RootChunkUid );
-    }
+        // create root node
+        auto b = t.get_chain_writer< char >();
+        ostream os( &b );
+        os << "Root node";
+        os.flush();
 
-    {
-        EXPECT_THROW( auto b = t.get_chain_overwriter< char >( StorageFile::RootChunkUid ), storage_file_error );
+        ASSERT_EQ( RetCode::Ok, t.status() );
+
+        t.commit();
+        ASSERT_EQ( RetCode::Ok, f.status() );
     }
+    
+    );
+
+    EXPECT_THROW(
+
+        {
+            auto t = f.open_transaction();
+            ASSERT_EQ( RetCode::Ok, t.status() );
+
+            auto b = t.get_chain_overwriter< char >( StorageFile::RootChunkUid );
+            ASSERT_EQ( RetCode::Ok, t.status() );
+
+            auto b1 = t.get_chain_overwriter< char >( StorageFile::RootChunkUid );
+        }
+        ,
+        storage_file_error
+    );
 }
 
 
@@ -420,6 +442,8 @@ TYPED_TEST( TestStorageFile, GarbageCollector )
 
     // write 3 chains
     {
+        EXPECT_NO_THROW(
+
         auto t = f.open_transaction();
         EXPECT_EQ( RetCode::Ok, t.status() );
 
@@ -427,39 +451,42 @@ TYPED_TEST( TestStorageFile, GarbageCollector )
             StorageFile::ostreambuf< char > b = t.get_chain_writer< char >();
 
             ostream os( &b );
-            EXPECT_NO_THROW( os << "0000000" );
-            EXPECT_NO_THROW( os.flush() );
+            os << "0000000";
+            os.flush();
 
             EXPECT_EQ( RetCode::Ok, t.status() );
-            EXPECT_NO_THROW( uid_0 = t.get_first_written_chunk() );
+            uid_0 = t.get_first_written_chunk();
         }
         {
             StorageFile::ostreambuf< char > b = t.get_chain_writer< char >();
 
             ostream os( &b );
-            EXPECT_NO_THROW( os << "1111111111" );
-            EXPECT_NO_THROW( os.flush() );
+            os << "1111111111";
+            os.flush();
 
             EXPECT_EQ( RetCode::Ok, t.status() );
-            EXPECT_NO_THROW( uid_1 = t.get_first_written_chunk() );
+            uid_1 = t.get_first_written_chunk();
         }
         {
             StorageFile::ostreambuf< char > b = t.get_chain_writer< char >();
 
             ostream os( &b );
-            EXPECT_NO_THROW( os << "2222222222222" );
-            EXPECT_NO_THROW( os.flush() );
+            os << "2222222222222";
+            os.flush();
 
             EXPECT_EQ( RetCode::Ok, t.status() );
             uid_2 = t.get_first_written_chunk();
         }
 
         t.commit();
+
+        );
     }
 
     // erase 2nd
     {
         EXPECT_NO_THROW(
+
             auto t = f.open_transaction();
             EXPECT_EQ( RetCode::Ok, t.status() );
 
@@ -474,6 +501,7 @@ TYPED_TEST( TestStorageFile, GarbageCollector )
     // add one more chain
     {
         EXPECT_NO_THROW(
+
             auto t = f.open_transaction();
             EXPECT_EQ( RetCode::Ok, t.status() );
 
@@ -517,10 +545,14 @@ TYPED_TEST( TestStorageFile, Streaming_Wchar )
 
     ChunkUid uid[ count ];
 
+    // lenghts to be written relatively to chunk size
     std::array< double, count > factor = {
         0.7, 1.0, 1.4, 1.7, 2.0,
         2.3, 3.1, 4.2, 4.7, 4.9
     };
+
+    // write strings
+    EXPECT_NO_THROW(
 
     {
         auto t = f.open_transaction();
@@ -531,21 +563,26 @@ TYPED_TEST( TestStorageFile, Streaming_Wchar )
             size_t sz = static_cast< size_t >( Policy::PhysicalVolumePolicy::ChunkSize * factor[ i ] );
             wstring data( sz, '0' + char( i ) );
 
-            EXPECT_NO_THROW(
-                auto b = t.get_chain_writer< wchar_t >();
-                EXPECT_EQ( RetCode::Ok, t.status() );
+            auto b = t.get_chain_writer< wchar_t >();
+            EXPECT_EQ( RetCode::Ok, t.status() );
 
-                wostream os( &b );
-                os << data;
-                os.flush();
-                uid[ i ] = t.get_first_written_chunk();
-            );
+            wostream os( &b );
+            os << data;
+            os.flush();
+            uid[ i ] = t.get_first_written_chunk();
         }
 
         EXPECT_EQ( RetCode::Ok, t.status() );
-        EXPECT_NO_THROW( t.commit() );
+
+        t.commit();
+        EXPECT_EQ( RetCode::Ok, f.status() );
     }
 
+    );
+
+    // read data back and compare against the etalon
+    EXPECT_NO_THROW(
+        
     {
         for ( size_t i = 0; i < count; ++i )
         {
@@ -553,15 +590,15 @@ TYPED_TEST( TestStorageFile, Streaming_Wchar )
             wstring data( sz, '0' + char( i ) );
             wstring read_data;
 
-            EXPECT_NO_THROW(
-                auto b = f.get_chain_reader< wchar_t >( uid[ i ] );
-                wistream is( &b );
-                is >> read_data;
-            );
+            auto b = f.get_chain_reader< wchar_t >( uid[ i ] );
+            wistream is( &b );
+            is >> read_data;
 
             EXPECT_EQ( data, read_data );
         }
     }
+
+    );
 }
 
 
@@ -576,10 +613,14 @@ TYPED_TEST( TestStorageFile, Streaming_Char16 )
 
     ChunkUid uid[ count ];
 
+    // lenghts to be written relatively to chunk size
     std::array< double, count > factor = {
         0.7, 1.0, 1.4, 1.7, 2.0,
         2.3, 3.1, 4.2, 4.7, 4.9
     };
+
+    // write strings
+    EXPECT_NO_THROW(
 
     {
         auto t = f.open_transaction();
@@ -600,22 +641,29 @@ TYPED_TEST( TestStorageFile, Streaming_Char16 )
         }
 
         EXPECT_EQ( RetCode::Ok, t.status() );
-        EXPECT_NO_THROW( t.commit() );
+
+        t.commit();
+        EXPECT_EQ( RetCode::Ok, f.status() );
     }
 
+    );
+
+    // read data back and compare against the etalon
+    EXPECT_NO_THROW(
+        
+    for ( size_t i = 0; i < count; ++i )
     {
-        for ( size_t i = 0; i < count; ++i )
-        {
-            size_t sz = static_cast< size_t >( Policy::PhysicalVolumePolicy::ChunkSize * factor[ i ] );
-            std::basic_string< char16_t > data( sz, '0' + char( i ) );
-            std::basic_string< char16_t > read_data;
+        size_t sz = static_cast< size_t >( Policy::PhysicalVolumePolicy::ChunkSize * factor[ i ] );
+        std::basic_string< char16_t > data( sz, '0' + char( i ) );
+        std::basic_string< char16_t > read_data;
 
-            auto b = f.get_chain_reader< char16_t >( uid[ i ] );
-            std::basic_istream< char16_t > is( &b );
-            is >> read_data;
-            EXPECT_EQ( data, read_data );
-        }
+        auto b = f.get_chain_reader< char16_t >( uid[ i ] );
+        std::basic_istream< char16_t > is( &b );
+        is >> read_data;
+        EXPECT_EQ( data, read_data );
     }
+
+    );
 }
 
 
@@ -623,11 +671,7 @@ TYPED_TEST( TestStorageFile, Streaming_Char32 )
 {
     using namespace std;
 
-    using ostreambuf = typename StorageFile::ostreambuf< int32_t >;
-    using istreambuf = typename StorageFile::istreambuf< int32_t >;
-    using t_ostream = std::basic_ostream< int32_t, ::jb::streambuf_traits< int32_t > >;
-    using t_istream = std::basic_istream< int32_t, ::jb::streambuf_traits< int32_t > >;
-    using t_string = std::basic_string< int32_t, ::jb::streambuf_traits< int32_t > >;
+    //EXPECT_NO_THROW(
 
     StorageFile f{ std::filesystem::path{ "Transaction_Commit.jb" }, true };
     ASSERT_EQ( RetCode::Ok, f.status() );
@@ -636,10 +680,14 @@ TYPED_TEST( TestStorageFile, Streaming_Char32 )
 
     ChunkUid uid[ count ];
 
+    // lenghts to be written relatively to chunk size
     std::array< double, count > factor = {
         0.7, 1.0, 1.4, 1.7, 2.0,
         2.3, 3.1, 4.2, 4.7, 4.9
     };
+
+    // write strings
+    EXPECT_NO_THROW(
 
     {
         auto t = f.open_transaction();
@@ -660,260 +708,27 @@ TYPED_TEST( TestStorageFile, Streaming_Char32 )
         }
 
         EXPECT_EQ( RetCode::Ok, t.status() );
-        EXPECT_NO_THROW( t.commit() );
+
+        t.commit();
+        EXPECT_EQ( RetCode::Ok, f.status() );
     }
 
+    );
+
+    // read data back and compare against the etalon
+    EXPECT_NO_THROW(
+
+    for ( size_t i = 0; i < count; ++i )
     {
-        for ( size_t i = 0; i < count; ++i )
-        {
-            size_t sz = static_cast< size_t >( Policy::PhysicalVolumePolicy::ChunkSize * factor[ i ] );
-            std::basic_string< char32_t > data( sz, '0' + char( i ) );
-            std::basic_string< char32_t > read_data;
+        size_t sz = static_cast< size_t >( Policy::PhysicalVolumePolicy::ChunkSize * factor[ i ] );
+        std::basic_string< char32_t > data( sz, '0' + char( i ) );
+        std::basic_string< char32_t > read_data;
 
-            auto b = f.get_chain_reader< char32_t >( uid[ i ] );
-            std::basic_istream< char32_t > is( &b );
-            is >> read_data;
-            EXPECT_EQ( data, read_data );
-        }
+        auto b = f.get_chain_reader< char32_t >( uid[ i ] );
+        std::basic_istream< char32_t > is( &b );
+        is >> read_data;
+        EXPECT_EQ( data, read_data );
     }
+
+    );
 }
-
-
-//TYPED_TEST( TestStorageFile, Streaming_Int32 )
-//{
-//    using namespace std;
-//
-//    using ostreambuf = typename StorageFile::ostreambuf< int32_t >;
-//    using istreambuf = typename StorageFile::istreambuf< int32_t >;
-//    using t_ostream = std::basic_ostream< int32_t >;
-//    using t_istream = std::basic_istream< int32_t >;
-//    using t_string = std::basic_string< int32_t >;
-//
-//    StorageFile f{ std::filesystem::path{ "Transaction_Commit.jb" }, true };
-//    ASSERT_EQ( RetCode::Ok, f.status() );
-//
-//    const size_t count = 10;
-//
-//    ChunkUid uid[ count ];
-//
-//    std::array< double, count > factor = {
-//        0.7, 1.0, 1.4, 1.7, 2.0,
-//        2.3, 3.1, 4.2, 4.7, 4.9
-//    };
-//
-//    {
-//        auto t = f.open_transaction();
-//        ASSERT_EQ( RetCode::Ok, t.status() );
-//
-//        for ( size_t i = 0; i < count; ++i )
-//        {
-//            size_t sz = static_cast< size_t >( Policy::PhysicalVolumePolicy::ChunkSize * factor[ i ] );
-//            t_string data( sz, '0' + char( i ) );
-//
-//            auto b = t.get_chain_writer< int32_t >();
-//            EXPECT_EQ( RetCode::Ok, t.status() );
-//
-//            t_ostream os( &b );
-//            os << data;
-//            os.flush();
-//            uid[ i ] = t.get_first_written_chunk();
-//        }
-//
-//        EXPECT_EQ( RetCode::Ok, t.status() );
-//        EXPECT_NO_THROW( t.commit() );
-//    }
-//
-//    {
-//        for ( size_t i = 0; i < count; ++i )
-//        {
-//            size_t sz = static_cast< size_t >( Policy::PhysicalVolumePolicy::ChunkSize * factor[ i ] );
-//            t_string data( sz, '0' + char( i ) );
-//            t_string read_data;
-//
-//            auto b = f.get_chain_reader< int32_t >( uid[ i ] );
-//            t_istream is( &b );
-//            is >> read_data;
-//            EXPECT_EQ( data, read_data );
-//        }
-//    }
-//}
-//
-//
-//TYPED_TEST( TestStorageFile, Streaming_Uint32 )
-//{
-//    using namespace std;
-//
-//    using ostreambuf = typename StorageFile::ostreambuf< uint32_t >;
-//    using istreambuf = typename StorageFile::istreambuf< uint32_t >;
-//    using t_ostream = std::basic_ostream< uint32_t >;
-//    using t_istream = std::basic_istream< uint32_t >;
-//    using t_string = std::basic_string< uint32_t >;
-//
-//    StorageFile f{ std::filesystem::path{ "Transaction_Commit.jb" }, true };
-//    ASSERT_EQ( RetCode::Ok, f.status() );
-//
-//    const size_t count = 10;
-//
-//    ChunkUid uid[ count ];
-//
-//    std::array< double, count > factor = {
-//        0.7, 1.0, 1.4, 1.7, 2.0,
-//        2.3, 3.1, 4.2, 4.7, 4.9
-//    };
-//
-//    {
-//        auto t = f.open_transaction();
-//        ASSERT_EQ( RetCode::Ok, t.status() );
-//
-//        for ( size_t i = 0; i < count; ++i )
-//        {
-//            size_t sz = static_cast< size_t >( Policy::PhysicalVolumePolicy::ChunkSize * factor[ i ] );
-//            t_string data( sz, '0' + char( i ) );
-//
-//            auto b = t.get_chain_writer< uint32_t >();
-//            EXPECT_EQ( RetCode::Ok, t.status() );
-//
-//            t_ostream os( &b );
-//            os << data;
-//            os.flush();
-//            uid[ i ] = t.get_first_written_chunk();
-//        }
-//
-//        EXPECT_EQ( RetCode::Ok, t.status() );
-//        EXPECT_NO_THROW( t.commit() );
-//    }
-//
-//    {
-//        for ( size_t i = 0; i < count; ++i )
-//        {
-//            size_t sz = static_cast< size_t >( Policy::PhysicalVolumePolicy::ChunkSize * factor[ i ] );
-//            t_string data( sz, '0' + char( i ) );
-//            t_string read_data;
-//
-//            auto b = f.get_chain_reader< uint32_t >( uid[ i ] );
-//            t_istream is( &b );
-//            is >> read_data;
-//            EXPECT_EQ( data, read_data );
-//        }
-//    }
-//}
-//
-//
-//TYPED_TEST( TestStorageFile, Streaming_Int64 )
-//{
-//    using namespace std;
-//
-//    using ostreambuf = typename StorageFile::ostreambuf< int64_t >;
-//    using istreambuf = typename StorageFile::istreambuf< int64_t >;
-//    using t_ostream = std::basic_ostream< int64_t, ::jb::streambuf_traits< int64_t >::traits_type >;
-//    using t_istream = std::basic_istream< int64_t, ::jb::streambuf_traits< int64_t >::traits_type >;
-//    using t_string = std::basic_string< int64_t, ::jb::streambuf_traits< int64_t >::traits_type >;
-//
-//    StorageFile f{ std::filesystem::path{ "Transaction_Commit.jb" }, true };
-//    ASSERT_EQ( RetCode::Ok, f.status() );
-//
-//    const size_t count = 10;
-//
-//    ChunkUid uid[ count ];
-//
-//    std::array< double, count > factor = {
-//        0.7, 1.0, 1.4, 1.7, 2.0,
-//        2.3, 3.1, 4.2, 4.7, 4.9
-//    };
-//
-//    {
-//        auto t = f.open_transaction();
-//        ASSERT_EQ( RetCode::Ok, t.status() );
-//
-//        for ( size_t i = 0; i < count; ++i )
-//        {
-//            size_t sz = static_cast< size_t >( Policy::PhysicalVolumePolicy::ChunkSize * factor[ i ] );
-//            t_string data( sz, '0' + i );
-//
-//            auto b = t.get_chain_writer< int64_t >();
-//            EXPECT_EQ( RetCode::Ok, t.status() );
-//
-//            t_ostream os( &b );
-//            os << data;
-//            os.flush();
-//            uid[ i ] = t.get_first_written_chunk();
-//        }
-//
-//        EXPECT_EQ( RetCode::Ok, t.status() );
-//        EXPECT_NO_THROW( t.commit() );
-//    }
-//
-//    {
-//        for ( size_t i = 0; i < count; ++i )
-//        {
-//            size_t sz = static_cast< size_t >( Policy::PhysicalVolumePolicy::ChunkSize * factor[ i ] );
-//            t_string data( sz, '0' + char( i ) );
-//            t_string read_data;
-//
-//            auto b = f.get_chain_reader< int64_t >( uid[ i ] );
-//            t_istream is( &b );
-//            is >> read_data;
-//            EXPECT_EQ( data, read_data );
-//        }
-//    }
-//}
-//
-//TYPED_TEST( TestStorageFile, Streaming_Uint64 )
-//{
-//    using namespace std;
-//
-//    using ostreambuf = typename StorageFile::ostreambuf< uint64_t >;
-//    using istreambuf = typename StorageFile::istreambuf< uint64_t >;
-//    using t_ostream = std::basic_ostream< uint64_t, ::jb::streambuf_traits< uint64_t >::traits_type >;
-//    using t_istream = std::basic_istream< uint64_t, ::jb::streambuf_traits< uint64_t >::traits_type >;
-//    using t_string = std::basic_string< uint64_t, ::jb::streambuf_traits< uint64_t >::traits_type >;
-//
-//    StorageFile f{ std::filesystem::path{ "Transaction_Commit.jb" }, true };
-//    ASSERT_EQ( RetCode::Ok, f.status() );
-//
-//    const size_t count = 10;
-//
-//    ChunkUid uid[ count ];
-//
-//    std::array< double, count > factor = {
-//        0.7, 1.0, 1.4, 1.7, 2.0,
-//        2.3, 3.1, 4.2, 4.7, 4.9
-//    };
-//
-//    {
-//        auto t = f.open_transaction();
-//        ASSERT_EQ( RetCode::Ok, t.status() );
-//
-//        for ( size_t i = 0; i < count; ++i )
-//        {
-//            size_t sz = static_cast< size_t >( Policy::PhysicalVolumePolicy::ChunkSize * factor[ i ] );
-//            t_string data( sz, '0' + i );
-//
-//            auto b = t.get_chain_writer< uint64_t >();
-//            EXPECT_EQ( RetCode::Ok, t.status() );
-//
-//            t_ostream os( &b );
-//            os << data;
-//            os.flush();
-//            uid[ i ] = t.get_first_written_chunk();
-//        }
-//
-//        EXPECT_EQ( RetCode::Ok, t.status() );
-//        EXPECT_NO_THROW( t.commit() );
-//    }
-//
-//    {
-//        for ( size_t i = 0; i < count; ++i )
-//        {
-//            size_t sz = static_cast< size_t >( Policy::PhysicalVolumePolicy::ChunkSize * factor[ i ] );
-//            t_string data( sz, '0' + char( i ) );
-//            t_string read_data;
-//
-//            auto b = f.get_chain_reader< uint64_t >( uid[ i ] );
-//            t_istream is( &b );
-//            is >> read_data;
-//            EXPECT_EQ( data, read_data );
-//        }
-//    }
-//}
-//
