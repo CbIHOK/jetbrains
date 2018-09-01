@@ -346,13 +346,6 @@ namespace jb
                 auto[ ok, written ] = Os::write_file( handle, &invalid_crc, sizeof( invalid_crc ) );
                 throw_storage_file_error( ok && written == sizeof( invalid_crc ), RetCode::IoError );
             }
-
-            auto t = open_transaction();
-            auto b = t.get_chain_writer< char >();
-            std::ostream os( &b );
-            os << "foo";
-            os.flush();
-            t.commit();
         }
 
 

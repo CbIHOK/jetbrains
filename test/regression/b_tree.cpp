@@ -76,6 +76,14 @@ protected:
     static auto & links( BTree & t ) noexcept { return t.links_; }
     static auto save( BTree & tree, Transaction & t ) { return tree.save( t ); }
 
+    void deploy_root( StorageFile & f, BTreeCache & c )
+    {
+        BTreeP root = std::make_shared< BTree >( f, c );
+        auto t = f.open_transaction();
+        root->save( t );
+        t.commit();
+    }
+
     bool is_leaf( BTree & node )
     {
         return node.is_leaf();
@@ -184,17 +192,18 @@ TYPED_TEST( TestBTree, Insert_Find )
         // open starage
         StorageFile f( "Insert_Find_3.jb", true );
         ASSERT_EQ( RetCode::Ok, f.status() );
+        ASSERT_TRUE( f.newly_created() );
 
         // prepare cache
         BTreeCache c( f );
         ASSERT_EQ( RetCode::Ok, f.status() );
 
-        // get root node
-        BTreeP root;
+        // deploy root node
+        ASSERT_NO_THROW( deploy_root( f, c ) );
 
-        EXPECT_NO_THROW(
+        //EXPECT_NO_THROW(
 
-        root = c.get_node( RootNodeUid );
+        auto root = c.get_node( RootNodeUid );
         EXPECT_TRUE( root );
 
         // inserts 1000 elements into /root
@@ -212,7 +221,7 @@ TYPED_TEST( TestBTree, Insert_Find )
             node->insert( target.second, bpath, digest, Value{ to_string( digest ) }, 0, false );
         }
 
-        );
+        //);
     }
 
     {
@@ -224,12 +233,12 @@ TYPED_TEST( TestBTree, Insert_Find )
         BTreeCache c( f );
         ASSERT_EQ( RetCode::Ok, f.status() );
 
-        // get root node
-        BTreeP root;
+        // deploy root node
+        ASSERT_NO_THROW( deploy_root( f, c ) );
 
-        EXPECT_NO_THROW(
+        //EXPECT_NO_THROW(
 
-        root = c.get_node( RootNodeUid );
+        auto root = c.get_node( RootNodeUid );
         EXPECT_TRUE( root );
 
         // collect b-tree leaf depths (balance check)
@@ -255,7 +264,7 @@ TYPED_TEST( TestBTree, Insert_Find )
         // check that tree is balanced
         EXPECT_GE( 2, depth.size() );
 
-        );
+        //);
     }
 }
 
@@ -272,6 +281,9 @@ TYPED_TEST( TestBTree, Insert_Ovewrite )
     BTreeCache c( f );
     ASSERT_EQ( RetCode::Ok, f.status() );
 
+    // deploy root node
+    ASSERT_NO_THROW( deploy_root( f, c ) );
+
     // get root node
     BTreeP root;
     EXPECT_NO_THROW( root = c.get_node( RootNodeUid ) );
@@ -280,7 +292,7 @@ TYPED_TEST( TestBTree, Insert_Ovewrite )
     // inserts 10 elements into /root
     for ( Digest digest = 0; digest < 10; ++digest )
     {
-        EXPECT_NO_THROW(
+        //EXPECT_NO_THROW(
 
         BTreePath bpath;
         auto found = root->find_digest( digest, bpath );
@@ -292,14 +304,14 @@ TYPED_TEST( TestBTree, Insert_Ovewrite )
 
         node->insert( target.second, bpath, digest, Value{ to_string( digest ) }, 0, false );
 
-        );
+        //);
     }
 
     // insert one more node with already present key
     {
         Digest digest = 7;
 
-        EXPECT_NO_THROW(
+        //EXPECT_NO_THROW(
         
         BTreePath bpath;
         auto found = root->find_digest( digest, bpath );
@@ -313,14 +325,14 @@ TYPED_TEST( TestBTree, Insert_Ovewrite )
         EXPECT_THROW( node->insert( target.second, bpath, digest, Value{ ( uint32_t )7 }, 0, false ), btree_error );
         node->insert( target.second, bpath, digest, Value{ 7. }, 1, true );
         
-        );
+        //);
     }
 
     // find node and validate value & exiration mark
     {
         Digest digest = 7;
 
-        EXPECT_NO_THROW(
+        //EXPECT_NO_THROW(
 
         BTreePath bpath;
         auto found = root->find_digest( digest, bpath );
@@ -337,14 +349,14 @@ TYPED_TEST( TestBTree, Insert_Ovewrite )
         auto target = bpath.back(); bpath.pop_back();
         node->insert( target.second, bpath, digest, Value{ "Ok" }, 0, true );
 
-        );
+        //);
     }
 
     // find node and validate value & UNTOUCHED exiration mark
     {
         Digest digest = 7;
 
-        EXPECT_NO_THROW(
+        //EXPECT_NO_THROW(
 
         BTreePath bpath;
         auto found = root->find_digest( digest, bpath );
@@ -357,7 +369,7 @@ TYPED_TEST( TestBTree, Insert_Ovewrite )
         //EXPECT_EQ( Value{ "Ok" }, node->value( bpath.back().second ) );
         EXPECT_EQ( 1, node->good_before( bpath.back().second ) );
 
-        );
+        //);
     }
 }
 
@@ -373,6 +385,9 @@ TYPED_TEST( TestBTree, Insert_Erase )
     // prepare cache
     BTreeCache c( f );
     ASSERT_EQ( RetCode::Ok, f.status() );
+
+    // deploy root node
+    ASSERT_NO_THROW( deploy_root( f, c ) );
 
     // get root node
     BTreeP root;

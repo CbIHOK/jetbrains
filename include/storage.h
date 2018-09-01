@@ -93,6 +93,7 @@ namespace jb
             UnableToOpen,           ///< Cannot open specified file
             TooManyConcurrentOps,   ///< The limit of concurent operations over physical volume is reached
             IoError,                ///< General I/O error
+            InvalidData,
             InsufficientMemory,     ///< Operation failed due to low memory
             UnknownError,           ///< Something wrong happened
                                     ///

@@ -13,6 +13,14 @@
 #include <boost/container/static_vector.hpp>
 #include <boost/thread/shared_mutex.hpp>
 
+#ifndef BOOST_ENDIAN_DEPRECATED_NAMES
+#define BOOST_ENDIAN_DEPRECATED_NAMES
+#include <boost/endian/endian.hpp>
+#undef BOOST_ENDIAN_DEPRECATED_NAMES
+#else
+#include <boost/endian/endian.hpp>
+#endif
+
 
 template < typename T > class TestBTree;
 
@@ -24,6 +32,13 @@ namespace jb
     {
         template < typename T > friend class TestBTree;
 
+        friend class BTreeCache;
+
+        struct Element;
+        friend std::ostream & operator << ( std::ostream & os, const Element & e );
+        friend std::istream & operator >> ( std::istream & is, Element & e );
+
+
         //
         // few aliases
         //
@@ -33,8 +48,9 @@ namespace jb
         using StorageFile = typename PhysicalVolumeImpl::StorageFile;
         using Transaction = typename StorageFile::Transaction;
         using BlobUid = typename StorageFile::ChunkUid;
-        using istream64 = typename std::basic_istream< uint64_t, ::jb::streambuf_traits< uint64_t >::traits_type >;
-        using ostream64 = typename std::basic_ostream< uint64_t, ::jb::streambuf_traits< uint64_t >::traits_type >;
+        //using istream64 = typename std::basic_istream< uint64_t, ::jb::streambuf_traits< uint64_t >::traits_type >;
+        //using ostream64 = typename std::basic_ostream< uint64_t, ::jb::streambuf_traits< uint64_t >::traits_type >;
+        using big_uint64_t = boost::endian::big_uint64_at;
 
 
         static constexpr auto BTreeMinPower = Policies::PhysicalVolumePolicy::BTreeMinPower;
@@ -83,6 +99,7 @@ namespace jb
             if ( !condition ) throw btree_error( rc, what );
         }
 
+
         //
         // represent b-tree element
         //
@@ -93,22 +110,32 @@ namespace jb
             uint64_t good_before_;
             NodeUid children_;
 
-            friend ostream64 & operator << ( ostream64 & os, const Element & e )
+            friend std::ostream & operator << ( std::ostream & os, const Element & e )
             {
-                os  << e.digest_
-                    //<< e.packed_value_
-                    << e.good_before_
-                    << e.children_;
+                big_uint64_t digest = e.digest_;
+                big_uint64_t good_before = e.good_before_;
+                big_uint64_t children = e.children_;
+
+                os.write( reinterpret_cast< const char* >( &digest ), sizeof( digest ) );
+                os.write( reinterpret_cast< const char* >( &good_before ), sizeof( good_before ) );
+                os.write( reinterpret_cast< const char* >( &children ), sizeof( children ) );
 
                 return os;
             }
 
-            friend std::basic_istream< int64_t > & operator >> ( std::basic_istream< int64_t > & is, Element & e )
+            friend std::istream & operator >> ( std::istream & is, Element & e )
             {
-                is  >> e.digest_
-                    >> e.packed_value_
-                    >> e.good_before_
-                    >> e.children_;
+                big_uint64_t digest;
+                big_uint64_t good_before;
+                big_uint64_t children;
+
+                is.read( reinterpret_cast< char* >( &digest ), sizeof( digest ) );
+                is.read( reinterpret_cast< char* >( &good_before ), sizeof( good_before ) );
+                is.read( reinterpret_cast< char* >( &children ), sizeof( children ) );
+
+                e.digest_ = static_cast< Digest >( digest );
+                e.good_before_ = good_before;
+                e.children_ = children;
 
                 return is;
             }
@@ -177,11 +204,11 @@ namespace jb
         //
         // more aliases
         //
-        using ElementCollection = static_vector< Element, BTreeMax  >;
-        using LinkCollection = static_vector< NodeUid, BTreeMax + 1 >;
+        //using ElementCollection = static_vector< Element, BTreeMax  >;
+        //using LinkCollection = static_vector< NodeUid, BTreeMax + 1 >;
 
-        //using ElementCollection = std::vector< Element  >;
-        //using LinkCollection = std::vector< NodeUid >;
+        using ElementCollection = std::vector< Element  >;
+        using LinkCollection = std::vector< NodeUid >;
 
         //
         // data members
@@ -194,6 +221,55 @@ namespace jb
         LinkCollection links_;
 
 
+        friend std::ostream & operator << ( std::ostream & os, const BTree & node )
+        {
+            throw_btree_error( node.elements_.size() + 1 == node.links_.size(), RetCode::UnknownError, "Broken b-tree node" );
+
+            big_uint64_t size = node.elements_.size();
+            os.write( reinterpret_cast< const char * >( &size ), sizeof( size ) );
+
+            for ( const auto & e : node.elements_ )
+            {
+                os << e;
+            }
+
+            for ( auto l : node.links_ )
+            {
+                big_uint64_t link = l;
+                os.write( reinterpret_cast< const char * >( &link ), sizeof( link ) );
+            }
+
+            return os;
+        }
+
+
+        friend std::istream & operator >> ( std::istream & is, BTree & node )
+        {
+            big_uint64_t size;
+            is.read( reinterpret_cast< char* >( &size ), sizeof( size ) );
+            size_t sz = static_cast< size_t >( size );
+
+            throw_btree_error( sz < BTreeMax, RetCode::InvalidData, "Maximum size of b-tree node exceeded" );
+
+            node.elements_.resize( sz );
+            node.links_.resize( sz + 1 );
+
+            for ( auto & e : node.elements_ )
+            {
+                is >> e;
+            }
+
+            for ( auto & l : node.links_ )
+            {
+                big_uint64_t link;
+                is.read( reinterpret_cast< char* >( &link ), sizeof( link ) );
+                l = link;
+            }
+
+            return is;
+        }
+
+
         /* Stores b-tree node to file
 
         @param [in] t - transaction
@@ -202,14 +278,11 @@ namespace jb
         */
         void save( Transaction & t ) const
         {
-            throw_btree_error( elements_.size() + 1 == links_.size(), RetCode::UnknownError, "Broken b-tree node" );
-            
-            auto buffer = t.get_chain_writer< uint64_t >();
-            ostream64 stream( &buffer );
-            stream << elements_.size();
-            for ( const auto & element : elements_ ) stream << element;
-            for ( const auto & link : links_ ) stream << link;
-            stream.flush();
+            auto buffer = t.get_chain_writer< char >();
+
+            std::ostream os( &buffer );
+            os << *this;
+            os.flush();
 
             NodeUid uid = t.get_first_written_chunk();
             std::swap( uid, const_cast< BTree* >( this )->uid_ );
@@ -225,14 +298,25 @@ namespace jb
         */
         void overwrite( Transaction & t ) const
         {
-            throw_btree_error( elements_.size() + 1 == links_.size(), RetCode::UnknownError, "Broken b-tree node" );
+            throw_btree_error( InvalidNodeUid != uid_, RetCode::UnknownError, "Bad logic" );
 
-            auto buffer = t.get_chain_overwriter< uint64_t >( uid_ );
-            ostream64 os( &buffer );
-            os << elements_.size();
-            for ( const auto & element : elements_ ) os << element;
-            for ( const auto & link : links_ ) os << link;
+            auto buffer = t.get_chain_overwriter< char >( uid_ );
+            
+            std::ostream os( &buffer );
+            os << *this;
             os.flush();
+        }
+
+
+        void load( NodeUid uid )
+        {
+            //auto buffer = file_.get_chain_reader< uint64_t >( uid );
+            auto buffer = file_.get_chain_reader< char >( uid );
+            
+            std::istream is( &buffer );
+            is >> *this;
+
+            uid_ = uid;
         }
 
 
@@ -248,6 +332,9 @@ namespace jb
 
             throw_btree_error( l && r, RetCode::UnknownError, "Bad logic" );
             throw_btree_error( elements_.size() == BTreeMax, RetCode::UnknownError, "Bad logic" );
+
+            l->elements_.clear(); l->links_.clear();
+            r->elements_.clear(); r->links_.clear();
 
             l->elements_.insert(
                 begin( l->elements_ ), 
@@ -296,7 +383,7 @@ namespace jb
             if ( pos < elements_.size() && e.digest_ == elements_[ pos ].digest_ )
             {
                 // if overwriting possible
-                throw_btree_error( !ow, RetCode::AlreadyExists );
+                throw_btree_error( ow, RetCode::AlreadyExists );
 
                 // emplace element at existing position
                 auto old_expiration = elements_[ pos ].good_before_;
@@ -340,8 +427,8 @@ namespace jb
             throw_btree_error( elements_.size() == BTreeMax, RetCode::UnknownError, "Bad logic" );
 
             // split this item into 2 new and save them
-            auto l = make_shared< BTree >( InvalidNodeUid, file_, cache_ );
-            auto r = make_shared< BTree >( InvalidNodeUid, file_, cache_ );
+            auto l = make_shared< BTree >( file_, cache_ );
+            auto r = make_shared< BTree >( file_, cache_ );
 
             split_node( l, r );
 
@@ -377,8 +464,8 @@ namespace jb
             throw_btree_error( elements_.size() == BTreeMax, RetCode::UnknownError, "Bad logic" );
 
             // split node into 2 new and save them
-            auto l = make_shared< BTree >( InvalidNodeUid, file_, cache_ );
-            auto r = make_shared< BTree >( InvalidNodeUid, file_, cache_ );
+            auto l = make_shared< BTree >( file_, cache_ );
+            auto r = make_shared< BTree >( file_, cache_ );
 
             split_node( l, r );
             l->save( t );
@@ -746,10 +833,7 @@ namespace jb
 
         /** Default constructor, creates dummy b-tree node
         */
-        BTree() noexcept : uid_( InvalidNodeUid )
-        {
-            links_.push_back( InvalidNodeUid );
-        }
+        BTree() = delete;
 
 
         /** The class is not copyable/movable
@@ -759,11 +843,12 @@ namespace jb
 
         /* Explicit constructor
         */
-        explicit BTree( NodeUid uid, StorageFile & file, BTreeCache & cache ) noexcept
-            : uid_( uid )
+        explicit BTree( StorageFile & file, BTreeCache & cache ) noexcept
+            : uid_( InvalidNodeUid )
             , file_( file )
             , cache_( cache )
         {
+            links_.push_back( InvalidNodeUid );
         }
 
 

@@ -125,7 +125,8 @@ namespace jb
                 }
                 else
                 {
-                    auto p = make_shared< BTree >( uid, file_, *this );
+                    auto p = make_shared< BTree >( file_, *this );
+                    p->load( uid );
 
                     // through the order list
                     for ( auto order_it = begin( mru_order_ ); order_it != end( mru_order_ ); ++order_it )

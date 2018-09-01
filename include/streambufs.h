@@ -71,23 +71,23 @@ namespace jb
     template < typename CharT > using stored_type_t = typename stored_type< CharT >::type;
 
 
-    template< typename CharT >
-    struct streambuf_traits
-    {
-        using traits_type = std::char_traits< CharT >;
-    };
+    //template< typename CharT >
+    //struct streambuf_traits
+    //{
+    //    using traits_type = std::char_traits< CharT >;
+    //};
 
-    template<>
-    struct streambuf_traits< int64_t >
-    {
-        using traits_type = std::_Char_traits< int64_t, int64_t >;
-    };
+    //template<>
+    //struct streambuf_traits< int64_t >
+    //{
+    //    using traits_type = std::_Char_traits< int64_t, int64_t >;
+    //};
 
-    template<>
-    struct streambuf_traits< uint64_t >
-    {
-        using traits_type = std::_Char_traits< uint64_t, uint64_t >;
-    };
+    //template<>
+    //struct streambuf_traits< uint64_t >
+    //{
+    //    using traits_type = std::_Char_traits< uint64_t, uint64_t >;
+    //};
 
 
 
@@ -98,7 +98,7 @@ namespace jb
     */
     template < typename Policies >
     template < typename CharT >
-    class Storage< Policies >::PhysicalVolumeImpl::StorageFile::istreambuf : public std::basic_streambuf< CharT , typename streambuf_traits< CharT >::traits_type >
+    class Storage< Policies >::PhysicalVolumeImpl::StorageFile::istreambuf : public std::basic_streambuf< CharT >//, typename streambuf_traits< CharT >::traits_type >
     {
         //
         // requires access to private explicit constructor
@@ -111,7 +111,8 @@ namespace jb
         //
         using StoredType = stored_type_t< CharT >;
         using AdaptorType = store_adaptor_type_t< CharT >;
-        using traits_type = typename streambuf_traits< CharT >::traits_type;
+        //using traits_type = typename streambuf_traits< CharT >::traits_type;
+        using traits_type = std::char_traits< CharT >;
         using int_type = typename traits_type::int_type;
 
 
@@ -284,13 +285,14 @@ namespace jb
     */
     template < typename Policies >
     template < typename CharT >
-    class Storage< Policies >::PhysicalVolumeImpl::StorageFile::ostreambuf : public std::basic_streambuf< CharT, typename streambuf_traits< CharT >::traits_type >
+    class Storage< Policies >::PhysicalVolumeImpl::StorageFile::ostreambuf : public std::basic_streambuf< CharT >//, typename streambuf_traits< CharT >::traits_type >
     {
         friend class Transaction;
 
         using StoredType = stored_type_t< CharT >;
         using AdaptorType = store_adaptor_type_t< CharT >;
-        using traits_type = typename streambuf_traits< CharT >::traits_type;
+        //using traits_type = typename streambuf_traits< CharT >::traits_type;
+        using traits_type = std::char_traits< CharT >;
         using int_type = typename traits_type::int_type;
 
         static constexpr auto BufferSize = ChunkOffsets::sz_Space / sizeof( StoredType );
