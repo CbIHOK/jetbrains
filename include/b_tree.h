@@ -64,7 +64,7 @@ namespace jb
 
     public:
 
-        class PackedValue;
+        struct PackedValue;
 
         using BTreeP = std::shared_ptr< BTree >;
         using NodeUid = typename StorageFile::ChunkUid;
@@ -75,12 +75,12 @@ namespace jb
         using Pos = size_t;
         static constexpr auto Npos = Pos{ std::numeric_limits< size_t >::max() };
 
-        //using BTreePath = static_vector< std::pair< NodeUid, Pos >, BTreeMaxDepth >;
+        using BTreePath = static_vector< std::pair< NodeUid, Pos >, BTreeMaxDepth >;
 
-        struct BTreePath : public std::vector< std::pair< NodeUid, Pos > >
-        {
-            BTreePath() { reserve(100); }
-        };
+        //struct BTreePath : public std::vector< std::pair< NodeUid, Pos > >
+        //{
+        //    BTreePath() { reserve(100); }
+        //};
 
         struct btree_error : public std::runtime_error
         {
@@ -106,19 +106,23 @@ namespace jb
         struct Element
         {
             Digest digest_;
-            Value packed_value_;
             uint64_t good_before_;
             NodeUid children_;
+            PackedValue value_;
 
             friend std::ostream & operator << ( std::ostream & os, const Element & e )
             {
                 big_uint64_t digest = e.digest_;
                 big_uint64_t good_before = e.good_before_;
                 big_uint64_t children = e.children_;
+                big_uint64_t type_index = e.value_.type_index_;
+                big_uint64_t value = e.value_.value_;
 
                 os.write( reinterpret_cast< const char* >( &digest ), sizeof( digest ) );
                 os.write( reinterpret_cast< const char* >( &good_before ), sizeof( good_before ) );
                 os.write( reinterpret_cast< const char* >( &children ), sizeof( children ) );
+                os.write( reinterpret_cast< const char* >( &type_index ), sizeof( type_index ) );
+                os.write( reinterpret_cast< const char* >( &value ), sizeof( value ) );
 
                 return os;
             }
@@ -128,14 +132,25 @@ namespace jb
                 big_uint64_t digest;
                 big_uint64_t good_before;
                 big_uint64_t children;
+                big_uint64_t type_index;
+                big_uint64_t value;
 
                 is.read( reinterpret_cast< char* >( &digest ), sizeof( digest ) );
+                throw_btree_error( is.good(), RetCode::UnknownError );
                 is.read( reinterpret_cast< char* >( &good_before ), sizeof( good_before ) );
+                throw_btree_error( is.good(), RetCode::UnknownError );
                 is.read( reinterpret_cast< char* >( &children ), sizeof( children ) );
+                throw_btree_error( is.good(), RetCode::UnknownError );
+                is.read( reinterpret_cast< char* >( &type_index ), sizeof( type_index ) );
+                throw_btree_error( is.good(), RetCode::UnknownError );
+                is.read( reinterpret_cast< char* >( &value ), sizeof( value ) );
+                throw_btree_error( is.good(), RetCode::UnknownError );
 
                 e.digest_ = static_cast< Digest >( digest );
                 e.good_before_ = good_before;
                 e.children_ = children;
+                e.value_.type_index_ = type_index;
+                e.value_.value_ = value;
 
                 return is;
             }
@@ -962,12 +977,10 @@ namespace jb
         @param Value - value of the element
         @throw nothing
         */
-        const auto & value( size_t ndx ) noexcept
+        const auto value( size_t ndx ) noexcept
         {
             assert( ndx < elements_.size() );
-            assert( file_ );
-
-            return unpack_value( file_, elements_[ ndx ].packed_value_ );
+            return elements_[ ndx ].value_.unpack( file_ );
         }
 
         const auto & good_before( size_t ndx ) const noexcept
@@ -1055,7 +1068,9 @@ namespace jb
             auto t = file_.open_transaction();
             throw_btree_error( RetCode::Ok == t.status(), RetCode::IoError, "Unable to open transaction" );
 
-            Element e{ digest, value, good_before };
+            PackedValue p = PackedValue::make_packed( t, value );
+
+            Element e{ digest, good_before, InvalidNodeUid, p };
             insert_element( t, pos, bpath, move( e ), overwrite );
             t.commit();
         }

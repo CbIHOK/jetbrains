@@ -59,7 +59,7 @@ namespace jb
 
         // declares chunk uid
         using ChunkUid = uint64_t;
-        static constexpr ChunkUid InvalidChunkUid = std::numeric_limits< ChunkUid >::max();
+        static constexpr ChunkUid InvalidChunkUid = std::numeric_limits< ChunkUid >::max() - 1;
 
 
         //

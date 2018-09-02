@@ -3,54 +3,62 @@
 #include "policies.h"
 
 
-struct BTreePower_3_ChunkSize_32 : public ::jb::DefaultPolicy<>
+struct BTreePower_16 : public ::jb::DefaultPolicy<>
 {
     struct PhysicalVolumePolicy : public ::jb::DefaultPolicy<>::PhysicalVolumePolicy
     {
         static constexpr size_t BloomSize = 1024;
-        static constexpr size_t BTreeMinPower = 3;
-        static constexpr size_t ChunkSize = 32;
+        static constexpr size_t BTreeMinPower = 16;
     };
+
+    static constexpr size_t BTreeSize = 10000;
 };
 
 
-struct BTreePower_4_ChunkSize_2048 : public ::jb::DefaultPolicy<>
+struct BTreePower_32 : public ::jb::DefaultPolicy<>
 {
     struct PhysicalVolumePolicy : public ::jb::DefaultPolicy<>::PhysicalVolumePolicy
     {
         static constexpr size_t BloomSize = 1024;
-        static constexpr size_t BTreeMinPower = 4;
-        static constexpr size_t ChunkSize = 2048;
+        static constexpr size_t BTreeMinPower = 32;
     };
+    static constexpr size_t BTreeSize = 10000;
 };
 
 
-struct BTreePower_5_ChunkSize_Default : public ::jb::DefaultPolicy<>
+struct BTreePower_64: public ::jb::DefaultPolicy<>
 {
     struct PhysicalVolumePolicy : public ::jb::DefaultPolicy<>::PhysicalVolumePolicy
     {
         static constexpr size_t BloomSize = 1024;
-        static constexpr size_t BTreeMinPower = 5;
+        static constexpr size_t BTreeMinPower = 64;
     };
+
+    static constexpr size_t BTreeSize = 10000;
 };
 
 
-struct BTreePower_1024_ChunkSize_Default : public ::jb::DefaultPolicy<>
+struct BTreePower_128: public ::jb::DefaultPolicy<>
 {
     struct PhysicalVolumePolicy : public ::jb::DefaultPolicy<>::PhysicalVolumePolicy
     {
         static constexpr size_t BloomSize = 1024;
-        static constexpr size_t BTreeMinPower = 1024;
+        static constexpr size_t BTreeMinPower = 128;
     };
+
+    static constexpr size_t BTreeSize = 10000;
 };
 
 
-struct BTreePower_Default_ChunkSize_Default : public ::jb::DefaultPolicy<>
+struct BTreePower_Default: public ::jb::DefaultPolicy<>
 {
     struct PhysicalVolumePolicy : public ::jb::DefaultPolicy<>::PhysicalVolumePolicy
     {
         static constexpr size_t BloomSize = 1024;
+        static constexpr size_t BTreeMinPower = 256;
     };
+
+    static constexpr size_t BTreeSize = 10000;
 };
 
 
@@ -80,6 +88,8 @@ protected:
 
     static constexpr auto RootNodeUid = BTree::RootNodeUid;
     static constexpr auto InvalidNodeUid = BTree::InvalidNodeUid;
+    static constexpr size_t BTreeSize = Policy::BTreeSize;
+
 
     static auto & elements( BTree & t ) noexcept { return t.elements_; }
     static auto & links( BTree & t ) noexcept { return t.links_; }
@@ -128,279 +138,212 @@ protected:
 
 
 typedef ::testing::Types< 
-    BTreePower_3_ChunkSize_32, 
-    BTreePower_4_ChunkSize_2048,
-    BTreePower_5_ChunkSize_Default,
-    BTreePower_1024_ChunkSize_Default,
-    BTreePower_Default_ChunkSize_Default > TestingPolicies;
+    BTreePower_16, 
+    BTreePower_32,
+    BTreePower_64,
+    BTreePower_128,
+    BTreePower_Default
+> TestingPolicies;
 
 TYPED_TEST_CASE( TestBTree, TestingPolicies );
 
 
-//TYPED_TEST( TestBTree, Serialization )
-//{
-//    NodeUid uid;
-//
-//    ElementCollection etalon_elements{
-//        { Digest{ 0 }, Value{ ( uint32_t )0 }, 0, 0 },
-//        { Digest{ 2 }, Value{ 2.f }, 2, 2 },
-//        { Digest{ 3 }, Value{ 3. }, 3, 3 },
-//        { Digest{ 4 }, Value{ "4444" }, 4, 4 }
-//    };
-//    LinkCollection etalon_links{ 0, 2, 3, 4, 5 };
-//
-//    {
-//        StorageFile f( "serialization.jb", true );
-//        ASSERT_EQ( RetCode::Ok, f.status() );
-//
-//        BTreeCache c( f );
-//        ASSERT_EQ( RetCode::Ok, f.status() );
-//
-//        BTree tree( f, c );
-//        auto t = f.open_transaction();
-//        EXPECT_NO_THROW( save( tree, t ) );
-//        EXPECT_EQ( RetCode::Ok, t.status() );
-//        uid = tree.uid();
-//        EXPECT_NE( InvalidNodeUid, uid );
-//        t.commit();
-//    }
-//
-//    {
-//        StorageFile f( "serialization.jb", true );
-//        ASSERT_EQ( RetCode::Ok, f.status() );
-//
-//        BTreeCache c( f );
-//        ASSERT_EQ( RetCode::Ok, f.status() );
-//
-//        BTreeP node = c.get_node( uid );
-//        EXPECT_EQ( 0, elements( *node ).size() );
-//        EXPECT_EQ( 1, links( *node ).size() );
-//    }
-//
-//    {
-//        StorageFile f( "serialization.jb", true );
-//        ASSERT_EQ( RetCode::Ok, f.status() );
-//
-//        BTreeCache c( f );
-//        ASSERT_EQ( RetCode::Ok, f.status() );
-//
-//        BTree tree( f, c );
-//        elements( tree ) = etalon_elements;
-//        links( tree ) = etalon_links;
-//
-//        auto t = f.open_transaction();
-//        EXPECT_NO_THROW( save( tree, t ) );
-//        EXPECT_EQ( RetCode::Ok, t.status() );
-//        uid = tree.uid();
-//        EXPECT_NE( InvalidNodeUid, uid );
-//        t.commit();
-//    }
-//
-//    {
-//        StorageFile f( "serialization.jb", true );
-//        ASSERT_EQ( RetCode::Ok, f.status() );
-//
-//        BTreeCache c( f );
-//        ASSERT_EQ( RetCode::Ok, f.status() );
-//
-//        BTreeP tree = c.get_node( uid );
-//        EXPECT_EQ( etalon_elements, elements( *tree ) );
-//        EXPECT_EQ( etalon_links, links( *tree ) );
-//    }
-//}
+
+TYPED_TEST( TestBTree, Insert_Find_ChekValue )
+{
+    using namespace std;
+
+    {
+        // open starage
+        StorageFile f( "Insert_Find.jb", true );
+        ASSERT_EQ( RetCode::Ok, f.status() );
+        ASSERT_TRUE( f.newly_created() );
+
+        // prepare cache
+        BTreeCache c( f );
+        ASSERT_EQ( RetCode::Ok, f.status() );
+
+        // deploy root node
+        ASSERT_NO_THROW( deploy_root( f, c ) );
+
+        EXPECT_NO_THROW(
+
+        auto root = c.get_node( RootNodeUid );
+        EXPECT_TRUE( root );
+
+        // inserts 1000 elements into /root
+        for ( Digest digest = 0; digest < BTreeSize; ++digest )
+        {
+            // find place to insertion
+            BTreePath bpath;
+            auto found = root->find_digest( digest, bpath );
+            EXPECT_FALSE( found );
+
+            auto target = bpath.back(); bpath.pop_back();
+            auto node = c.get_node( target.first );
+            EXPECT_TRUE( node );
+
+            node->insert( target.second, bpath, digest, Value{ to_string( digest ) }, 0, false );
+        }
+
+        );
+    }
+
+    {
+        // open starage
+        StorageFile f( "Insert_Find.jb", true );
+        ASSERT_EQ( RetCode::Ok, f.status() );
+
+        // prepare cache
+        BTreeCache c( f );
+        ASSERT_EQ( RetCode::Ok, f.status() );
+
+        // deploy root node
+        ASSERT_NO_THROW( deploy_root( f, c ) );
+
+        EXPECT_NO_THROW(
+
+        auto root = c.get_node( RootNodeUid );
+        EXPECT_TRUE( root );
+
+        // collect b-tree leaf depths (balance check)
+        std::set< size_t > depth;
+
+        for ( Digest digest = 0; digest < BTreeSize; ++digest )
+        {
+            BTreePath bpath;
+
+            auto found = root->find_digest( digest, bpath );
+            EXPECT_TRUE( found );
+
+            auto node = c.get_node( bpath.back().first );
+            EXPECT_TRUE( node );
+
+            Value v = node->value( bpath.back().second );
+            Value etalon{ to_string( digest ) };
+            EXPECT_EQ( etalon, v );
+
+            // if node is leaf - insert depth into unique collection
+            if ( is_leaf( *node ) )
+            {
+                depth.insert( bpath.size() );
+            }
+        }
+
+        // check that tree is balanced
+        EXPECT_GE( 2, depth.size() );
+
+        );
+    }
+}
 
 
-//TYPED_TEST( TestBTree, Insert_Find )
-//{
-//    using namespace std;
-//
-//    {
-//        // open starage
-//        StorageFile f( "Insert_Find.jb", true );
-//        ASSERT_EQ( RetCode::Ok, f.status() );
-//        ASSERT_TRUE( f.newly_created() );
-//
-//        // prepare cache
-//        BTreeCache c( f );
-//        ASSERT_EQ( RetCode::Ok, f.status() );
-//
-//        // deploy root node
-//        ASSERT_NO_THROW( deploy_root( f, c ) );
-//
-//        //EXPECT_NO_THROW(
-//
-//        auto root = c.get_node( RootNodeUid );
-//        EXPECT_TRUE( root );
-//
-//        // inserts 1000 elements into /root
-//        for ( Digest digest = 0; digest < 1000; ++digest )
-//        {
-//            // find place to insertion
-//            BTreePath bpath;
-//            auto found = root->find_digest( digest, bpath );
-//            EXPECT_FALSE( found );
-//
-//            auto target = bpath.back(); bpath.pop_back();
-//            auto node = c.get_node( target.first );
-//            EXPECT_TRUE( node );
-//
-//            node->insert( target.second, bpath, digest, Value{ to_string( digest ) }, 0, false );
-//        }
-//
-//        //);
-//    }
-//
-//    {
-//        // open starage
-//        StorageFile f( "Insert_Find.jb", true );
-//        ASSERT_EQ( RetCode::Ok, f.status() );
-//
-//        // prepare cache
-//        BTreeCache c( f );
-//        ASSERT_EQ( RetCode::Ok, f.status() );
-//
-//        // deploy root node
-//        ASSERT_NO_THROW( deploy_root( f, c ) );
-//
-//        //EXPECT_NO_THROW(
-//
-//        auto root = c.get_node( RootNodeUid );
-//        EXPECT_TRUE( root );
-//
-//        // collect b-tree leaf depths (balance check)
-//        std::set< size_t > depth;
-//
-//        for ( Digest digest = 0; digest < 1000; ++digest )
-//        {
-//            BTreePath bpath;
-//
-//            auto found = root->find_digest( digest, bpath );
-//            EXPECT_TRUE( found );
-//
-//            auto node = c.get_node( bpath.back().first );
-//            EXPECT_TRUE( node );
-//
-//            // if node is leaf - insert depth into unique collection
-//            if ( is_leaf( *node ) )
-//            {
-//                depth.insert( bpath.size() );
-//            }
-//        }
-//
-//        // check that tree is balanced
-//        EXPECT_GE( 2, depth.size() );
-//
-//        //);
-//    }
-//}
-//
-//
-//TYPED_TEST( TestBTree, Insert_Ovewrite )
-//{
-//    using namespace std;
-//
-//    // open starage
-//    StorageFile f( "Insert_Ovewrite.jb", true );
-//    ASSERT_EQ( RetCode::Ok, f.status() );
-//
-//    // prepare cache
-//    BTreeCache c( f );
-//    ASSERT_EQ( RetCode::Ok, f.status() );
-//
-//    // deploy root node
-//    ASSERT_NO_THROW( deploy_root( f, c ) );
-//
-//    // get root node
-//    BTreeP root;
-//    EXPECT_NO_THROW( root = c.get_node( RootNodeUid ) );
-//    EXPECT_TRUE( root );
-//
-//    // inserts 10 elements into /root
-//    for ( Digest digest = 0; digest < 10; ++digest )
-//    {
-//        //EXPECT_NO_THROW(
-//
-//        BTreePath bpath;
-//        auto found = root->find_digest( digest, bpath );
-//        EXPECT_FALSE( found );
-//
-//        auto target = bpath.back(); bpath.pop_back();
-//        auto node = c.get_node( target.first );
-//        EXPECT_TRUE( node );
-//
-//        node->insert( target.second, bpath, digest, Value{ to_string( digest ) }, 0, false );
-//
-//        //);
-//    }
-//
-//    // insert one more node with already present key
-//    {
-//        Digest digest = 7;
-//
-//        //EXPECT_NO_THROW(
-//        
-//        BTreePath bpath;
-//        auto found = root->find_digest( digest, bpath );
-//        EXPECT_TRUE( found );
-//
-//        auto target = bpath.back(); bpath.pop_back();
-//        auto node = c.get_node( target.first );
-//        EXPECT_TRUE( node );
-//
-//        // try to insert
-//        EXPECT_THROW( node->insert( target.second, bpath, digest, Value{ ( uint32_t )7 }, 0, false ), btree_error );
-//        node->insert( target.second, bpath, digest, Value{ 7. }, 1, true );
-//        
-//        //);
-//    }
-//
-//    // find node and validate value & exiration mark
-//    {
-//        Digest digest = 7;
-//
-//        //EXPECT_NO_THROW(
-//
-//        BTreePath bpath;
-//        auto found = root->find_digest( digest, bpath );
-//        EXPECT_TRUE( found );
-//
-//        auto node = c.get_node( bpath.back().first );
-//        EXPECT_TRUE( node );
-//
-//        // validate value and expiration time
-//        //EXPECT_EQ( Value{ 7. }, node->value( bpath.back().second ) );
-//        EXPECT_EQ( 1, node->good_before( bpath.back().second ) );
-//
-//        // overwrite node without expiration mark
-//        auto target = bpath.back(); bpath.pop_back();
-//        node->insert( target.second, bpath, digest, Value{ "Ok" }, 0, true );
-//
-//        //);
-//    }
-//
-//    EXPECT_NO_THROW(
-//
-//    // find node and validate value & UNTOUCHED exiration mark
-//    {
-//        Digest digest = 7;
-//
-//        BTreePath bpath;
-//        auto found = root->find_digest( digest, bpath );
-//        EXPECT_TRUE( found );
-//
-//        auto node = c.get_node( bpath.back().first );
-//        EXPECT_TRUE( node );
-//
-//        // validate value and expiration time
-//        //EXPECT_EQ( Value{ "Ok" }, node->value( bpath.back().second ) );
-//        EXPECT_EQ( 1, node->good_before( bpath.back().second ) );
-//
-//    }
-//
-//    );
-//}
-//
-//
+TYPED_TEST( TestBTree, Insert_Ovewrite )
+{
+    using namespace std;
+
+    // open starage
+    StorageFile f( "Insert_Ovewrite.jb", true );
+    ASSERT_EQ( RetCode::Ok, f.status() );
+
+    // prepare cache
+    BTreeCache c( f );
+    ASSERT_EQ( RetCode::Ok, f.status() );
+
+    // deploy root node
+    ASSERT_NO_THROW( deploy_root( f, c ) );
+
+    // get root node
+    BTreeP root;
+    EXPECT_NO_THROW( root = c.get_node( RootNodeUid ) );
+    EXPECT_TRUE( root );
+
+    // inserts 10 elements into /root
+    for ( Digest digest = 0; digest < 10; ++digest )
+    {
+        //EXPECT_NO_THROW(
+
+        BTreePath bpath;
+        auto found = root->find_digest( digest, bpath );
+        EXPECT_FALSE( found );
+
+        auto target = bpath.back(); bpath.pop_back();
+        auto node = c.get_node( target.first );
+        EXPECT_TRUE( node );
+
+        node->insert( target.second, bpath, digest, Value{ to_string( digest ) }, 0, false );
+
+        //);
+    }
+
+    // insert one more node with already present key
+    {
+        Digest digest = 7;
+
+        //EXPECT_NO_THROW(
+        
+        BTreePath bpath;
+        auto found = root->find_digest( digest, bpath );
+        EXPECT_TRUE( found );
+
+        auto target = bpath.back(); bpath.pop_back();
+        auto node = c.get_node( target.first );
+        EXPECT_TRUE( node );
+
+        // try to insert
+        EXPECT_THROW( node->insert( target.second, bpath, digest, Value{ ( uint32_t )7 }, 0, false ), btree_error );
+        node->insert( target.second, bpath, digest, Value{ 7. }, 1, true );
+        
+        //);
+    }
+
+    // find node and validate value & exiration mark
+    {
+        Digest digest = 7;
+
+        //EXPECT_NO_THROW(
+
+        BTreePath bpath;
+        auto found = root->find_digest( digest, bpath );
+        EXPECT_TRUE( found );
+
+        auto node = c.get_node( bpath.back().first );
+        EXPECT_TRUE( node );
+
+        // validate value and expiration time
+        //EXPECT_EQ( Value{ 7. }, node->value( bpath.back().second ) );
+        EXPECT_EQ( 1, node->good_before( bpath.back().second ) );
+
+        // overwrite node without expiration mark
+        auto target = bpath.back(); bpath.pop_back();
+        node->insert( target.second, bpath, digest, Value{ "Ok" }, 0, true );
+
+        //);
+    }
+
+    EXPECT_NO_THROW(
+
+    // find node and validate value & UNTOUCHED exiration mark
+    {
+        Digest digest = 7;
+
+        BTreePath bpath;
+        auto found = root->find_digest( digest, bpath );
+        EXPECT_TRUE( found );
+
+        auto node = c.get_node( bpath.back().first );
+        EXPECT_TRUE( node );
+
+        // validate value and expiration time
+        //EXPECT_EQ( Value{ "Ok" }, node->value( bpath.back().second ) );
+        EXPECT_EQ( 1, node->good_before( bpath.back().second ) );
+
+    }
+
+    );
+}
+
+
 TYPED_TEST( TestBTree, Insert_Erase )
 {
     using namespace std;
@@ -421,10 +364,10 @@ TYPED_TEST( TestBTree, Insert_Erase )
     EXPECT_NO_THROW( root = c.get_node( RootNodeUid ) );
     EXPECT_TRUE( root );
 
-    //EXPECT_NO_THROW(
+    EXPECT_NO_THROW(
 
     // inserts 1000 elements into /root
-    for ( Digest digest = 0; digest < 1000; ++digest )
+    for ( Digest digest = 0; digest < BTreeSize; ++digest )
     {
         BTreePath bpath;
 
@@ -444,12 +387,12 @@ TYPED_TEST( TestBTree, Insert_Erase )
     auto found = root->find_digest( 900, bpath );
     EXPECT_TRUE( found );
 
-    //);
+    );
 
-//    EXPECT_NO_THROW(
+    EXPECT_NO_THROW(
         
     // erase each 10th element
-    for ( Digest digest = 0; digest < 1000; ++digest )
+    for ( Digest digest = 0; digest < BTreeSize; ++digest )
     {
         if ( digest % 10 == 0 )
         {
@@ -465,15 +408,15 @@ TYPED_TEST( TestBTree, Insert_Erase )
         }
     }
 
-    //);
+    );
 
-    //EXPECT_NO_THROW(
+    EXPECT_NO_THROW(
 
     // collect b-tree leaf depths (balance check)
     std::set< size_t > depth;
 
     // inserts 1000 elements into /root
-    for ( Digest digest = 0; digest < 1000; ++digest )
+    for ( Digest digest = 0; digest < BTreeSize; ++digest )
     {
         if ( digest % 10 == 0 )
         {
@@ -501,5 +444,5 @@ TYPED_TEST( TestBTree, Insert_Erase )
     // check that tree is balanced
     EXPECT_GE( 2, depth.size() );
 
-    //);
+    );
 }

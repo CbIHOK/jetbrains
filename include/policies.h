@@ -30,7 +30,7 @@ namespace jb
 
             static constexpr size_t BloomSize = 16 * ( 1 << 20 );   /*!< size of memory block to be used by Bloom filter */
 
-            static constexpr size_t BTreeMinPower = 1024;           /*!< B-tree factor, each B-tree node (except root) MUST contains at least
+            static constexpr size_t BTreeMinPower = 128;           /*!< B-tree factor, each B-tree node (except root) MUST contains at least
                                                                         such number of elements */
             static constexpr size_t BTreeMaxDepth = 64;             /*!< maximum depth of BTree, we need this constant only to avoid heap usage
                                                                         and to allocate memory on stack. In reality the limitation by
