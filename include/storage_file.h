@@ -51,7 +51,7 @@ namespace jb
         static constexpr auto BTreeMinPower = Policies::PhysicalVolumePolicy::BTreeMinPower;
         static constexpr auto ChunkSize = Policies::PhysicalVolumePolicy::ChunkSize;
 
-        using io_buffer_t = std::array< char, ChunkSize > alignas( 64 );
+        using io_buffer_t = std::array< char, ChunkSize >;
         using streamer_t = std::pair < Handle, std::reference_wrapper< io_buffer_t > >;
 
 
@@ -702,7 +702,7 @@ namespace jb
         @throw nothing
         @wraning not thread safe
         */
-        auto read_bloom( uint8_t * bloom_buffer ) const
+        auto read_bloom( uint8_t * bloom_buffer )
         {
             try
             {
@@ -730,10 +730,7 @@ namespace jb
                     const auto start = reinterpret_cast< uint64_t* >( bloom_buffer );
                     const auto end = start + BloomSize / sizeof( uint64_t );
                     std::fill( start, end, 0 );
-
-                    return RetCode::Ok;
                 }
-
             }
             catch ( const storage_file_error & e )
             {
@@ -751,7 +748,7 @@ namespace jb
         @thrown nothing
         @note the function is not thread safe, but it's guaranied by the caller
         */
-        auto add_bloom_digest( size_t byte_no, uint8_t byte ) const noexcept
+        auto add_bloom_digest( size_t byte_no, uint8_t byte )
         {
             try
             {
@@ -771,8 +768,6 @@ namespace jb
                     auto[ ok, written ] = Os::write_file( bloom_, &byte, 1 );
                     throw_storage_file_error( ok && written == 1, RetCode::IoError );
                 }
-
-                return status;
             }
             catch ( const storage_file_error & e )
             {

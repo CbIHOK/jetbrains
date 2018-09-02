@@ -1061,7 +1061,7 @@ namespace jb
         @return RetCode - operation status
         @throw nothing
         */
-        auto insert( Pos pos, BTreePath & bpath, Digest digest, Value && value, uint64_t good_before, bool overwrite )
+        auto insert( Pos pos, BTreePath & bpath, Digest digest, const Value & value, uint64_t good_before, bool overwrite )
         {
 
             // open transaction

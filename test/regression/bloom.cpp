@@ -124,7 +124,7 @@ TEST_F( DISABLED_TestBloom, Long_long_test )
         for ( auto & generator : generators )
         {
             generator.first.seed( seed++ );
-            generator.second = async( launch::async, [&] { 
+            generator.second = async( launch::async, [&] {
                 while ( true )
                 {
                     auto str = move( generate( generator.first ) );
@@ -142,7 +142,7 @@ TEST_F( DISABLED_TestBloom, Long_long_test )
                 }
             } );
         }
-        for ( auto & generator : generators ){ generator.second.wait(); }
+        for ( auto & generator : generators ) { generator.second.wait(); }
 
         // generate absent keys
         for ( auto & generator : generators )
@@ -152,7 +152,7 @@ TEST_F( DISABLED_TestBloom, Long_long_test )
                 while ( true )
                 {
                     auto str = move( generate( generator.first ) );
-                    
+
                     scoped_lock l( absent_mutex_ );
 
                     if ( absent_.size() < AbsentNumber )
@@ -174,8 +174,11 @@ TEST_F( DISABLED_TestBloom, Long_long_test )
         cout << endl << "Processing keys..." << endl;
 
         // create filter
-        auto bloom = make_shared< Bloom >( nullptr );
-        ASSERT_EQ( RetCode::Ok, bloom->status() );
+        StorageFile f{ "Bloom.jb", true };
+        ASSERT_EQ( RetCode::Ok, f.status() );
+
+        Bloom bloom{ f };
+        ASSERT_EQ( RetCode::Ok, bloom.status() );
 
         // through all the keys - berak them in digest and put into the filter
         for_each( execution::par, begin( present_ ), end( present_ ), [&] ( const auto & key_str )
@@ -199,7 +202,7 @@ TEST_F( DISABLED_TestBloom, Long_long_test )
                     assert( trunc_ok );
 
                     auto digest = Bloom::generate_digest( level, stem );
-                    bloom->add_digest( digest );
+                    bloom.add_digest( digest );
 
                     rest = suffix;
                     level++;
@@ -214,7 +217,7 @@ TEST_F( DISABLED_TestBloom, Long_long_test )
         for_each( execution::par, begin( present_ ), end( present_ ), [&] ( const auto & str ) {
             auto[ k1, k2 ] = split_to_keys( str );
             static_vector< Digest, MaxTreeDepth > digests;
-            if ( auto[ ret, may_present ] = bloom->test( k1, k2, digests ); may_present )
+            if ( auto may_present = bloom.test( k1, k2, digests ) )
             {
                 positive_counter++;
             }
@@ -226,7 +229,7 @@ TEST_F( DISABLED_TestBloom, Long_long_test )
         for_each( execution::par, begin( absent_ ), end( absent_ ), [&] ( const auto & str ) {
             auto[ k1, k2 ] = split_to_keys( str );
             static_vector< Digest, MaxTreeDepth > digests;
-            if ( auto[ ret, may_present ] = bloom->test( k1, k2, digests ); !may_present )
+            if ( auto may_present = bloom.test( k1, k2, digests ) )
             {
                 negative_counter++;
             }
@@ -246,7 +249,7 @@ TEST_F( TestBloom, Store_Restore )
         StorageFile file( "TestBloom_Store_Restore.jb" );
         ASSERT_EQ( RetCode::Ok, file.status() );
 
-        auto bloom = make_shared< Bloom >( &file );
+        auto bloom = make_shared< Bloom >( file );
         EXPECT_EQ( RetCode::Ok, bloom->status() );
 
         vector< pair< mt19937, future< void > > > generators( 64 );
@@ -309,14 +312,14 @@ TEST_F( TestBloom, Store_Restore )
         StorageFile file( "TestBloom_Store_Restore.jb" );
         ASSERT_EQ( RetCode::Ok, file.status() );
 
-        auto bloom = make_shared< Bloom >( &file );
+        auto bloom = make_shared< Bloom >( file );
         EXPECT_EQ( RetCode::Ok, bloom->status() );
 
         atomic< size_t > positive_counter( 0 );
         for_each( execution::par, begin( present_ ), end( present_ ), [&] ( const auto & str ) {
             auto[ k1, k2 ] = split_to_keys( str );
             static_vector< Digest, MaxTreeDepth > digests;
-            if ( auto[ ret, may_present ] = bloom->test( k1, k2, digests ); may_present )
+            if ( auto may_present = bloom->test( k1, k2, digests ) )
             {
                 positive_counter++;
             }
