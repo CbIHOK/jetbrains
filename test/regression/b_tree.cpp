@@ -149,7 +149,7 @@ TYPED_TEST_CASE( TestBTree, TestingPolicies );
 
 
 
-TYPED_TEST( TestBTree, Insert_Find_ChekValue )
+TYPED_TEST( TestBTree, Insert_Find_CheckValue )
 {
     using namespace std;
 

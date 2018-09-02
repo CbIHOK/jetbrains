@@ -18,7 +18,21 @@ protected:
 
 public:
 
-    ~TestStorage()
+    void SetUp() override
+    {
+        using namespace std;
+
+        for ( auto & p : filesystem::directory_iterator( "." ) )
+        {
+            if ( p.is_regular_file() && p.path().extension() == ".jb" )
+            {
+                filesystem::remove( p.path() );
+            }
+        }
+    }
+
+
+    void TearDown() override
     {
         using namespace std;
 
@@ -71,7 +85,7 @@ TEST_F( TestStorage, PhysicalVolume_Dummy )
 
 TEST_F( TestStorage, PhysicalVolume_Base )
 {
-    auto[ ret, v ] = Storage::OpenPhysicalVolume( "foo" );
+    auto[ ret, v ] = Storage::OpenPhysicalVolume( "foo.jb" );
     EXPECT_EQ( RetCode::Ok, ret );
     EXPECT_TRUE( v );
 
@@ -134,30 +148,30 @@ TEST_F( TestStorage, PhysicalVolume_Limit )
 
 TEST_F( TestStorage, PhysicalVolume_Priorities )
 {
-    auto[ ret_1, pv_1 ] = Storage::OpenPhysicalVolume( "foo1" );
+    auto[ ret_1, pv_1 ] = Storage::OpenPhysicalVolume( "foo1.jb" );
     ASSERT_EQ( RetCode::Ok, ret_1 );
     ASSERT_TRUE( pv_1 );
 
-    auto[ ret_2, pv_2 ] = Storage::OpenPhysicalVolume( "foo2" );
+    auto[ ret_2, pv_2 ] = Storage::OpenPhysicalVolume( "foo2.jb" );
     ASSERT_EQ( RetCode::Ok, ret_2 );
     ASSERT_TRUE( pv_2 );
     EXPECT_FALSE( is_lesser_priority( pv_2, pv_1 ) );
 
-    auto[ ret_3, pv_3 ] = Storage::OpenPhysicalVolume( "foo3" );
+    auto[ ret_3, pv_3 ] = Storage::OpenPhysicalVolume( "foo3.jb" );
     ASSERT_EQ( RetCode::Ok, ret_3 );
     ASSERT_TRUE( pv_3 );
     EXPECT_FALSE( is_lesser_priority( pv_3, pv_1 ) );
     EXPECT_FALSE( is_lesser_priority( pv_3, pv_2 ) );
 
-    auto[ ret_4, pv_4 ] = Storage::OpenPhysicalVolume( "foo4" );
+    auto[ ret_4, pv_4 ] = Storage::OpenPhysicalVolume( "foo4.jb" );
     ASSERT_EQ( RetCode::Ok, ret_4 );
     ASSERT_TRUE( pv_4 );
 
-    auto[ ret_5, pv_5 ] = Storage::OpenPhysicalVolume( "foo5" );
+    auto[ ret_5, pv_5 ] = Storage::OpenPhysicalVolume( "foo5.jb" );
     ASSERT_EQ( RetCode::Ok, ret_5 );
     ASSERT_TRUE( pv_5 );
 
-    auto[ ret, pv ] = Storage::OpenPhysicalVolume( "foo" );
+    auto[ ret, pv ] = Storage::OpenPhysicalVolume( "foo.jb" );
     ASSERT_EQ( RetCode::Ok, ret );
     ASSERT_TRUE( pv );
     EXPECT_FALSE( is_lesser_priority( pv, pv_1 ) );
@@ -209,3 +223,68 @@ TEST_F( TestStorage, PhysicalVolume_Priorities )
     EXPECT_TRUE( is_lesser_priority( pv, pv_5 ) );
 }
  
+
+TEST_F( TestStorage, Insert_to_Root_Get_Erase )
+{
+    auto[ rc, pv ] = Storage::OpenPhysicalVolume( "Insert_to_Root_Get_Erase.jb" );
+    ASSERT_EQ( RetCode::Ok, rc );
+
+    auto[ rc1, vv ] = Storage::OpenVirtualVolume();
+    ASSERT_EQ( RetCode::Ok, rc1 );
+
+    auto[ rc2, mp ] = vv.Mount( pv, "/", "/", "pv" );
+    EXPECT_EQ( RetCode::Ok, rc2 );
+
+    {
+        auto [ rc ] = vv.Insert( "/pv", "foo", Value{ "test" } );
+        EXPECT_EQ( RetCode::Ok, rc );
+    }
+    {
+        auto[ rc, v ] = vv.Get( "/pv/foo" );
+        EXPECT_EQ( RetCode::Ok, rc );
+        EXPECT_EQ( Value{ "test" }, v );
+    }
+    {
+        auto[ rc ] = vv.Erase( "/pv/foo" );
+        EXPECT_EQ( RetCode::Ok, rc );
+    }
+    {
+        auto[ rc, v ] = vv.Get( "/pv/foo" );
+        EXPECT_EQ( RetCode::NotFound, rc );
+    }
+}
+
+
+TEST_F( TestStorage, Insert_to_Child_Get_Erase )
+{
+    auto[ rc, pv ] = Storage::OpenPhysicalVolume( "Insert_to_Child_Get_Erase.jb" );
+    ASSERT_EQ( RetCode::Ok, rc );
+
+    auto[ rc1, vv ] = Storage::OpenVirtualVolume();
+    ASSERT_EQ( RetCode::Ok, rc1 );
+
+    auto[ rc2, mp ] = vv.Mount( pv, "/", "/", "pv" );
+    EXPECT_EQ( RetCode::Ok, rc2 );
+
+    {
+        auto[ rc ] = vv.Insert( "/pv", "foo", Value{ "foo" } );
+        EXPECT_EQ( RetCode::Ok, rc );
+    }
+    {
+        auto[ rc ] = vv.Insert( "/pv/foo", "boo", Value{ "boo" } );
+        EXPECT_EQ( RetCode::Ok, rc );
+    }
+    {
+        auto[ rc, v ] = vv.Get( "/pv/foo/boo" );
+        EXPECT_EQ( RetCode::Ok, rc );
+        EXPECT_EQ( Value{ "boo" }, v );
+    }
+    {
+        auto[ rc ] = vv.Erase( "/pv/foo/boo" );
+        EXPECT_EQ( RetCode::Ok, rc );
+    }
+    {
+        auto[ rc, v ] = vv.Get( "/pv/foo/boo" );
+        EXPECT_EQ( RetCode::NotFound, rc );
+    }
+}

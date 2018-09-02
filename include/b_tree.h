@@ -33,6 +33,7 @@ namespace jb
         template < typename T > friend class TestBTree;
 
         friend class BTreeCache;
+        friend class Storage< Policies >::PhysicalVolumeImpl;
 
         struct Element;
         friend std::ostream & operator << ( std::ostream & os, const Element & e );
@@ -75,12 +76,12 @@ namespace jb
         using Pos = size_t;
         static constexpr auto Npos = Pos{ std::numeric_limits< size_t >::max() };
 
-        using BTreePath = static_vector< std::pair< NodeUid, Pos >, BTreeMaxDepth >;
+        //using BTreePath = static_vector< std::pair< NodeUid, Pos >, BTreeMaxDepth >;
 
-        //struct BTreePath : public std::vector< std::pair< NodeUid, Pos > >
-        //{
-        //    BTreePath() { reserve(100); }
-        //};
+        struct BTreePath : public std::vector< std::pair< NodeUid, Pos > >
+        {
+            BTreePath() { reserve(100); }
+        };
 
         struct btree_error : public std::runtime_error
         {
@@ -119,10 +120,15 @@ namespace jb
                 big_uint64_t value = e.value_.value_;
 
                 os.write( reinterpret_cast< const char* >( &digest ), sizeof( digest ) );
+                throw_btree_error( os.good(), RetCode::UnknownError );
                 os.write( reinterpret_cast< const char* >( &good_before ), sizeof( good_before ) );
+                throw_btree_error( os.good(), RetCode::UnknownError );
                 os.write( reinterpret_cast< const char* >( &children ), sizeof( children ) );
+                throw_btree_error( os.good(), RetCode::UnknownError );
                 os.write( reinterpret_cast< const char* >( &type_index ), sizeof( type_index ) );
+                throw_btree_error( os.good(), RetCode::UnknownError );
                 os.write( reinterpret_cast< const char* >( &value ), sizeof( value ) );
+                throw_btree_error( os.good(), RetCode::UnknownError );
 
                 return os;
             }
@@ -154,59 +160,6 @@ namespace jb
 
                 return is;
             }
-
-            ////
-            //// deserializes element's value based on index of variant alternative
-            ////
-            //template < size_t I, class Archive >
-            //Value try_deserialize_variant( size_t index, Archive & ar, const unsigned int version )
-            //{
-            //    if constexpr ( I < std::variant_size_v< Value > )
-            //    {
-            //        if ( index == I )
-            //        {
-            //            std::variant_alternative_t< I, Value > v;
-            //            ar >> BOOST_SERIALIZATION_NVP( v );
-            //            return Value( v );
-            //        }
-            //        else
-            //        {
-            //            return try_deserialize_variant< I + 1 >( index, ar, version );
-            //        }
-            //    }
-            //    else
-            //    {
-            //        throw std::runtime_error( "Unable to deserialize variant object" );
-            //    }
-            //}
-
-            //
-            // variant comparer
-            // 
-            struct var_cmp
-            {
-                bool value = true;
-
-                template < typename U, typename V >
-                void operator () ( const U &, const V & ) { value = false; }
-
-                template < typename T >
-                void operator () ( const T & l, const T & r ) { value = ( l == r ); }
-            };
-
-            //
-            // compare b-tree element, need only for UT
-            //
-            friend bool operator == ( const Element & l, const Element & r )
-            {
-                //if ( l.digest_ != r.digest_ || l.good_before_ != r.good_before_ || l.children_ != r.children_ ) return false;
-                //var_cmp cmp;
-                //std::visit( cmp, l.value_, r.value_ );
-                //return cmp.value;
-
-                return l.digest_ == r.digest_ && l.good_before_ == r.good_before_ && l.children_ == r.children_;
-            }
-
 
             //
             // provides LESSER relation for b-tree elements
@@ -705,7 +658,7 @@ namespace jb
                 elements_.erase( begin( elements_ ) + pos );
                 links_.erase( begin( links_ ) + pos );
 
-                if ( elements_.size() < BTreeMin )
+                if ( elements_.size() < BTreeMin && uid_ != RootNodeUid )
                 {
                     return process_leaf_underflow( t, bpath, entry_level );
                 }
@@ -1091,6 +1044,23 @@ namespace jb
 
             erase_element( t, pos, bpath, bpath.size() );
             t.commit();
+        }
+
+
+        auto deploy_children_btree( Pos pos )
+        {
+            if ( InvalidNodeUid == elements_[ pos ].children_ )
+            {
+                auto t = file_.open_transaction();
+
+                BTree children( file_, cache_ );
+                children.save( t );
+
+                elements_[ pos ].children_ = children.uid_;
+                overwrite( t );
+
+                t.commit();
+            }
         }
     };
 }

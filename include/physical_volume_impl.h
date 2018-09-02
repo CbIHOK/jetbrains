@@ -100,6 +100,8 @@ namespace jb
         {
             using namespace std;
 
+            if ( !digests.size() ) return true;
+
             auto digest_it = begin( digests );
 
             // retrieve root node
@@ -107,6 +109,10 @@ namespace jb
 
             while ( !cancelled( in ) )
             {
+                // get lock over node
+                shared_lock lock{ node->guard() };
+                locks.push_back( std::move( lock ) );
+
                 // clear path to digest
                 bpath.clear();
 
@@ -120,10 +126,6 @@ namespace jb
                 // get node containing the digest
                 node = cache_.get_node( bpath.back().first );
                 auto digest_pos = bpath.back().second;
-
-                // get lock over node
-                shared_lock lock{ node->guard() };
-                locks.push_back( std::move( lock ) );
 
                 // get digest's expiration
                 auto expiration_time = node->good_before( digest_pos );
@@ -244,7 +246,7 @@ namespace jb
     public:
 
         explicit PhysicalVolumeImpl( const std::filesystem::path & path ) try
-            : file_{ path }
+            : file_{ path, true }
             , filter_( file_ )
             , cache_( file_ )
         {
@@ -259,6 +261,14 @@ namespace jb
             else if ( RetCode::Ok != filter_.status() )
             {
                 set_status( filter_.status() );
+            }
+
+            if ( file_.newly_created() )
+            {
+                BTree root( file_, cache_ );
+                auto t = file_.open_transaction();
+                root.save( t );
+                t.commit();
             }
         }
         catch ( ... )
@@ -381,28 +391,57 @@ namespace jb
                 {
                     return wait_and_do_it( in, out, [] { return tuple{ RetCode::NotFound }; } );
                 }
-                else if ( auto found = navigate( digests, locks, bpath, [] ( auto ) {}, in ); !found )
+
+                auto target_node = cache_.get_node( RootNodeUid );
+
+                if ( digests.size() )
                 {
-                    return wait_and_do_it( in, out, [] { return tuple{ RetCode::NotFound }; } );
+                    if ( auto found = navigate( digests, locks, bpath, [] ( auto ) {}, in ) )
+                    {
+                        assert( bpath.size() );
+                        auto parent_btree = cache_.get_node( bpath.back().first );
+
+                        {
+                            assert( locks.size() );
+                            exclusive_lock e{ locks.back() };
+
+                            parent_btree->deploy_children_btree( bpath.back().second );
+                        }
+
+                        target_node = cache_.get_node( parent_btree->children( bpath.back().second ) );
+                    }
+                    else
+                    {
+                        return wait_and_do_it( in, out, [] { return tuple{ RetCode::NotFound }; } );
+                    }
                 }
                 else if ( digests.size() + 1 >= MaxTreeDepth )
                 {
                     return wait_and_do_it( in, out, [] { return tuple{ RetCode::MaxTreeDepthExceeded }; } );
                 }
-                else
+
                 {
-                    return wait_and_do_it( in, out, [&] {
-                        
-                        Digest digest = Bloom::generate_digest( digests.size() + 1, subkey );
+                    locks.push_back( shared_lock{ target_node->guard() } );
 
-                        // get exclusive lock over the key
-                        exclusive_lock e{ locks.back() };
+                    Digest digest = Bloom::generate_digest( digests.size() + 1, subkey );
 
-                        auto node_uid = bpath.back().first;
-                        auto pos = bpath.back().second;
+                    BTreePath bpath;
+                    target_node->find_digest( digest, bpath );
 
-                        auto node = cache_.get_node( node_uid );
-                        node->insert( pos, bpath, digest, value, good_before, overwrite );
+                    assert( bpath.size() );
+                    auto target_btree = cache_.get_node( bpath.back().first );
+
+                    wait_and_do_it( in, out, [&] {
+
+                        {
+                            assert( locks.size() );
+                            exclusive_lock e{ locks.back() };
+
+                            BTree::Pos target_pos = bpath.back().second; bpath.pop_back();
+                            target_btree->insert( target_pos, bpath, digest, value, good_before, overwrite );
+                        }
+
+                        filter_.add_digest( digest );
 
                         return tuple{ RetCode::Ok };
                     } );

@@ -47,7 +47,8 @@ namespace jb
             RetCode rc_;
         };
 
-        using DigestPath = boost::container::static_vector< Digest, BloomFnCount >;
+        //using DigestPath = boost::container::static_vector< Digest, BloomFnCount >;
+        using DigestPath = std::vector< Digest >;
 
         /** No default constructible/copyable/movable
         */
@@ -153,7 +154,7 @@ namespace jb
 
                     while ( rest.size() )
                     {
-                        if ( digests.size() == digests.capacity() )
+                        if ( digests.size() >= BloomFnCount )
                         {
                             throw bloom_error( RetCode::MaxTreeDepthExceeded, "" );
                         }
