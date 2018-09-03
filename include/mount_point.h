@@ -85,7 +85,7 @@ namespace jb
         @retval RetCode - operation status
         @throw nothing
         */
-        std::tuple< RetCode > Close( bool force = false ) const noexcept
+        RetCode Close( bool force = false ) const noexcept
         {
             if ( auto volume = volume_impl_.lock( ) )
             {

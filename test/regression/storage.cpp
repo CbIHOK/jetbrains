@@ -3,6 +3,8 @@
 #include <policies.h>
 
 
+using namespace std;
+
 class TestStorage : public ::testing::Test
 {
 
@@ -235,23 +237,10 @@ TEST_F( TestStorage, Insert_to_Root_Get_Erase )
     auto[ rc2, mp ] = vv.Mount( pv, "/", "/", "pv" );
     EXPECT_EQ( RetCode::Ok, rc2 );
 
-    {
-        auto [ rc ] = vv.Insert( "/pv", "foo", Value{ "test" } );
-        EXPECT_EQ( RetCode::Ok, rc );
-    }
-    {
-        auto[ rc, v ] = vv.Get( "/pv/foo" );
-        EXPECT_EQ( RetCode::Ok, rc );
-        EXPECT_EQ( Value{ "test" }, v );
-    }
-    {
-        auto[ rc ] = vv.Erase( "/pv/foo" );
-        EXPECT_EQ( RetCode::Ok, rc );
-    }
-    {
-        auto[ rc, v ] = vv.Get( "/pv/foo" );
-        EXPECT_EQ( RetCode::NotFound, rc );
-    }
+    EXPECT_EQ( RetCode::Ok, vv.Insert( "/pv", "foo", Value{ "test" } ) );
+    EXPECT_EQ( make_tuple( RetCode::Ok, Value{ "test" } ), vv.Get( "/pv/foo" ) );
+    EXPECT_EQ( RetCode::Ok, vv.Erase( "/pv/foo" ) );
+    EXPECT_EQ( make_tuple( RetCode::NotFound, Value{} ), vv.Get( "/pv/foo" ) );
 }
 
 
@@ -266,27 +255,11 @@ TEST_F( TestStorage, Insert_to_Child_Get_Erase )
     auto[ rc2, mp ] = vv.Mount( pv, "/", "/", "pv" );
     EXPECT_EQ( RetCode::Ok, rc2 );
 
-    {
-        auto[ rc ] = vv.Insert( "/pv", "foo", Value{ "foo" } );
-        EXPECT_EQ( RetCode::Ok, rc );
-    }
-    {
-        auto[ rc ] = vv.Insert( "/pv/foo", "boo", Value{ "boo" } );
-        EXPECT_EQ( RetCode::Ok, rc );
-    }
-    {
-        auto[ rc, v ] = vv.Get( "/pv/foo/boo" );
-        EXPECT_EQ( RetCode::Ok, rc );
-        EXPECT_EQ( Value{ "boo" }, v );
-    }
-    {
-        auto[ rc ] = vv.Erase( "/pv/foo/boo" );
-        EXPECT_EQ( RetCode::Ok, rc );
-    }
-    {
-        auto[ rc, v ] = vv.Get( "/pv/foo/boo" );
-        EXPECT_EQ( RetCode::NotFound, rc );
-    }
+    EXPECT_EQ( RetCode::Ok, vv.Insert( "/pv", "foo", Value{ "foo" } ) );
+    EXPECT_EQ( RetCode::Ok, vv.Insert( "/pv/foo", "boo", Value{ "boo" } ) );
+    EXPECT_EQ( make_tuple( RetCode::Ok, Value{ "boo" } ), vv.Get( "/pv/foo/boo" ) );
+    EXPECT_EQ( RetCode::Ok, vv.Erase( "/pv/foo/boo" ) );
+    EXPECT_EQ( make_tuple( RetCode::NotFound, Value{} ), vv.Get( "/pv/foo/boo" ) );
 }
 
 
@@ -305,10 +278,7 @@ TEST_F( TestStorage, Insert_Expired )
 
     std::this_thread::sleep_for( std::chrono::seconds( 1 ) );
 
-    {
-        auto[ rc ] = vv.Insert( "/pv", "foo", Value{ "foo" }, now );
-        EXPECT_EQ( RetCode::AlreadyExpired, rc );
-    }
+    EXPECT_EQ( RetCode::AlreadyExpired, vv.Insert( "/pv", "foo", Value{ "foo" }, now ) );
 }
 
 
@@ -325,23 +295,17 @@ TEST_F( TestStorage, Get_Expired )
 
     const uint64_t now = std::chrono::system_clock::now().time_since_epoch() / std::chrono::milliseconds( 1 ) + 1000;
 
-    {
-        auto[ rc ] = vv.Insert( "/pv", "foo", Value{ "foo" }, now );
-        EXPECT_EQ( RetCode::Ok, rc );
-    }
+    EXPECT_EQ( RetCode::Ok, vv.Insert( "/pv", "foo", Value{ "foo" }, now ) );
 
     std::this_thread::sleep_for( std::chrono::seconds( 2 ) );
 
-    {
-        auto[ rc, v ] = vv.Get( "/pv/foo" );
-        EXPECT_EQ( RetCode::NotFound, rc );
-    }
+    EXPECT_EQ( make_tuple( RetCode::NotFound, Value{} ), vv.Get( "/pv/foo" ) );
 }
 
 
 TEST_F( TestStorage, Navigate_Over_Expired )
 {
-    auto[ rc, pv ] = Storage::OpenPhysicalVolume( "Insert_to_Child_Get_Erase.jb" );
+    auto[ rc, pv ] = Storage::OpenPhysicalVolume( "Navigate_Over_Expired.jb" );
     ASSERT_EQ( RetCode::Ok, rc );
 
     auto[ rc1, vv ] = Storage::OpenVirtualVolume();
@@ -352,27 +316,18 @@ TEST_F( TestStorage, Navigate_Over_Expired )
 
     const uint64_t now = std::chrono::system_clock::now().time_since_epoch() / std::chrono::milliseconds( 1 ) + 1000;
 
-    {
-        auto[ rc ] = vv.Insert( "/pv", "foo", Value{ "foo" }, now );
-        EXPECT_EQ( RetCode::Ok, rc );
-    }
-    {
-        auto[ rc ] = vv.Insert( "/pv/foo", "boo", Value{ "boo" } );
-        EXPECT_EQ( RetCode::Ok, rc );
-    }
+    EXPECT_EQ( RetCode::Ok, vv.Insert( "/pv", "foo", Value{ "foo" }, now ) );
+    EXPECT_EQ( RetCode::Ok, vv.Insert( "/pv/foo", "boo", Value{ "boo" } ) );
 
     std::this_thread::sleep_for( std::chrono::seconds( 2 ) );
 
-    {
-        auto[ rc, v ] = vv.Get( "/pv/foo/boo" );
-        EXPECT_EQ( RetCode::NotFound, rc );
-    }
+    EXPECT_EQ( make_tuple( RetCode::NotFound, Value{} ), vv.Get( "/pv/foo/boo" ) );
 }
 
 
 TEST_F( TestStorage, Insert_Existing )
 {
-    auto[ rc, pv ] = Storage::OpenPhysicalVolume( "Insert_to_Child_Get_Erase.jb" );
+    auto[ rc, pv ] = Storage::OpenPhysicalVolume( "Insert_Existing.jb" );
     ASSERT_EQ( RetCode::Ok, rc );
 
     auto[ rc1, vv ] = Storage::OpenVirtualVolume();
@@ -381,12 +336,79 @@ TEST_F( TestStorage, Insert_Existing )
     auto[ rc2, mp ] = vv.Mount( pv, "/", "/", "pv" );
     EXPECT_EQ( RetCode::Ok, rc2 );
 
-    {
-        auto[ rc ] = vv.Insert( "/pv", "foo", Value{ "foo" } );
-        EXPECT_EQ( RetCode::Ok, rc );
-    }
-    {
-        auto[ rc ] = vv.Insert( "/pv", "foo", Value{ "foo" } );
-        EXPECT_EQ( RetCode::AlreadyExists, rc );
-    }
+    EXPECT_EQ( RetCode::Ok, vv.Insert( "/pv", "foo", Value{ "foo" } ) );
+    EXPECT_EQ( RetCode::AlreadyExists, vv.Insert( "/pv", "foo", Value{ "foo" } ) );
+}
+
+
+TEST_F( TestStorage, Overwrite_Existing )
+{
+    auto[ rc, pv ] = Storage::OpenPhysicalVolume( "Overwrite_Existing.jb" );
+    ASSERT_EQ( RetCode::Ok, rc );
+
+    auto[ rc1, vv ] = Storage::OpenVirtualVolume();
+    ASSERT_EQ( RetCode::Ok, rc1 );
+
+    auto[ rc2, mp ] = vv.Mount( pv, "/", "/", "pv" );
+    EXPECT_EQ( RetCode::Ok, rc2 );
+
+    EXPECT_EQ( RetCode::Ok, vv.Insert( "/pv", "foo", Value{ "foo" } ) );
+    EXPECT_EQ( RetCode::Ok, vv.Insert( "/pv", "foo", Value{ "new_value" }, 0, true ) );
+    EXPECT_EQ( make_tuple( RetCode::Ok, Value{ "new_value" } ), vv.Get( "/pv/foo" ) );
+}
+
+
+TEST_F( TestStorage, Erase_Root )
+{
+    auto[ rc, pv ] = Storage::OpenPhysicalVolume( "Erase_Root.jb" );
+    ASSERT_EQ( RetCode::Ok, rc );
+
+    auto[ rc1, vv ] = Storage::OpenVirtualVolume();
+    ASSERT_EQ( RetCode::Ok, rc1 );
+
+    auto[ rc2, mp ] = vv.Mount( pv, "/", "/", "pv" );
+    EXPECT_EQ( RetCode::Ok, rc2 );
+
+    EXPECT_EQ( RetCode::InvalidLogicalPath, vv.Erase( "/pv" ) );
+}
+
+
+TEST_F( TestStorage, Erase_Locked )
+{
+    auto[ rc, pv ] = Storage::OpenPhysicalVolume( "Erase_Root.jb" );
+    ASSERT_EQ( RetCode::Ok, rc );
+
+    auto[ rc1, vv ] = Storage::OpenVirtualVolume();
+    ASSERT_EQ( RetCode::Ok, rc1 );
+
+    auto[ rc2, mp ] = vv.Mount( pv, "/", "/", "pv" );
+    EXPECT_EQ( RetCode::Ok, rc2 );
+
+    EXPECT_EQ( RetCode::Ok, vv.Insert( "/pv", "foo", Value{ "foo" } ) );
+
+    auto[ rc3, mp2 ] = vv.Mount( pv, "/", "/pv/foo", "foo" );
+    EXPECT_EQ( RetCode::Ok, rc2 );
+
+    EXPECT_EQ( RetCode::PathLocked, vv.Erase( "/pv/foo" ) );
+
+    EXPECT_EQ( RetCode::Ok, mp2.Close() );
+    EXPECT_EQ( RetCode::Ok, vv.Erase( "/pv/foo" ) );
+}
+
+
+TEST_F( TestStorage, Erase_WithChildren )
+{
+    auto[ rc, pv ] = Storage::OpenPhysicalVolume( "Erase_Root.jb" );
+    ASSERT_EQ( RetCode::Ok, rc );
+
+    auto[ rc1, vv ] = Storage::OpenVirtualVolume();
+    ASSERT_EQ( RetCode::Ok, rc1 );
+
+    auto[ rc2, mp ] = vv.Mount( pv, "/", "/", "pv" );
+    EXPECT_EQ( RetCode::Ok, rc2 );
+
+    EXPECT_EQ( RetCode::Ok, vv.Insert( "/pv", "foo", Value{ "foo" } ) );
+    EXPECT_EQ( RetCode::Ok, vv.Insert( "/pv/foo", "boo", Value{ "boo" } ) );
+
+    EXPECT_EQ( RetCode::PathLocked, vv.Erase( "/pv/foo" ) );
 }

@@ -341,7 +341,7 @@ namespace jb
                         if ( RetCode::Ok == ret )
                         {
                             // done
-                            return { RetCode::Ok };
+                            return RetCode::Ok;
                         }
                         else if ( RetCode::NotFound != ret )
                         {
@@ -429,7 +429,7 @@ namespace jb
 
 
         [[ nodiscard ]]
-        std::tuple< RetCode > erase( const Key & key, bool force ) noexcept
+        RetCode erase( const Key & key, bool force ) noexcept
         {
             using namespace std;
             using namespace boost::container;
@@ -461,33 +461,33 @@ namespace jb
                     for ( auto & future : futures )
                     {
                         // get result
-                        auto[ ret ] = future.get( );
+                        auto[ rc ] = future.get( );
 
-                        if ( RetCode::Ok == ret )
+                        if ( RetCode::Ok == rc )
                         {
                             // done
-                            return { RetCode::Ok };
+                            return RetCode::Ok;
                         }
-                        else if ( RetCode::NotFound != ret )
+                        else if ( RetCode::NotFound != rc )
                         {
                             // something happened on physical level
-                            return { ret };
+                            return rc;
                         }
                     }
 
                     // key not found
-                    return { RetCode::NotFound };
+                    return RetCode::NotFound;
                 }
                 else
                 {
-                    return { RetCode::InvalidLogicalPath };
+                    return RetCode::InvalidLogicalPath;
                 }
             }
             catch ( ... )
             {
             }
 
-            return { RetCode::UnknownError };
+            return RetCode::UnknownError;
         }
 
 
@@ -634,7 +634,7 @@ namespace jb
         @retval RetCode - operation status
         @throw nothing
         */
-        std::tuple< RetCode > unmount( const MountPoint & mp, bool force ) noexcept
+        RetCode unmount( const MountPoint & mp, bool force ) noexcept
         {
             using namespace std;
 
@@ -643,14 +643,14 @@ namespace jb
 
             if ( auto mp_impl = mp.impl_.lock( ) )
             {
-                std::function< tuple< RetCode >( const MountPointImplP &, bool ) > rec = [&] ( const auto & mp_impl, auto force )
+                std::function< RetCode( const MountPointImplP &, bool ) > rec = [&] ( const auto & mp_impl, auto force )
                 {
                     if ( auto impl_it = mounts_.find( mp_impl ); impl_it != mounts_.end( ) )
                     {
                         // check if used
                         if ( mp_impl.use_count( ) - 1 > 1 && !force )
                         {
-                            return tuple{ RetCode::InUse };
+                            return RetCode::InUse;
                         }
 
                         // get backtrace
@@ -661,7 +661,7 @@ namespace jb
                         auto path = backtrace->path_->first;
                         if ( dependencies_.count( path ) && !force )
                         {
-                            return tuple{ RetCode::HasDependentMounts };
+                            return RetCode::HasDependentMounts;
                         }
 
                         // throught all dependent mounts
@@ -681,8 +681,8 @@ namespace jb
                             // get dependent mount and release it recursively
                             auto dependent_mount = dependent_backtrace->mount_->first;
                             assert( dependent_mount );
-                            auto[ ret ] = rec( dependent_mount, force );
-                            assert( RetCode::Ok == ret );
+                            auto rc = rec( dependent_mount, force );
+                            assert( RetCode::Ok == rc );
                         }
 
                         assert( !dependencies_.count( path ) );
@@ -697,10 +697,10 @@ namespace jb
                         }
 
                         // done
-                        return tuple{ RetCode::Ok };
+                        return RetCode::Ok;
                     }
 
-                    return tuple{ RetCode::InvalidHandle };
+                    return RetCode::InvalidHandle;
                 };
 
                 // run the recursion

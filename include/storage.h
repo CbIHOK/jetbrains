@@ -83,13 +83,15 @@ namespace jb
             InvalidKey,             ///< Invalid key value
             InvalidSubkey,          ///< Invalid subkey value
             InvalidLogicalPath,     ///< Given logical path cannot be mapped onto a physical one
+            PathLocked,             ///< Given path is locked due to mounting 
             NotFound,               ///< Such path does not have a physical representation
             InUse,                  ///< The handler is currently used by concurrent operation and cannot be closed
             HasDependentMounts,     ///< There are underlaying mount
             MaxTreeDepthExceeded,   ///< Cannot search so deep inside
-            SubkeyLimitReached,
+            SubkeyLimitReached,     ///< Too many subkeys
             AlreadyExpired,         ///< Given timestamp already in the past
             AlreadyExists,          ///< Key already exists
+            NotLeaf,                ///< Erased node not a leaf
             IncompatibleFile,       ///< File is incompatible
             AlreadyOpened,          ///< Physical file is already opened
             UnableToOpen,           ///< Cannot open specified file

@@ -167,7 +167,7 @@ namespace jb
         }
 
 
-        std::tuple< RetCode > Insert( const KeyValue & key, const KeyValue & subkey, Value && value, uint64_t good_before = 0, bool overwrite = false ) noexcept
+        RetCode Insert( const KeyValue & key, const KeyValue & subkey, Value && value, uint64_t good_before = 0, bool overwrite = false ) noexcept
         {
             using namespace std;
 
@@ -247,36 +247,32 @@ namespace jb
         }
 
 
-        std::tuple< RetCode > Erase( const KeyValue & key, bool force = false ) noexcept
+        RetCode Erase( const KeyValue & key, bool force = false ) noexcept
         {
             using namespace std;
 
             try
             {
                 Key key_{ key };
+
                 if ( !key_.is_path( ) )
                 {
-                    return { RetCode::InvalidKey };
+                    return RetCode::InvalidKey;
                 }
-
-                if ( auto impl = impl_.lock( ) )
+                else if ( auto impl = impl_.lock( ) )
                 {
                     return impl->erase( key_, force );
                 }
                 else
                 {
-                    return { RetCode::InvalidHandle };
+                    return RetCode::InvalidHandle;
                 }
-            }
-            catch ( const std::bad_alloc & )
-            {
-                return { RetCode::InsufficientMemory };
             }
             catch ( ... )
             {
             }
 
-            return { RetCode::UnknownError };
+            return RetCode::UnknownError;
         }
 
 

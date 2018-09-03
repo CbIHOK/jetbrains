@@ -554,12 +554,23 @@ namespace jb
                 {
                     return wait_and_do_it( in, out, [] { return tuple{ RetCode::NotFound }; } );
                 }
+                else if ( digests.size() == 0 )
+                {
+                    return wait_and_do_it( in, out, [&] { return tuple{ RetCode::InvalidLogicalPath }; } );
+                }
                 else if ( auto found = navigate( digests, locks, bpath, [] ( auto ) {}, in ); !found )
                 {
                     return wait_and_do_it( in, out, [&] { return tuple{ RetCode::NotFound }; } );
                 }
                 else
                 {
+                    // check if the key is locked by mount
+                    assert( bpath.size() );
+                    if ( !path_locker_.is_removable( bpath.front().first ) )
+                    {
+                        return wait_and_do_it( in, out, [&] { return tuple{ RetCode::PathLocked }; } );
+                    }
+
                     return wait_and_do_it( in, out, [&] { 
 
                         // get exclusive lock over the key
