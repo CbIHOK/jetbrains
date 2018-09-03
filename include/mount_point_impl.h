@@ -135,20 +135,21 @@ namespace jb
         @throw nothing
         */
         [[ nodiscard ]]
-        std::tuple< RetCode > insert( const Key & relative_path, const Key & subkey, Value && value, uint64_t good_before, bool overwrite, const execution_connector & in, execution_connector & out ) noexcept
+        RetCode insert( const Key & relative_path, const Key & subkey, Value && value, uint64_t good_before, bool overwrite, const execution_connector & in, execution_connector & out ) noexcept
         {
             assert( relative_path.is_path() );
             assert( subkey.is_leaf() );
 
             try
             {
-                return physical_volume_->insert( entry_node_uid_, Key{ entry_path_ }, relative_path, subkey, std::move( value ), good_before, overwrite, in, out );
+                auto [ rc ] = physical_volume_->insert( entry_node_uid_, Key{ entry_path_ }, relative_path, subkey, std::move( value ), good_before, overwrite, in, out );
+                return rc;
             }
             catch ( ... )
             {
             }
 
-            return { RetCode::UnknownError };
+            return RetCode::UnknownError;
         }
 
 

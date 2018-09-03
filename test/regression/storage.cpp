@@ -288,3 +288,105 @@ TEST_F( TestStorage, Insert_to_Child_Get_Erase )
         EXPECT_EQ( RetCode::NotFound, rc );
     }
 }
+
+
+TEST_F( TestStorage, Insert_Expired )
+{
+    auto[ rc, pv ] = Storage::OpenPhysicalVolume( "Insert_Expired.jb" );
+    ASSERT_EQ( RetCode::Ok, rc );
+
+    auto[ rc1, vv ] = Storage::OpenVirtualVolume();
+    ASSERT_EQ( RetCode::Ok, rc1 );
+
+    auto[ rc2, mp ] = vv.Mount( pv, "/", "/", "pv" );
+    EXPECT_EQ( RetCode::Ok, rc2 );
+
+    const uint64_t now = std::chrono::system_clock::now().time_since_epoch() / std::chrono::milliseconds( 1 );
+
+    std::this_thread::sleep_for( std::chrono::seconds( 1 ) );
+
+    {
+        auto[ rc ] = vv.Insert( "/pv", "foo", Value{ "foo" }, now );
+        EXPECT_EQ( RetCode::AlreadyExpired, rc );
+    }
+}
+
+
+TEST_F( TestStorage, Get_Expired )
+{
+    auto[ rc, pv ] = Storage::OpenPhysicalVolume( "Get_Expired.jb" );
+    ASSERT_EQ( RetCode::Ok, rc );
+
+    auto[ rc1, vv ] = Storage::OpenVirtualVolume();
+    ASSERT_EQ( RetCode::Ok, rc1 );
+
+    auto[ rc2, mp ] = vv.Mount( pv, "/", "/", "pv" );
+    EXPECT_EQ( RetCode::Ok, rc2 );
+
+    const uint64_t now = std::chrono::system_clock::now().time_since_epoch() / std::chrono::milliseconds( 1 ) + 1000;
+
+    {
+        auto[ rc ] = vv.Insert( "/pv", "foo", Value{ "foo" }, now );
+        EXPECT_EQ( RetCode::Ok, rc );
+    }
+
+    std::this_thread::sleep_for( std::chrono::seconds( 2 ) );
+
+    {
+        auto[ rc, v ] = vv.Get( "/pv/foo" );
+        EXPECT_EQ( RetCode::NotFound, rc );
+    }
+}
+
+
+TEST_F( TestStorage, Navigate_Over_Expired )
+{
+    auto[ rc, pv ] = Storage::OpenPhysicalVolume( "Insert_to_Child_Get_Erase.jb" );
+    ASSERT_EQ( RetCode::Ok, rc );
+
+    auto[ rc1, vv ] = Storage::OpenVirtualVolume();
+    ASSERT_EQ( RetCode::Ok, rc1 );
+
+    auto[ rc2, mp ] = vv.Mount( pv, "/", "/", "pv" );
+    EXPECT_EQ( RetCode::Ok, rc2 );
+
+    const uint64_t now = std::chrono::system_clock::now().time_since_epoch() / std::chrono::milliseconds( 1 ) + 1000;
+
+    {
+        auto[ rc ] = vv.Insert( "/pv", "foo", Value{ "foo" }, now );
+        EXPECT_EQ( RetCode::Ok, rc );
+    }
+    {
+        auto[ rc ] = vv.Insert( "/pv/foo", "boo", Value{ "boo" } );
+        EXPECT_EQ( RetCode::Ok, rc );
+    }
+
+    std::this_thread::sleep_for( std::chrono::seconds( 2 ) );
+
+    {
+        auto[ rc, v ] = vv.Get( "/pv/foo/boo" );
+        EXPECT_EQ( RetCode::NotFound, rc );
+    }
+}
+
+
+TEST_F( TestStorage, Insert_Existing )
+{
+    auto[ rc, pv ] = Storage::OpenPhysicalVolume( "Insert_to_Child_Get_Erase.jb" );
+    ASSERT_EQ( RetCode::Ok, rc );
+
+    auto[ rc1, vv ] = Storage::OpenVirtualVolume();
+    ASSERT_EQ( RetCode::Ok, rc1 );
+
+    auto[ rc2, mp ] = vv.Mount( pv, "/", "/", "pv" );
+    EXPECT_EQ( RetCode::Ok, rc2 );
+
+    {
+        auto[ rc ] = vv.Insert( "/pv", "foo", Value{ "foo" } );
+        EXPECT_EQ( RetCode::Ok, rc );
+    }
+    {
+        auto[ rc ] = vv.Insert( "/pv", "foo", Value{ "foo" } );
+        EXPECT_EQ( RetCode::AlreadyExists, rc );
+    }
+}

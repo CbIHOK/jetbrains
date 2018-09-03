@@ -305,7 +305,7 @@ namespace jb
         @throw nothing
         */
         [[ nodiscard ]]
-        std::tuple< RetCode > insert( const Key & path, const Key & subkey, Value && value, uint64_t good_before, bool overwrite ) noexcept
+        RetCode insert( const Key & path, const Key & subkey, Value && value, uint64_t good_before, bool overwrite ) noexcept
         {
             using namespace std;
 
@@ -336,7 +336,7 @@ namespace jb
                     for ( auto & future : futures )
                     {
                         // get result
-                        auto[ ret ] = future.get( );
+                        auto ret = future.get( );
 
                         if ( RetCode::Ok == ret )
                         {
@@ -346,23 +346,23 @@ namespace jb
                         else if ( RetCode::NotFound != ret )
                         {
                             // something happened on physical level
-                            return { ret };
+                            return ret;
                         }
                     }
 
                     // key not found
-                    return { RetCode::NotFound };
+                    return RetCode::NotFound;
                 }
                 else
                 {
-                    return { RetCode::InvalidLogicalPath };
+                    return RetCode::InvalidLogicalPath;
                 }
             }
             catch(...)
             {
             }
 
-            return tuple{ RetCode::UnknownError };
+            return RetCode::UnknownError;
         }
 
 

@@ -185,9 +185,10 @@ namespace jb
                     return { RetCode::InvalidSubkey };
                 }
 
-                if ( good_before )
+                uint64_t now = chrono::system_clock::now().time_since_epoch() / chrono::milliseconds( 1 );
+
+                if ( good_before && good_before < now )
                 {
-                    auto now = chrono::system_clock::now().time_since_epoch() / chrono::milliseconds( 1 );
                     return { RetCode::AlreadyExpired };
                 }
 

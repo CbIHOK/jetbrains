@@ -177,7 +177,7 @@ namespace jb
         @throws nothing
         */
         template < typename F >
-        auto static wait_and_do_it( const execution_connector & in, execution_connector & out, const F & f ) noexcept
+        auto static wait_and_do_it( const execution_connector & in, execution_connector & out, const F & f )
         {
             using namespace std;
 
@@ -186,51 +186,44 @@ namespace jb
             auto & out_cancel = out.first;
             auto & out_do_it = out.second;
 
-            try
+            while ( true )
             {
-                while ( true )
+                // if the operation has been canceled
+                if ( in_cancel.load( memory_order_acquire ) )
                 {
-                    // if the operation has been canceled
-                    if ( in_cancel.load( memory_order_acquire ) )
+                    // cancel further operations
+                    out_cancel.store( true, memory_order_release );
+
+                    // return successful status
+                    decltype( f() ) result{};
+                    std::get< RetCode >( result ) = RetCode::Ok;
+                    return result;
+                }
+
+                // if we've been granted to perform operation
+                if ( in_do_it.load( memory_order_acquire ) )
+                {
+                    // run operation
+                    auto result = f();
+
+                    // if operation supplied sucessfully
+                    if ( RetCode::Ok == std::get< RetCode >( result ) )
                     {
                         // cancel further operations
                         out_cancel.store( true, memory_order_release );
-
-                        // return successful status
-                        decltype( f() ) result{};
-                        std::get< RetCode >( result ) = RetCode::Ok;
-                        return result;
                     }
-
-                    // if we've been granted to perform operation
-                    if ( in_do_it.load( memory_order_acquire ) )
+                    else
                     {
-                        // run operation
-                        auto result = f();
-
-                        // if operation supplied sucessfully
-                        if ( RetCode::Ok == std::get< RetCode >( result ) )
-                        {
-                            // cancel further operations
-                            out_cancel.store( true, memory_order_release );
-                        }
-                        else
-                        {
-                            // grant further operations
-                            out_do_it.store( true, memory_order_release );
-                        }
-
-                        // return operation result
-                        return result;
+                        // grant further operations
+                        out_do_it.store( true, memory_order_release );
                     }
 
-                    // fall asleep for a while: we just lost the time slice and move the thread in the end of scheduler queue
-                    this_thread::sleep_for( std::chrono::nanoseconds::min() );
+                    // return operation result
+                    return result;
                 }
-            }
-            catch ( ... )
-            {
-                // something terrible happened
+
+                // fall asleep for a while: we just lost the time slice and move the thread in the end of scheduler queue
+                this_thread::sleep_for( std::chrono::nanoseconds::min() );
             }
 
             // something terrible happened - cancel further operations...
@@ -240,7 +233,7 @@ namespace jb
             decltype( f() ) result{};
             std::get< RetCode >( result ) = RetCode::UnknownError;
             return result;
-        }
+    }
 
 
     public:
@@ -431,7 +424,7 @@ namespace jb
                     assert( bpath.size() );
                     auto target_btree = cache_.get_node( bpath.back().first );
 
-                    wait_and_do_it( in, out, [&] {
+                    return wait_and_do_it( in, out, [&] {
 
                         {
                             assert( locks.size() );
@@ -462,8 +455,8 @@ namespace jb
             catch ( ... )
             {
                 set_status( RetCode::UnknownError );
-                return wait_and_do_it( in, out, [&] { return tuple{ RetCode::UnknownError }; } );
             }
+            return wait_and_do_it( in, out, [&] { return tuple{ RetCode::UnknownError }; } );
         }
 
 
@@ -503,10 +496,9 @@ namespace jb
                 }
                 else
                 {
-                    auto node_uid = bpath.back().first;
-                    auto pos = bpath.back().second;
+                    auto node = cache_.get_node( bpath.back().first );
 
-                    auto node = cache_.get_node( node_uid );
+                    auto pos = bpath.back().second; bpath.pop_back();
 
                     return wait_and_do_it( in, out, [&] { return tuple{ RetCode::Ok, node->value( pos ) }; } );
                 }
@@ -575,6 +567,7 @@ namespace jb
 
                         auto node_uid = bpath.back().first;
                         auto pos = bpath.back().second;
+                        bpath.pop_back();
 
                         auto node = cache_.get_node( node_uid );
                         node->erase( pos, bpath );
@@ -599,8 +592,8 @@ namespace jb
             catch ( ... )
             {
                 set_status( RetCode::UnknownError );
-                return wait_and_do_it( in, out, [&] { return tuple{ RetCode::UnknownError }; } );
             }
+            return wait_and_do_it( in, out, [&] { return tuple{ RetCode::UnknownError }; } );
         }
     };
 }
