@@ -47,8 +47,8 @@ namespace jb
             RetCode rc_;
         };
 
-        //using DigestPath = boost::container::static_vector< Digest, BloomFnCount >;
-        using DigestPath = std::vector< Digest >;
+        using DigestPath = boost::container::static_vector< Digest, BloomFnCount >;
+        //using DigestPath = std::vector< Digest >;
 
         /** No default constructible/copyable/movable
         */

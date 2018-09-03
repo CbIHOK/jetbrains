@@ -194,8 +194,8 @@ namespace jb
             auto[ from, to ] = paths_.equal_range( mp_path_hash );
 
             // vector on stack
-            //static_vector< MountPointImplP, MountLimit > mount_points;
-            std::vector< MountPointImplP > mount_points;
+            static_vector< MountPointImplP, MountLimit > mount_points;
+            //std::vector< MountPointImplP > mount_points;
 
             // fill the collection with mount points
             for_each( from, to, [&] ( const auto & mount_point ) {
@@ -240,8 +240,8 @@ namespace jb
             using FutureT = future< ContractT >;
 
             // futures, one per mount
-            //static_vector< FutureT, MountLimit > futures;
-            std::vector< FutureT > futures;
+            static_vector< FutureT, MountLimit > futures;
+            //std::vector< FutureT > futures;
             futures.resize( mounts.size( ) );
 
             // execution connectors are pairs of < cancel, do_it > flags

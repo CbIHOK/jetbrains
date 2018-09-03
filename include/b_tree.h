@@ -76,12 +76,12 @@ namespace jb
         using Pos = size_t;
         static constexpr auto Npos = Pos{ std::numeric_limits< size_t >::max() };
 
-        //using BTreePath = static_vector< std::pair< NodeUid, Pos >, BTreeMaxDepth >;
+        using BTreePath = static_vector< std::pair< NodeUid, Pos >, BTreeMaxDepth >;
 
-        struct BTreePath : public std::vector< std::pair< NodeUid, Pos > >
-        {
-            BTreePath() { reserve(100); }
-        };
+        //struct BTreePath : public std::vector< std::pair< NodeUid, Pos > >
+        //{
+        //    BTreePath() { reserve(100); }
+        //};
 
         struct btree_error : public std::runtime_error
         {
@@ -174,11 +174,11 @@ namespace jb
         //
         // more aliases
         //
-        //using ElementCollection = static_vector< Element, BTreeMax  >;
-        //using LinkCollection = static_vector< NodeUid, BTreeMax + 1 >;
+        using ElementCollection = static_vector< Element, BTreeMax  >;
+        using LinkCollection = static_vector< NodeUid, BTreeMax + 1 >;
 
-        using ElementCollection = std::vector< Element  >;
-        using LinkCollection = std::vector< NodeUid >;
+        //using ElementCollection = std::vector< Element  >;
+        //using LinkCollection = std::vector< NodeUid >;
 
         //
         // data members
