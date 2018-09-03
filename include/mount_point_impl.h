@@ -70,7 +70,7 @@ namespace jb
             assert( physical_path.is_path() );
 
             // request physical volume for lock physical of path and entry point UID
-            execution_connector in{ false, true };
+            execution_connector in{}; in.second = true;
             execution_connector out{};
             auto res = physical_volume_->lock_path( 0, Key::root(), physical_path, in, out );
             

@@ -34,7 +34,10 @@ namespace jb
         class BTree;
         class BTreeCache;
 
-        using execution_connector = std::pair< std::atomic_bool, std::atomic_bool >;
+        struct execution_connector : public std::pair< std::atomic_bool, std::atomic_bool >
+        {
+            execution_connector() : std::pair< std::atomic_bool, std::atomic_bool >( false, false ){}
+        };
 
     private:
 

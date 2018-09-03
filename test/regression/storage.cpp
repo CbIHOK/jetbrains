@@ -226,6 +226,9 @@ TEST_F( TestStorage, PhysicalVolume_Priorities )
 }
  
 
+//
+// Checks insertion to root
+//
 TEST_F( TestStorage, Insert_to_Root_Get_Erase )
 {
     auto[ rc, pv ] = Storage::OpenPhysicalVolume( "Insert_to_Root_Get_Erase.jb" );
@@ -244,6 +247,9 @@ TEST_F( TestStorage, Insert_to_Root_Get_Erase )
 }
 
 
+//
+// Checks insertion to not root
+//
 TEST_F( TestStorage, Insert_to_Child_Get_Erase )
 {
     auto[ rc, pv ] = Storage::OpenPhysicalVolume( "Insert_to_Child_Get_Erase.jb" );
@@ -263,6 +269,9 @@ TEST_F( TestStorage, Insert_to_Child_Get_Erase )
 }
 
 
+//
+// Checks insertion of expired node
+//
 TEST_F( TestStorage, Insert_Expired )
 {
     auto[ rc, pv ] = Storage::OpenPhysicalVolume( "Insert_Expired.jb" );
@@ -282,6 +291,9 @@ TEST_F( TestStorage, Insert_Expired )
 }
 
 
+//
+// Checks getting of expired node
+//
 TEST_F( TestStorage, Get_Expired )
 {
     auto[ rc, pv ] = Storage::OpenPhysicalVolume( "Get_Expired.jb" );
@@ -303,6 +315,9 @@ TEST_F( TestStorage, Get_Expired )
 }
 
 
+//
+// Checks navigation over expired node
+//
 TEST_F( TestStorage, Navigate_Over_Expired )
 {
     auto[ rc, pv ] = Storage::OpenPhysicalVolume( "Navigate_Over_Expired.jb" );
@@ -325,6 +340,9 @@ TEST_F( TestStorage, Navigate_Over_Expired )
 }
 
 
+//
+// Checks inserting of already existing node
+//
 TEST_F( TestStorage, Insert_Existing )
 {
     auto[ rc, pv ] = Storage::OpenPhysicalVolume( "Insert_Existing.jb" );
@@ -341,6 +359,9 @@ TEST_F( TestStorage, Insert_Existing )
 }
 
 
+//
+// Checks overwritting of existing node
+//
 TEST_F( TestStorage, Overwrite_Existing )
 {
     auto[ rc, pv ] = Storage::OpenPhysicalVolume( "Overwrite_Existing.jb" );
@@ -358,6 +379,9 @@ TEST_F( TestStorage, Overwrite_Existing )
 }
 
 
+//
+// Check that removing a rott node of a physical volume is impossible
+//
 TEST_F( TestStorage, Erase_Root )
 {
     auto[ rc, pv ] = Storage::OpenPhysicalVolume( "Erase_Root.jb" );
@@ -373,9 +397,12 @@ TEST_F( TestStorage, Erase_Root )
 }
 
 
+//
+// Check that removing a node locked due to mounting operation is imposible
+//
 TEST_F( TestStorage, Erase_Locked )
 {
-    auto[ rc, pv ] = Storage::OpenPhysicalVolume( "Erase_Root.jb" );
+    auto[ rc, pv ] = Storage::OpenPhysicalVolume( "Erase_Locked.jb" );
     ASSERT_EQ( RetCode::Ok, rc );
 
     auto[ rc1, vv ] = Storage::OpenVirtualVolume();
@@ -396,9 +423,12 @@ TEST_F( TestStorage, Erase_Locked )
 }
 
 
+//
+// Checks that removing a node having children is not allowed
+//
 TEST_F( TestStorage, Erase_WithChildren )
 {
-    auto[ rc, pv ] = Storage::OpenPhysicalVolume( "Erase_Root.jb" );
+    auto[ rc, pv ] = Storage::OpenPhysicalVolume( "Erase_WithChildren.jb" );
     ASSERT_EQ( RetCode::Ok, rc );
 
     auto[ rc1, vv ] = Storage::OpenVirtualVolume();
@@ -411,4 +441,74 @@ TEST_F( TestStorage, Erase_WithChildren )
     EXPECT_EQ( RetCode::Ok, vv.Insert( "/pv/foo", "boo", Value{ "boo" } ) );
 
     EXPECT_EQ( RetCode::NotLeaf, vv.Erase( "/pv/foo" ) );
+}
+
+
+//
+// Checks that operations on mount points regard physical volume priorities
+//
+TEST_F( TestStorage, VolumePriority )
+{
+    auto[ rc1, pv1 ] = Storage::OpenPhysicalVolume( "VolumePriority_1.jb" );
+    ASSERT_EQ( RetCode::Ok, rc1 );
+
+    auto[ rc2, pv2 ] = Storage::OpenPhysicalVolume( "VolumePriority_2.jb" );
+    ASSERT_EQ( RetCode::Ok, rc2 );
+
+    auto[ rc, pv3 ] = Storage::OpenPhysicalVolume( "VolumePriority_3.jb" );
+    ASSERT_EQ( RetCode::Ok, rc2 );
+
+    auto[ rc3, vv ] = Storage::OpenVirtualVolume();
+    ASSERT_EQ( RetCode::Ok, rc3 );
+
+    auto[ rc4, mp1 ] = vv.Mount( pv1, "/", "/", "v1" );
+    EXPECT_EQ( RetCode::Ok, rc4 );
+
+    auto[ rc5, mp2 ] = vv.Mount( pv2, "/", "/", "v2" );
+    EXPECT_EQ( RetCode::Ok, rc5 );
+
+    auto[ rc6, mp3 ] = vv.Mount( pv3, "/", "/", "v3" );
+    EXPECT_EQ( RetCode::Ok, rc6 );
+
+    auto[ rc7, sum1 ] = vv.Mount( pv1, "/", "/v3", "sum" );
+    EXPECT_EQ( RetCode::Ok, rc7 );
+
+    auto[ rc8, sum2 ] = vv.Mount( pv2, "/", "/v3", "sum" );
+    EXPECT_EQ( RetCode::Ok, rc8 );
+
+    EXPECT_EQ( RetCode::Ok, vv.Insert( "/v1", "foo", Value{ 1U } ) );
+    EXPECT_EQ( RetCode::Ok, vv.Insert( "/v2", "foo", Value{ 2U } ) );
+
+    EXPECT_EQ( make_tuple( RetCode::Ok, Value{ 1U } ), vv.Get( "/v3/sum/foo" ) );
+}
+
+
+//
+// Checks that operations on mount points regard physical volume priorities
+//
+TEST_F( TestStorage, Types )
+{
+    auto[ rc1, pv] = Storage::OpenPhysicalVolume( "VolumePriority_1.jb" );
+    ASSERT_EQ( RetCode::Ok, rc1 );
+
+    auto[ rc2, vv ] = Storage::OpenVirtualVolume();
+    ASSERT_EQ( RetCode::Ok, rc2 );
+
+    auto[ rc3, mp ] = vv.Mount( pv, "/", "/", "v1" );
+    EXPECT_EQ( RetCode::Ok, rc3 );
+
+    EXPECT_EQ( RetCode::Ok, vv.Insert( "/v1", "foo", Value{ ( uint32_t )1234 } ) );
+    EXPECT_EQ( make_tuple( RetCode::Ok, Value{ ( uint32_t )1234 } ), vv.Get( "/v1/foo" ) );
+
+    EXPECT_EQ( RetCode::Ok, vv.Insert( "/v1", "foo", Value{ ( uint64_t )1234 }, 0, true ) );
+    EXPECT_EQ( make_tuple( RetCode::Ok, Value{ ( uint64_t )1234 } ), vv.Get( "/v1/foo" ) );
+
+    EXPECT_EQ( RetCode::Ok, vv.Insert( "/v1", "foo", Value{ ( float )1234 }, 0, true ) );
+    EXPECT_EQ( make_tuple( RetCode::Ok, Value{ ( float )1234 } ), vv.Get( "/v1/foo" ) );
+
+    EXPECT_EQ( RetCode::Ok, vv.Insert( "/v1", "foo", Value{ ( double )1234 }, 0, true ) );
+    EXPECT_EQ( make_tuple( RetCode::Ok, Value{ ( double )1234 } ), vv.Get( "/v1/foo" ) );
+
+    EXPECT_EQ( RetCode::Ok, vv.Insert( "/v1", "foo", Value{ "1234" }, 0, true ) );
+    EXPECT_EQ( make_tuple( RetCode::Ok, Value{ "1234" } ), vv.Get( "/v1/foo" ) );
 }
