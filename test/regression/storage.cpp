@@ -410,5 +410,5 @@ TEST_F( TestStorage, Erase_WithChildren )
     EXPECT_EQ( RetCode::Ok, vv.Insert( "/pv", "foo", Value{ "foo" } ) );
     EXPECT_EQ( RetCode::Ok, vv.Insert( "/pv/foo", "boo", Value{ "boo" } ) );
 
-    EXPECT_EQ( RetCode::PathLocked, vv.Erase( "/pv/foo" ) );
+    EXPECT_EQ( RetCode::NotLeaf, vv.Erase( "/pv/foo" ) );
 }

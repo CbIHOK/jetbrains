@@ -1042,6 +1042,14 @@ namespace jb
             auto t = file_.open_transaction();
             throw_btree_error( RetCode::Ok == t.status(), RetCode::IoError, "Unable to open transaction" );
 
+            if ( InvalidNodeUid != elements_[ pos ].children_ )
+            {
+                auto children = cache_.get_node( elements_[ pos ].children_ );
+                throw_btree_error( !children->elements_.size(), RetCode::NotLeaf );
+
+                t.erase_chain( elements_[ pos ].children_ );
+            }
+
             erase_element( t, pos, bpath, bpath.size() );
             t.commit();
         }

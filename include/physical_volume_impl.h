@@ -571,16 +571,17 @@ namespace jb
                         return wait_and_do_it( in, out, [&] { return tuple{ RetCode::PathLocked }; } );
                     }
 
-                    return wait_and_do_it( in, out, [&] { 
+                    // get b-tree node containing the element
+                    auto node_uid = bpath.back().first;
+                    auto pos = bpath.back().second;
+                    bpath.pop_back();
+                    auto node = cache_.get_node( node_uid );
+
+                    return wait_and_do_it( in, out, [&] {
 
                         // get exclusive lock over the key
                         exclusive_lock e{ locks.back() };
 
-                        auto node_uid = bpath.back().first;
-                        auto pos = bpath.back().second;
-                        bpath.pop_back();
-
-                        auto node = cache_.get_node( node_uid );
                         node->erase( pos, bpath );
 
                         return tuple{ RetCode::Ok };
