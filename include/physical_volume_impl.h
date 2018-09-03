@@ -373,7 +373,7 @@ namespace jb
             uint64_t good_before,
             bool overwrite,
             const execution_connector & in,
-            execution_connector & out )
+            execution_connector & out ) noexcept
         {
             using namespace std;
 
@@ -479,7 +479,7 @@ namespace jb
             const Key & entry_path,
             const Key & relative_path,
             const execution_connector & in,
-            execution_connector & out )
+            execution_connector & out ) noexcept
         {
             using namespace std;
 
@@ -538,7 +538,7 @@ namespace jb
         @param [out] in - outgoing execution events
         @retval RetCode - status of operation
         */
-        [ [ nodiscard ] ]
+        [[ nodiscard ]]
         std::tuple< RetCode > erase( NodeUid entry_node_uid,
             const Key & entry_path,
             const Key & relative_path,
