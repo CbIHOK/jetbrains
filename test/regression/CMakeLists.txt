@@ -21,4 +21,4 @@ target_link_libraries( regression gtest gtest_main )
 
 install( TARGETS regression DESTINATION . )
 
-add_test( NAME regression COMMAND regression )
+#add_test( NAME regression COMMAND regression )

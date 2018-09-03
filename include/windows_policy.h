@@ -97,8 +97,6 @@ namespace jb
         @throw nothing
         */
 
-        static uint64_t _offset;
-
         static std::tuple< bool, int64_t > seek_file( HandleT handle, int64_t offset, SeekMethod origin = SeekMethod::Begin ) noexcept
         {
             try
@@ -111,8 +109,6 @@ namespace jb
 
                 if ( auto origin_it = origins.find( origin ); origin_it != origins.end() )
                 {
-                    _offset = static_cast< uint64_t >( offset );
-
                     LARGE_INTEGER li_offset; li_offset.QuadPart = offset;
                     LARGE_INTEGER li_position{};
                     
@@ -144,16 +140,6 @@ namespace jb
         */
         static std::tuple< bool, uint64_t > write_file( HandleT handle, const void * buffer, size_t size ) noexcept
         {
-            auto start = _offset;
-            auto end = start + size;
-            auto root_begin = 16781392;
-            auto root_end = 16781392 + 4096;
-
-            if ( start <= root_begin && root_begin < end || start < root_end && root_end <= end )
-            {
-                auto bp = true;
-            }
-
             if ( size <= std::numeric_limits< DWORD >::max() )
             {
                 DWORD written;

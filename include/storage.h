@@ -68,8 +68,6 @@ namespace jb
         class PhysicalVolumeImpl;
         class MountPointImpl;
 
-        using KeyValue = typename Key::ValueT;
-
     public:
 
         /** Enumerates all possible return codes
@@ -104,6 +102,7 @@ namespace jb
             NotYetImplemented
         };
 
+        using KeyValue = typename Key::ValueT;
         using Value = typename Policies::ValueT;
 
         class VirtualVolume;
