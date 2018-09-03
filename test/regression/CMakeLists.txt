@@ -7,13 +7,12 @@ set(CMAKE_CXX_FLAGS_DEBUG "${CMAKE_CXX_FLAGS_DEBUG} /MTd")
 
 add_executable( regression EXCLUDE_FROM_ALL
     main.cpp
-    #torage_file.cpp
-    ##b_tree.cpp
-    #packed_value.cpp
-    #bloom.cpp
-    #key.cpp
-    #node_locker.cpp
-    #virtual_volume.cpp 
+    storage_file.cpp
+    b_tree.cpp
+    packed_value.cpp
+    bloom.cpp
+    key.cpp
+    node_locker.cpp
     storage.cpp
 )
 

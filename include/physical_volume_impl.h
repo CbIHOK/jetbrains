@@ -242,7 +242,7 @@ namespace jb
     public:
 
         explicit PhysicalVolumeImpl( const std::filesystem::path & path ) try
-            : file_{ path, true }
+            : file_{ path }
             , filter_( file_ )
             , cache_( file_ )
         {
