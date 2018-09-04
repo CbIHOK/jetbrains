@@ -97,7 +97,7 @@ template < typename Policy > void performance_test()
         getting_i_total_time += end - start;
     }
 
-    std::cout << "Done: average reject time: " << getting_i_total_time / TestLimit << " microseconds" << std::endl;
+    std::cout << "Done: average reject time: " << getting_i_total_time / ( TestLimit / 10 ) << " microseconds" << std::endl;
 
     //----------------------------------------------------------------------------------------------------------------------
 
@@ -117,7 +117,7 @@ template < typename Policy > void performance_test()
         erasing_total_time += end - start;
     }
 
-    std::cout << "Done: average erasing time: " << erasing_total_time / TestLimit << " microseconds" << std::endl;
+    std::cout << "Done: average erasing time: " << erasing_total_time / ( TestLimit / 10 ) << " microseconds" << std::endl;
 
     Storage::CloseAll();
 
