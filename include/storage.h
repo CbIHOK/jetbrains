@@ -105,13 +105,14 @@ namespace jb
         using KeyValue = typename Key::ValueT;
         using Value = typename Policies::ValueT;
 
+
         class VirtualVolume;
         class PhysicalVolume;
         class MountPoint;
 
 
         //
-        //
+        // Hash specialization for Key
         //
         template <>
         struct Hash< Key >
@@ -121,7 +122,7 @@ namespace jb
 
 
         //
-        //
+        // Hash specialization for physical volume
         //
         template <>
         struct Hash< PhysicalVolume >
@@ -174,6 +175,9 @@ namespace jb
 
     private:
 
+        //
+        // declares singletons policy for volume type
+        //
         template < typename VolumeT >
         struct SingletonPolicy
         {
@@ -209,10 +213,11 @@ namespace jb
                 if ( auto it = collection.find( item ); it != collection.end( ) )
                 {
                     collection.erase( it );
-                    return true;
                 }
-
-                return false;
+                else
+                {
+                    throw std::logic_error( "Unknown element" );
+                }
             };
         };
 
@@ -237,7 +242,10 @@ namespace jb
 
             static constexpr auto InserterF = []( CollectionT & collection, const ImplP & item )
             {
-                return collection.insert( { item, std::numeric_limits< int >::max() } ).second;
+                if ( !collection.insert( { item, std::numeric_limits< int >::max() } ).second )
+                {
+                    throw std::runtime_error( "Unable to store PIMP" );
+                }
             };
 
             static constexpr auto DeleterF = [] ( CollectionT & collection, const ImplP & item )
@@ -245,10 +253,11 @@ namespace jb
                 if ( auto it = collection.find( item ); it != collection.end() )
                 {
                     collection.erase( it );
-                    return true;
                 }
-
-                return false;
+                else
+                {
+                    throw std::logic_error( "Unknown element" );
+                }
             };
         };
 
@@ -270,7 +279,7 @@ namespace jb
 
         template < typename VolumeT, typename ...Args >
         [[ nodiscard ]]
-        static auto open( Args&&... args) noexcept
+        static std::tuple< RetCode, VolumeT > open( Args&&... args) noexcept
         {
             using namespace std;
 
@@ -285,32 +294,33 @@ namespace jb
 
                 if ( collection.size( ) >= SingletonPolicy::Limit )
                 {
-                    return pair{ RetCode::LimitReached, VolumeT{} };
+                    return { RetCode::LimitReached, VolumeT{} };
                 }
 
                 // create new item and add it into collection
                 auto item = SingletonPolicy::CreatorF( args... );
-                
-                if ( SingletonPolicy::InserterF( collection, item ) )
-                {
-                    return pair{ RetCode::Ok, VolumeT{ item } };
-                }
+                SingletonPolicy::InserterF( collection, item );
+
+                return { RetCode::Ok, VolumeT{ item } };
             }
             catch (const bad_alloc &)
             {
-                return pair{ RetCode::InsufficientMemory, VolumeT{} };
+                return { RetCode::InsufficientMemory, VolumeT{} };
             }
             catch (...)
             {
             }
             
-            return pair{ RetCode::UnknownError, VolumeT{} };
+            return { RetCode::UnknownError, VolumeT{} };
         }
 
 
+        //
+        // closes given volume handle
+        //
         template < typename VolumeT >
         [[nodiscard]]
-        static auto close( const VolumeT & volume )
+        static auto close( const VolumeT & volume ) noexcept
         {
             using namespace std;
 
@@ -328,14 +338,13 @@ namespace jb
                 {
                     return RetCode::InvalidHandle;
                 }
-                else if ( SingletonPolicy::DeleterF( collection, impl ) )
+                else if ( impl.use_count() - 1 > 1 )
                 {
-                    return RetCode::Ok;
+                    return RetCode::InUse;
                 }
-                else
-                {
-                    return RetCode::InvalidHandle;
-                }
+                
+                SingletonPolicy::DeleterF( collection, impl );
+                return RetCode::Ok;
             }
             catch ( ... )
             {
@@ -345,203 +354,158 @@ namespace jb
         }
 
 
-        [[ nodiscard ]]
-        static auto prioritize_on_top( const PhysicalVolume & volume ) noexcept
+        //
+        // assign volume with the highest priority
+        //
+        static auto prioritize_on_top( const PhysicalVolume & volume )
         {
             using namespace std;
 
-            try
+            auto[ guard, collection ] = singletons< PhysicalVolume >( );
+            unique_lock< shared_mutex > lock( guard );
+
+            if ( auto volume_it = collection.find( volume.impl_.lock( ) ); volume_it != collection.end( ) )
             {
-                auto[ guard, collection ] = singletons< PhysicalVolume >( );
-                unique_lock< shared_mutex > lock( guard );
+                auto volume_priority = volume_it->second;
 
-                if ( auto volume_it = collection.find( volume.impl_.lock( ) ); volume_it != collection.end( ) )
-                {
-                    auto volume_priority = volume_it->second;
-
-                    // explicitly prevent parallelism cuz it will cause a lot of cache misses
-                    for_each( execution::seq, begin( collection ), end( collection ), [=] ( auto & pv ) {
-                        if ( pv.second == volume_priority )
-                        {
-                            pv.second = 0;
-                        }
-                        else if ( pv.second < volume_priority )
-                        {
-                            pv.second += 1;
-                        }
-                    } );
-
-                    return RetCode::Ok;
-                }
-                else
-                {
-                    return RetCode::InvalidHandle;
-                }
-            }
-            catch ( ... )
-            {
+                // explicitly prevent parallelism cuz it will cause a lot of cache misses
+                for_each( execution::seq, begin( collection ), end( collection ), [=] ( auto & pv ) {
+                    if ( pv.second == volume_priority )
+                    {
+                        pv.second = 0;
+                    }
+                    else if ( pv.second < volume_priority )
+                    {
+                        pv.second += 1;
+                    }
+                } );
             }
 
-            return RetCode::UnknownError;
+            throw std::logic_error( "Unable to find PIMP" );
         }
 
 
-        [[ nodiscard ]]
-        static auto prioritize_on_bottom( const PhysicalVolume & volume ) noexcept
+        //
+        // assign volume with the lowest priority
+        //
+        static auto prioritize_on_bottom( const PhysicalVolume & volume ) 
         {
             using namespace std;
 
-            try
+            auto[ guard, collection ] = singletons< PhysicalVolume >( );
+            unique_lock< shared_mutex > lock( guard );
+
+            if ( auto volume_it = collection.find( volume.impl_.lock( ) ); volume_it != collection.end( ) )
             {
-                auto[ guard, collection ] = singletons< PhysicalVolume >( );
-                unique_lock< shared_mutex > lock( guard );
+                auto volume_priority = volume_it->second;
 
-                if ( auto volume_it = collection.find( volume.impl_.lock( ) ); volume_it != collection.end( ) )
-                {
-                    auto volume_priority = volume_it->second;
-
-                    for_each( execution::seq, begin( collection ), end( collection ), [=] ( auto & pv ) {
-                        if ( pv.second == volume_priority )
-                        {
-                            pv.second = static_cast< int >( collection.size() ) - 1;
-                        }
-                        else if ( pv.second > volume_priority )
-                        {
-                            pv.second -= 1;
-                        }
-                    } );
-
-                    return RetCode::Ok;
-                }
-                else
-                {
-                    return RetCode::InvalidHandle;
-                }
-            }
-            catch ( ... )
-            {
+                for_each( execution::seq, begin( collection ), end( collection ), [=] ( auto & pv ) {
+                    if ( pv.second == volume_priority )
+                    {
+                        pv.second = static_cast< int >( collection.size() ) - 1;
+                    }
+                    else if ( pv.second > volume_priority )
+                    {
+                        pv.second -= 1;
+                    }
+                } );
             }
 
-            return RetCode::UnknownError;
+            throw std::logic_error( "Unable to find PIMP" );
         }
 
 
-        [[ nodiscard ]]
+        //
+        // prioritizes the volume above given one
+        //
         static auto prioritize_before( const PhysicalVolume & volume, const PhysicalVolume & before )
         {
             using namespace std;
 
-            try
+            auto[ guard, collection ] = singletons< PhysicalVolume >( );
+            unique_lock< shared_mutex > lock( guard );
+
+            if ( auto volume_it = collection.find( volume.impl_.lock() ); volume_it != collection.end() )
             {
-                auto[ guard, collection ] = singletons< PhysicalVolume >( );
-                unique_lock< shared_mutex > lock( guard );
+                auto volume_priority = volume_it->second;
 
-                if ( auto volume_it = collection.find( volume.impl_.lock() ); volume_it != collection.end() )
+                if ( auto before_it = collection.find( before.impl_.lock() ); before_it != collection.end() )
                 {
-                    auto volume_priority = volume_it->second;
-
-                    if ( auto before_it = collection.find( before.impl_.lock() ); before_it != collection.end() )
-                    {
-                        auto before_priority = before_it->second;
+                    auto before_priority = before_it->second;
                         
-                        auto[ lower, upper, increment, set_volume, set_before ] =
-                            ( volume_priority < before_priority ) ?
-                            tuple{ volume_priority + 1, before_priority, -1, before_priority - 1, before_priority } :
-                            tuple{ before_priority + 1, volume_priority,  1, before_priority, before_priority + 1 };
+                    auto[ lower, upper, increment, set_volume, set_before ] =
+                        ( volume_priority < before_priority ) ?
+                        tuple{ volume_priority + 1, before_priority, -1, before_priority - 1, before_priority } :
+                        tuple{ before_priority + 1, volume_priority,  1, before_priority, before_priority + 1 };
 
-                        for_each( execution::seq, begin( collection ), end( collection ), [=] ( auto & pv ) {
-                            if ( pv.second == volume_priority )
-                            {
-                                pv.second = set_volume;
-                            }
-                            else if ( pv.second == before_priority )
-                            {
-                                pv.second = set_before;
-                            }
-                            else if ( lower <= pv.second && pv.second < upper )
-                            {
-                                pv.second += increment;
-                            }
-                        } );
-
-                        return RetCode::Ok;
-                    }
-                    else
-                    {
-                        return RetCode::InvalidHandle;
-                    }
-                }
-                else
-                {
-                    return RetCode::InvalidHandle;
+                    for_each( execution::seq, begin( collection ), end( collection ), [=] ( auto & pv ) {
+                        if ( pv.second == volume_priority )
+                        {
+                            pv.second = set_volume;
+                        }
+                        else if ( pv.second == before_priority )
+                        {
+                            pv.second = set_before;
+                        }
+                        else if ( lower <= pv.second && pv.second < upper )
+                        {
+                            pv.second += increment;
+                        }
+                    } );
                 }
             }
-            catch ( ... )
-            {
-            }
 
-            return RetCode::UnknownError;
+            throw std::logic_error( "Unable to find PIMP" );
         }
 
 
-        [[ nodiscard ]]
+        //
+        // prioritizes the volume below given one
+        //
         static auto prioritize_after( const PhysicalVolume & volume, const PhysicalVolume & after )
         {
             using namespace std;
 
-            try
+            auto[ guard, collection ] = singletons< PhysicalVolume >( );
+            unique_lock< shared_mutex > lock( guard );
+
+            if ( auto volume_it = collection.find( volume.impl_.lock( ) ); volume_it != collection.end() )
             {
-                auto[ guard, collection ] = singletons< PhysicalVolume >( );
-                unique_lock< shared_mutex > lock( guard );
+                auto volume_priority = volume_it->second;
 
-                if ( auto volume_it = collection.find( volume.impl_.lock( ) ); volume_it != collection.end() )
+                if ( auto after_it = collection.find( after.impl_.lock( ) ); after_it != collection.end() )
                 {
-                    auto volume_priority = volume_it->second;
+                    auto after_priority = after_it->second;
 
-                    if ( auto after_it = collection.find( after.impl_.lock( ) ); after_it != collection.end() )
-                    {
-                        auto after_priority = after_it->second;
+                    auto[ lower, upper, increment, set_volume, set_after ] =
+                        ( volume_priority < after_priority ) ?
+                        tuple{ volume_priority + 1, after_priority,  -1, after_priority,     after_priority - 1  } :
+                        tuple{ after_priority + 1,  volume_priority,  1, after_priority + 1, after_priority      };
 
-                        auto[ lower, upper, increment, set_volume, set_after ] =
-                            ( volume_priority < after_priority ) ?
-                            tuple{ volume_priority + 1, after_priority,  -1, after_priority,     after_priority - 1  } :
-                            tuple{ after_priority + 1,  volume_priority,  1, after_priority + 1, after_priority      };
-
-                        for_each( execution::seq, begin( collection ), end( collection ), [=] ( auto & pv ) {
-                            if ( pv.second == volume_priority )
-                            {
-                                pv.second = set_volume;
-                            }
-                            else if ( pv.second == after_priority )
-                            {
-                                pv.second = set_after;
-                            }
-                            else if ( lower <= pv.second && pv.second < upper )
-                            {
-                                pv.second += increment;
-                            }
-                        } );
-
-                        return RetCode::Ok;
-                    }
-                    else
-                    {
-                        return RetCode::InvalidHandle;
-                    }
-                }
-                else
-                {
-                    return RetCode::InvalidHandle;
+                    for_each( execution::seq, begin( collection ), end( collection ), [=] ( auto & pv ) {
+                        if ( pv.second == volume_priority )
+                        {
+                            pv.second = set_volume;
+                        }
+                        else if ( pv.second == after_priority )
+                        {
+                            pv.second = set_after;
+                        }
+                        else if ( lower <= pv.second && pv.second < upper )
+                        {
+                            pv.second += increment;
+                        }
+                    } );
                 }
             }
-            catch ( ... )
-            {
-            }
 
-            return RetCode::UnknownError;
+            throw std::logic_error( "Unable to find PIMP" );
         }
 
 
+        //
+        // physical volume priority comparer
+        //
         struct lesser_priority : std::shared_lock< std::shared_mutex >
         {
             friend class TestStorage;
@@ -584,7 +548,9 @@ namespace jb
         };
 
 
-        [[nodiscard]]
+        //
+        // locks collection of physical volume and provide physical volume priority comparer object
+        //
         static auto get_lesser_priority()
         {
             using namespace std;
@@ -602,16 +568,11 @@ namespace jb
 
         /** Creates new Virtual Volumes
 
-        @return std::tuple< ret_code, handle >, if operation succedded, handle keeps valid handle
-        of Virtual Volume, possible return codes are
-            ret_code == RetCode::Ok => operation succedded
-            ret_code == RetCode::InsufficientMemory => operation failed due to low memory
-            ret_code == RetCode::UnknownError => something went really wrong
-
+        @retval RetCode - operation sttaus
+        @retval VirtualVolume - virtual volume handle
         @throw nothing
         */
-        [[nodiscard]]
-        static auto OpenVirtualVolume() noexcept
+        static std::tuple< RetCode, VirtualVolume > OpenVirtualVolume() noexcept
         {
             return open< VirtualVolume >( );
         }
@@ -620,20 +581,11 @@ namespace jb
         /** Creates new physical volumes
 
         @param [in] path - path to a file representing physical starage
-        @return std::tuple< ret_code, handle >, if operation succedded, handle keeps valid handle
-        of physical volume, possible return codes are
-           ret_code == RetCode::Ok => operation succedded
-           ret_code == RetCode::InsufficientMemory => operation failed due to low memory
-           ret_code == RetCode::FileNotFound => given file path leads to nowhere
-           ret_code == RetCode::FileAlreadyOpened => given file is already opened by this process
-           ret_code == RetCode::FileIsLocked => given file is locked by another process
-           ret_code == RetCode::UnknownError => something went really wrong
-
+        @retval RetCode - operation status
+        @retval PhysicalVolume - physical volume handle
         @throw nothing
-        @todo implement
         */
-        [[nodiscard]]
-        static auto OpenPhysicalVolume( const std::filesystem::path & path ) noexcept
+        static std::tuple< RetCode, PhysicalVolume > OpenPhysicalVolume( const std::filesystem::path & path ) noexcept
         {
             using namespace std;
             try
@@ -644,31 +596,27 @@ namespace jb
 
                 if ( auto[ ret, volume ] = open< PhysicalVolume >( filesystem::absolute( path ) );  RetCode::Ok == ret )
                 {
-                    assert( volume );
-
-                    if ( auto ret = prioritize_on_bottom( volume ); ret == RetCode::Ok )
-                    {
-                        return std::pair{ volume.impl_.lock()->status(), volume };
-                    }
-                    else
-                    {
-                        assert( RetCode::InvalidHandle != close( volume ) );
-                        return std::pair{ ret, volume };
-                    }
+                    prioritize_on_bottom( volume );
+                    return { volume.impl_.lock()->status(), volume };
                 }
                 else
                 {
-                    return std::pair{ ret, volume };
+                    return { ret, volume };
                 }
             }
             catch ( ... )
             {
             }
 
-            return std::pair{ RetCode::UnknownError, PhysicalVolume() };
+            return { RetCode::UnknownError, PhysicalVolume() };
         }
 
 
+        /** Closes all oped volumes
+
+        @retval RetCode - operation status
+        @throw nothing
+        */
         static auto CloseAll( ) noexcept
         {
             try

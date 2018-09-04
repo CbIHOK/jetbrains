@@ -75,22 +75,54 @@ namespace jb
 
         RetCode PrioritizeOnTop() const noexcept
         {
-            return Storage::prioritize_on_top( *this );
+            try
+            {
+                Storage::prioritize_on_top( *this );
+                return RetCode::Ok;
+            }
+            catch ( ... )
+            {
+            }
+            return RetCode::UnknownError;
         }
 
         RetCode PrioritizeOnBottom() const noexcept
         {
-            return Storage::prioritize_on_bottom( *this );
+            try
+            {
+                Storage::prioritize_on_bottom( *this );
+                return RetCode::Ok;
+            }
+            catch ( ... )
+            {
+            }
+            return RetCode::UnknownError;
         }
 
         RetCode PrioritizeBefore( const PhysicalVolume & before ) const noexcept
         {
-            return Storage::prioritize_before( *this, before );
+            try
+            {
+                Storage::prioritize_before( *this, before );
+                return RetCode::Ok;
+            }
+            catch ( ... )
+            {
+            }
+            return RetCode::UnknownError;
         }
 
         RetCode PrioritizeAfter( const PhysicalVolume & after ) const noexcept
         {
-            return Storage::prioritize_after( *this, after );
+            try
+            {
+                Storage::prioritize_after( *this, after );
+                return RetCode::Ok;
+            }
+            catch ( ... )
+            {
+            }
+            return RetCode::UnknownError;
         }
     };
 }
