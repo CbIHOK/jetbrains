@@ -84,6 +84,9 @@ namespace jb
         //    BTreePath() { reserve(100); }
         //};
 
+
+        /* B-tree exception
+        */
         struct btree_error : public std::runtime_error
         {
             btree_error( RetCode rc, const char * what ) : std::runtime_error( what ), rc_( rc ) {}
@@ -94,13 +97,16 @@ namespace jb
         };
 
 
-    private:
-
+        //
+        // throws exception if condition failed
+        //
         auto static throw_btree_error( bool condition, RetCode rc, const char * what = "" )
         {
             if ( !condition ) throw btree_error( rc, what );
         }
 
+
+    private:
 
         //
         // represent b-tree element
@@ -131,6 +137,7 @@ namespace jb
         //using ElementCollection = std::vector< Element  >;
         //using LinkCollection = std::vector< NodeUid >;
 
+
         //
         // data members
         //
@@ -142,62 +149,68 @@ namespace jb
         LinkCollection links_;
 
 
+        //
+        // Element output streaming
+        //
         friend std::ostream & operator << ( std::ostream & os, const Element & e )
         {
             big_uint64_t digest = e.digest_;
             big_uint64_t good_before = e.good_before_;
             big_uint64_t children = e.children_;
-            big_uint64_t type_index = e.value_.type_index_;
-            big_uint64_t value = e.value_.value_;
 
             os.write( reinterpret_cast< const char* >( &digest ), sizeof( digest ) );
             throw_btree_error( os.good(), RetCode::UnknownError );
+
             os.write( reinterpret_cast< const char* >( &good_before ), sizeof( good_before ) );
             throw_btree_error( os.good(), RetCode::UnknownError );
+
             os.write( reinterpret_cast< const char* >( &children ), sizeof( children ) );
             throw_btree_error( os.good(), RetCode::UnknownError );
-            os.write( reinterpret_cast< const char* >( &type_index ), sizeof( type_index ) );
-            throw_btree_error( os.good(), RetCode::UnknownError );
-            os.write( reinterpret_cast< const char* >( &value ), sizeof( value ) );
-            throw_btree_error( os.good(), RetCode::UnknownError );
+
+            os << e.value_;
 
             return os;
         }
 
+
+        //
+        // Element input streaming
+        //
         friend std::istream & operator >> ( std::istream & is, Element & e )
         {
             big_uint64_t digest;
             big_uint64_t good_before;
             big_uint64_t children;
-            big_uint64_t type_index;
-            big_uint64_t value;
 
             is.read( reinterpret_cast< char* >( &digest ), sizeof( digest ) );
             throw_btree_error( is.good(), RetCode::UnknownError );
+            
             is.read( reinterpret_cast< char* >( &good_before ), sizeof( good_before ) );
             throw_btree_error( is.good(), RetCode::UnknownError );
+            
             is.read( reinterpret_cast< char* >( &children ), sizeof( children ) );
-            throw_btree_error( is.good(), RetCode::UnknownError );
-            is.read( reinterpret_cast< char* >( &type_index ), sizeof( type_index ) );
-            throw_btree_error( is.good(), RetCode::UnknownError );
-            is.read( reinterpret_cast< char* >( &value ), sizeof( value ) );
             throw_btree_error( is.good(), RetCode::UnknownError );
 
             e.digest_ = static_cast< Digest >( digest );
             e.good_before_ = good_before;
             e.children_ = children;
-            e.value_.type_index_ = type_index;
-            e.value_.value_ = value;
+
+            is >> e.value_;
 
             return is;
         }
 
+
+        //
+        // B-tree node output stering
+        //
         friend std::ostream & operator << ( std::ostream & os, const BTree & node )
         {
             throw_btree_error( node.elements_.size() + 1 == node.links_.size(), RetCode::UnknownError, "Broken b-tree node" );
 
             big_uint64_t size = node.elements_.size();
             os.write( reinterpret_cast< const char * >( &size ), sizeof( size ) );
+            throw_btree_error( os.good(), RetCode::UnknownError );
 
             for ( const auto & e : node.elements_ )
             {
@@ -208,16 +221,23 @@ namespace jb
             {
                 big_uint64_t link = l;
                 os.write( reinterpret_cast< const char * >( &link ), sizeof( link ) );
+                throw_btree_error( os.good(), RetCode::UnknownError );
             }
 
             return os;
         }
 
 
+        //
+        // B-tree node input streaming
+        //
         friend std::istream & operator >> ( std::istream & is, BTree & node )
         {
             big_uint64_t size;
+
             is.read( reinterpret_cast< char* >( &size ), sizeof( size ) );
+            throw_btree_error( is.good(), RetCode::UnknownError );
+
             size_t sz = static_cast< size_t >( size );
 
             throw_btree_error( sz < BTreeMax, RetCode::InvalidData, "Maximum size of b-tree node exceeded" );
@@ -233,7 +253,10 @@ namespace jb
             for ( auto & l : node.links_ )
             {
                 big_uint64_t link;
+
                 is.read( reinterpret_cast< char* >( &link ), sizeof( link ) );
+                throw_btree_error( is.good(), RetCode::UnknownError );
+
                 l = link;
             }
 
@@ -244,8 +267,7 @@ namespace jb
         /* Stores b-tree node to file
 
         @param [in] t - transaction
-        @retval RetCode - operation status
-        @throw may throw std::exception for different reasons
+        @throw may throw btree_error, storage_file_error
         */
         void save( Transaction & t ) const
         {
@@ -269,7 +291,7 @@ namespace jb
         /* Stores b-tree node to file preserving node uid
 
         @param [in] t - transaction
-        @throw may throw std::exception for different reasons
+        @throw may throw btree_error, storage_file_error
         */
         void overwrite( Transaction & t ) const
         {
@@ -287,6 +309,8 @@ namespace jb
         }
 
 
+        /** 
+        */
         void load( NodeUid uid )
         {
             //auto buffer = file_.get_chain_reader< uint64_t >( uid );

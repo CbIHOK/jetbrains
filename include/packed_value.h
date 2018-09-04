@@ -322,7 +322,9 @@ namespace jb
             big_uint64_t value = v.value_;
 
             os.write( reinterpret_cast< const char* >( &type_index ), sizeof( type_index ) );
+            throw_btree_error( os.good(), RetCode::UnknownError );
             os.write( reinterpret_cast< const char* >( &value ), sizeof( value ) );
+            throw_btree_error( os.good(), RetCode::UnknownError );
 
             return os;
         }
@@ -336,7 +338,9 @@ namespace jb
             big_uint64_t value;
 
             is.read( reinterpret_cast< char* >( &type_index ), sizeof( type_index ) );
+            throw_btree_error( is.good(), RetCode::UnknownError );
             is.read( reinterpret_cast< char* >( &value ), sizeof( value ) );
+            throw_btree_error( is.good(), RetCode::UnknownError );
 
             v.type_index_ = static_cast< size_t >( type_index );
             v.value_ = value;
