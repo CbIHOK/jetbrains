@@ -259,6 +259,10 @@ namespace jb
                 {
                     return RetCode::InvalidKey;
                 }
+                else if ( force )
+                {
+                    return RetCode::NotYetImplemented;
+                }
                 else if ( auto impl = impl_.lock( ) )
                 {
                     return impl->erase( key_, force );
