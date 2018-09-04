@@ -2,3 +2,4 @@
 
 add_subdirectory( regression )
 add_subdirectory( performance )
+add_subdirectory( stress )

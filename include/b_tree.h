@@ -22,23 +22,28 @@
 #endif
 
 
+class TestPackedValue;
 template < typename T > class TestBTree;
 
 
 namespace jb
 {
+    /** Implementstion of B-tree. Each key in the system holds their chilren keys as a B-tree.
+    
+    That allow us to minimize a number of file system access what is important for huge subkey
+    numbers. B-tree insert, search, and erase operation have O( log(t,T) ) complexity, where t is
+    B-tree factor known as minimum power
+
+    @tparam Policies - global settings
+    */
     template < typename Policies >
     class Storage< Policies >::PhysicalVolumeImpl::BTree
     {
+        friend class TestPackedValue;
         template < typename T > friend class TestBTree;
 
         friend class BTreeCache;
-        friend class Storage< Policies >::PhysicalVolumeImpl;
-
-        struct Element;
-        friend std::ostream & operator << ( std::ostream & os, const Element & e );
-        friend std::istream & operator >> ( std::istream & is, Element & e );
-
+        friend class PhysicalVolumeImpl; // needs access to private save()
 
         //
         // few aliases
@@ -49,10 +54,7 @@ namespace jb
         using StorageFile = typename PhysicalVolumeImpl::StorageFile;
         using Transaction = typename StorageFile::Transaction;
         using BlobUid = typename StorageFile::ChunkUid;
-        //using istream64 = typename std::basic_istream< uint64_t, ::jb::streambuf_traits< uint64_t >::traits_type >;
-        //using ostream64 = typename std::basic_ostream< uint64_t, ::jb::streambuf_traits< uint64_t >::traits_type >;
         using big_uint64_t = boost::endian::big_uint64_at;
-
 
         static constexpr auto BTreeMinPower = Policies::PhysicalVolumePolicy::BTreeMinPower;
         static_assert( BTreeMinPower >= 2, "B-tree power must be > 1" );
@@ -62,10 +64,9 @@ namespace jb
 
         template < typename T, size_t C > using static_vector = boost::container::static_vector< T, C >;
 
+        struct PackedValue;
 
     public:
-
-        struct PackedValue;
 
         using BTreeP = std::shared_ptr< BTree >;
         using NodeUid = typename StorageFile::ChunkUid;
@@ -111,56 +112,6 @@ namespace jb
             NodeUid children_;
             PackedValue value_;
 
-            friend std::ostream & operator << ( std::ostream & os, const Element & e )
-            {
-                big_uint64_t digest = e.digest_;
-                big_uint64_t good_before = e.good_before_;
-                big_uint64_t children = e.children_;
-                big_uint64_t type_index = e.value_.type_index_;
-                big_uint64_t value = e.value_.value_;
-
-                os.write( reinterpret_cast< const char* >( &digest ), sizeof( digest ) );
-                throw_btree_error( os.good(), RetCode::UnknownError );
-                os.write( reinterpret_cast< const char* >( &good_before ), sizeof( good_before ) );
-                throw_btree_error( os.good(), RetCode::UnknownError );
-                os.write( reinterpret_cast< const char* >( &children ), sizeof( children ) );
-                throw_btree_error( os.good(), RetCode::UnknownError );
-                os.write( reinterpret_cast< const char* >( &type_index ), sizeof( type_index ) );
-                throw_btree_error( os.good(), RetCode::UnknownError );
-                os.write( reinterpret_cast< const char* >( &value ), sizeof( value ) );
-                throw_btree_error( os.good(), RetCode::UnknownError );
-
-                return os;
-            }
-
-            friend std::istream & operator >> ( std::istream & is, Element & e )
-            {
-                big_uint64_t digest;
-                big_uint64_t good_before;
-                big_uint64_t children;
-                big_uint64_t type_index;
-                big_uint64_t value;
-
-                is.read( reinterpret_cast< char* >( &digest ), sizeof( digest ) );
-                throw_btree_error( is.good(), RetCode::UnknownError );
-                is.read( reinterpret_cast< char* >( &good_before ), sizeof( good_before ) );
-                throw_btree_error( is.good(), RetCode::UnknownError );
-                is.read( reinterpret_cast< char* >( &children ), sizeof( children ) );
-                throw_btree_error( is.good(), RetCode::UnknownError );
-                is.read( reinterpret_cast< char* >( &type_index ), sizeof( type_index ) );
-                throw_btree_error( is.good(), RetCode::UnknownError );
-                is.read( reinterpret_cast< char* >( &value ), sizeof( value ) );
-                throw_btree_error( is.good(), RetCode::UnknownError );
-
-                e.digest_ = static_cast< Digest >( digest );
-                e.good_before_ = good_before;
-                e.children_ = children;
-                e.value_.type_index_ = type_index;
-                e.value_.value_ = value;
-
-                return is;
-            }
-
             //
             // provides LESSER relation for b-tree elements
             //
@@ -190,6 +141,56 @@ namespace jb
         ElementCollection elements_;
         LinkCollection links_;
 
+
+        friend std::ostream & operator << ( std::ostream & os, const Element & e )
+        {
+            big_uint64_t digest = e.digest_;
+            big_uint64_t good_before = e.good_before_;
+            big_uint64_t children = e.children_;
+            big_uint64_t type_index = e.value_.type_index_;
+            big_uint64_t value = e.value_.value_;
+
+            os.write( reinterpret_cast< const char* >( &digest ), sizeof( digest ) );
+            throw_btree_error( os.good(), RetCode::UnknownError );
+            os.write( reinterpret_cast< const char* >( &good_before ), sizeof( good_before ) );
+            throw_btree_error( os.good(), RetCode::UnknownError );
+            os.write( reinterpret_cast< const char* >( &children ), sizeof( children ) );
+            throw_btree_error( os.good(), RetCode::UnknownError );
+            os.write( reinterpret_cast< const char* >( &type_index ), sizeof( type_index ) );
+            throw_btree_error( os.good(), RetCode::UnknownError );
+            os.write( reinterpret_cast< const char* >( &value ), sizeof( value ) );
+            throw_btree_error( os.good(), RetCode::UnknownError );
+
+            return os;
+        }
+
+        friend std::istream & operator >> ( std::istream & is, Element & e )
+        {
+            big_uint64_t digest;
+            big_uint64_t good_before;
+            big_uint64_t children;
+            big_uint64_t type_index;
+            big_uint64_t value;
+
+            is.read( reinterpret_cast< char* >( &digest ), sizeof( digest ) );
+            throw_btree_error( is.good(), RetCode::UnknownError );
+            is.read( reinterpret_cast< char* >( &good_before ), sizeof( good_before ) );
+            throw_btree_error( is.good(), RetCode::UnknownError );
+            is.read( reinterpret_cast< char* >( &children ), sizeof( children ) );
+            throw_btree_error( is.good(), RetCode::UnknownError );
+            is.read( reinterpret_cast< char* >( &type_index ), sizeof( type_index ) );
+            throw_btree_error( is.good(), RetCode::UnknownError );
+            is.read( reinterpret_cast< char* >( &value ), sizeof( value ) );
+            throw_btree_error( is.good(), RetCode::UnknownError );
+
+            e.digest_ = static_cast< Digest >( digest );
+            e.good_before_ = good_before;
+            e.children_ = children;
+            e.value_.type_index_ = type_index;
+            e.value_.value_ = value;
+
+            return is;
+        }
 
         friend std::ostream & operator << ( std::ostream & os, const BTree & node )
         {

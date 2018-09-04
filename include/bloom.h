@@ -3,12 +3,21 @@
 
 
 #include <array>
-#include <execution>
 #include <boost/container/static_vector.hpp>
 
 
 namespace jb
 {
+
+    /** Represents Bloom filter for key's digests
+
+    For massive trees searching for a key may takes a long time. Using Bloom filter hepls us to
+    reject requests for non-existing keys for O(1). If a key's digest was not added to filter
+    the filter tells that immediately, without searching through the tree of keys that may imply
+    a lot of operations on b-trees
+
+    @tparam Policies - global settings
+    */
     template < typename Policies >
     class Storage< Policies >::PhysicalVolumeImpl::Bloom
     {
@@ -22,10 +31,19 @@ namespace jb
         static_assert( BloomSize % sizeof( uint64_t ) == 0, "Invalid Bloom size" );
         static_assert( BloomFnCount > 0, "Invalid tree depth" );
 
+
+        //
+        // data members
+        //
         std::atomic< RetCode > status_ = RetCode::Ok;
         StorageFile & file_;
         std::array< uint8_t, BloomSize > alignas( sizeof( uint64_t ) ) filter_;
 
+
+        /* Sets filter status
+
+        @param [in] status - status to be set
+        */
         auto set_status( RetCode status ) noexcept
         {
             auto ok = RetCode::Ok;
@@ -35,10 +53,23 @@ namespace jb
 
     public:
 
-        /** Declaration of single digest that is actually just hash value of a key segment
+        /** Declaration of a key digest that is a hash combination of key level and value. The digests
+        must regard key levels to avoid the equivalence /foo/boo == /boo/foo, cuz taking the levels
+        into account gives as /1+foo/2+boo != /1+boo/2+foo
+
+        It uses fixed size to avoid an incovinience of size_t between x32 and x64 platforms
         */
         using Digest = uint32_t;
 
+
+        /** Declares a reflection of a key path into digests
+        */
+        using DigestPath = boost::container::static_vector< Digest, BloomFnCount >;
+        //using DigestPath = std::vector< Digest >;
+
+
+        /** Bloom filter exception
+        */
         struct bloom_error : public std::runtime_error
         {
             bloom_error( RetCode rc, const char * what ) : std::runtime_error( what ), rc_( rc ) {}
@@ -47,8 +78,6 @@ namespace jb
             RetCode rc_;
         };
 
-        using DigestPath = boost::container::static_vector< Digest, BloomFnCount >;
-        //using DigestPath = std::vector< Digest >;
 
         /** No default constructible/copyable/movable
         */
@@ -56,9 +85,12 @@ namespace jb
         Bloom( Bloom && ) = delete;
 
 
-        /** Constructor
+        /** Explicit constructor
+
+        Statically allocates required memory and read data from associated storage file
 
         @param [in] storage - associated physical storage
+        @throw nothing (by the standard, not by MS interpretation)
         */
         explicit Bloom( StorageFile & file ) try : file_( file )
         {
@@ -77,15 +109,24 @@ namespace jb
         }
 
 
-        [ [ nodiscard ] ]
-        auto status() const noexcept { return status_.load( std::memory_order_acquire ); }
+        /** Provides current filter status
+
+        @retval RetCode - status
+        @throw nothing
+        */
+        [[ nodiscard ]]
+        auto status() const noexcept
+        {
+            return status_.load( std::memory_order_acquire );
+        }
 
 
-        /** Generate digest for a key considering level and stem
+        /** Generate digest for a key's segment considering segment level
 
         @param [in] level - key level
-        @param [in] key - stem of key's segment
-        @retval key's digest
+        @param [in] key - key segment
+        @retval Digest - key digest
+        @throw throw bloom_error
         */
         static Digest generate_digest( size_t level, const Key & key )
         {
@@ -99,14 +140,15 @@ namespace jb
                 throw bloom_error( RetCode::InvalidSubkey, "" );
             }
 
-            return variadic_hash( level, key ) & std::numeric_limits< uint32_t >::max();
+            static constexpr auto max = std::numeric_limits< uint32_t >::max();
+            return static_cast< Digest >( variadic_hash( level, key ) & max );
         }
 
 
-        /** Updates the filter adding another segment digest
+        /** Updates the filter adding another key digest
 
         @param [in] digest - digest to be added
-        @throw nothing
+        @throw storage_file_error
         */
         auto add_digest( Digest digest )
         {
@@ -124,14 +166,14 @@ namespace jb
         }
 
 
-        /** Checks if combination of given keys MAY present
+        /** Checks if given key MAY present in the storage
 
         @param [in] prefix - prefix key
         @param [in] suffix - suffix key
         @retval RetCode - operation status
         @retval size_t - number of generated digest
         @retval bool - if combined key may present
-        @throw nothing
+        @throw bloom_error
         */
         bool test( const Key & prefix, const Key & suffix, DigestPath & digests ) const
         {

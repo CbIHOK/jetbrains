@@ -20,27 +20,12 @@ namespace jb
 
     template < typename CharT > struct store_adaptor_type
     {
-        using type = CharT;
+        using type = typename std::char_traits< CharT >::int_type;
     };
 
     template <> struct store_adaptor_type< char >
     {
         using type = char;
-    };
-
-    template <> struct store_adaptor_type< wchar_t >
-    {
-        using type = std::char_traits< wchar_t >::int_type;
-    };
-
-    template <> struct store_adaptor_type< char16_t >
-    {
-        using type = std::char_traits< char16_t >::int_type;
-    };
-
-    template <> struct store_adaptor_type< char32_t >
-    {
-        using type = std::char_traits< char32_t >::int_type;
     };
 
     template < typename CharT > using store_adaptor_type_t = typename store_adaptor_type< CharT >::type;
