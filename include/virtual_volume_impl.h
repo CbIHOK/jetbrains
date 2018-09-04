@@ -230,7 +230,7 @@ namespace jb
         @throw may throw std::exception for some reasons
         */
         template < typename M, typename F >
-        [ [ nodiscard ] ]
+        [[ nodiscard ]]
         auto run_parallel( const M & mounts, F f )
         {
             using namespace std;
@@ -249,24 +249,29 @@ namespace jb
             connectors.resize( mounts.size( ) + 1 );
 
             // through all mounts: connect the routines and start them asynchronuosly
-            for ( auto mp_it = begin( mounts ); mp_it != end( mounts ); ++mp_it )
+            auto mp_it = begin( mounts );
+            auto connector_it = begin( connectors );
+            auto future_it = begin( futures );
+
+            for ( ; mp_it != end( mounts ); ++mp_it, ++connector_it, ++future_it )
             {
-                // ordinal number of mount
-                auto d = static_cast< size_t >( distance( begin( mounts ), mp_it ) );
-
                 // get mount implementation ptr
-                auto mp = *mp_it;
-
-                // assign future
-                assert( d < futures.size( ) );
-                auto & future = futures[ d ];
+                auto & mp = *mp_it;
 
                 // assign the connectors
-                assert( d < connectors.size( ) && d + 1 < connectors.size( ) );
-                auto & in = connectors[ d ];
-                auto & out = connectors[ d + 1 ];
+                assert( connector_it != end( connectors ) && connector_it + 1 != end( connectors ) );
+                auto & in = *connector_it;
+                auto & out = *( connector_it + 1 );
 
-                // start routine
+                assert( future_it != end( futures ) );
+                auto & future = *future_it;
+
+                //
+                // start the routine
+                //
+                // TODO: something wrong happens here - physical volumes get their connectors in wrong order, e.g.
+                // second physical volume gets IN/OUT signals of first and vice versa
+                //
                 future = async( launch::async, [&] ( ) noexcept { return f( mp, in, out ); } );
             }
 

@@ -71,26 +71,6 @@ namespace jb
     template < typename CharT > using stored_type_t = typename stored_type< CharT >::type;
 
 
-    //template< typename CharT >
-    //struct streambuf_traits
-    //{
-    //    using traits_type = std::char_traits< CharT >;
-    //};
-
-    //template<>
-    //struct streambuf_traits< int64_t >
-    //{
-    //    using traits_type = std::_Char_traits< int64_t, int64_t >;
-    //};
-
-    //template<>
-    //struct streambuf_traits< uint64_t >
-    //{
-    //    using traits_type = std::_Char_traits< uint64_t, uint64_t >;
-    //};
-
-
-
     /** Represents input stream from storage file
 
     @tparam Policies - global setting
@@ -98,7 +78,7 @@ namespace jb
     */
     template < typename Policies >
     template < typename CharT >
-    class Storage< Policies >::PhysicalVolumeImpl::StorageFile::istreambuf : public std::basic_streambuf< CharT >//, typename streambuf_traits< CharT >::traits_type >
+    class Storage< Policies >::PhysicalVolumeImpl::StorageFile::istreambuf : public std::basic_streambuf< CharT >
     {
         //
         // requires access to private explicit constructor
@@ -285,7 +265,7 @@ namespace jb
     */
     template < typename Policies >
     template < typename CharT >
-    class Storage< Policies >::PhysicalVolumeImpl::StorageFile::ostreambuf : public std::basic_streambuf< CharT >//, typename streambuf_traits< CharT >::traits_type >
+    class Storage< Policies >::PhysicalVolumeImpl::StorageFile::ostreambuf : public std::basic_streambuf< CharT >
     {
         friend class Transaction;
 

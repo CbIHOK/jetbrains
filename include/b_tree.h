@@ -360,8 +360,11 @@ namespace jb
             // if the element exists
             if ( pos < elements_.size() && e.digest_ == elements_[ pos ].digest_ )
             {
-                // if overwriting possible
+                // if overwriting possible?
                 throw_btree_error( ow, RetCode::AlreadyExists );
+
+                // erase blob for old value
+                elements_[ pos ].value_.erase_blob( t );
 
                 // emplace element at existing position
                 auto old_expiration = elements_[ pos ].good_before_;
@@ -545,6 +548,9 @@ namespace jb
             throw_btree_error( elements_.size() + 1 == links_.size(), RetCode::UnknownError, "Broken b-tree node" );
             throw_btree_error( pos < elements_.size(), RetCode::UnknownError, "Invalid position" );
 
+            // erase BLOB for the elements
+            elements_[ pos ].value_.erase_blob( t );
+
             if ( ! is_leaf() )
             {
                 throw_btree_error( links_[ pos ] != InvalidNodeUid, RetCode::UnknownError, "Invalid internal b-tree node" );
@@ -580,8 +586,6 @@ namespace jb
 
                     // save this one
                     entry_level == bpath.size() ? overwrite( t ) : save( t );
-
-                    return;
 
                     return;
                 }

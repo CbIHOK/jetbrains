@@ -38,6 +38,19 @@ protected:
     using Transaction = typename StorageFile::Transaction;
     using PackedValue = typename Storage::PhysicalVolumeImpl::BTree::PackedValue;
 
+    void SetUp() override
+    {
+        using namespace std;
+
+        for ( auto & p : filesystem::directory_iterator( "." ) )
+        {
+            if ( p.is_regular_file() && p.path().extension() == ".jb" )
+            {
+                filesystem::remove( p.path() );
+            }
+        }
+    }
+
     void TearDown() override
     {
         using namespace std;

@@ -242,7 +242,7 @@ namespace jb
     public:
 
         explicit PhysicalVolumeImpl( const std::filesystem::path & path ) try
-            : file_{ path }
+            : file_( path, true )
             , filter_( file_ )
             , cache_( file_ )
         {
@@ -305,16 +305,22 @@ namespace jb
                 NodeLock locks;
                 PathLock path_lock;
 
+                // check if the volume is Ok
+                if ( RetCode::Ok != status() ) wait_and_do_it( in, out, [&] { return tuple{ status() }; } );
+
+                // check if path may present
                 if ( auto may_present = filter_.test( entry_path, relative_path, digests ); !may_present )
                 {
                     return wait_and_do_it( in, out, [=] { return tuple{ RetCode::NotFound, InvalidNodeUid, PathLock{} }; } );
                 }
-                else if ( digests.empty() ) // root node
+                // if root is mounted?
+                else if ( digests.empty() )
                 {
                     return wait_and_do_it( in, out, [] { return tuple{ RetCode::Ok, RootNodeUid, PathLock{} }; } );
                 }
                 else
                 {
+                    // navigate through the tree and get locks over visited nodes
                     auto found = navigate( digests, locks, bpath, [&] ( const BTreeP & p ) {
                         path_lock << path_locker_.lock( p->uid() );
                     }, in );
@@ -383,32 +389,37 @@ namespace jb
                 BTreePath bpath;
                 NodeLock locks;
 
+                // check if the volume is Ok
+                if ( RetCode::Ok != status() ) wait_and_do_it( in, out, [&] { return tuple{ status() }; } );
+
                 // chech if target path exists
                 if ( auto may_present = filter_.test( entry_path, relative_path, digests ); !may_present )
                 {
                     return wait_and_do_it( in, out, [] { return tuple{ RetCode::NotFound }; } );
                 }
 
-                // initialize target by root
+                // set target b-tree as root
                 auto target_node = cache_.get_node( RootNodeUid );
 
                 // if targte is not root
                 if ( digests.size() )
                 {
-                    // find target b-tree and ensure that children b-tree exisis
+                    // find target node and ensure that their children b-tree exisis
                     if ( auto found = navigate( digests, locks, bpath, [] ( auto ) {}, in ) )
                     {
                         assert( bpath.size() );
                         auto parent_btree = cache_.get_node( bpath.back().first );
 
                         {
+                            // exclusively lock target node
                             assert( locks.size() );
-                            exclusive_lock e{ locks.front() };
+                            exclusive_lock e{ locks.back() };
 
+                            // deploy children b-tree
                             parent_btree->deploy_children_btree( bpath.back().second );
                         }
 
-                        // set targte b-tree
+                        // set just deployed children b-tree as target
                         target_node = cache_.get_node( parent_btree->children( bpath.back().second ) );
                     }
                     else
@@ -416,33 +427,44 @@ namespace jb
                         return wait_and_do_it( in, out, [] { return tuple{ RetCode::NotFound }; } );
                     }
                 }
-                else if ( digests.size() + 1 >= MaxTreeDepth )
+                else
+                {
+                    // get lock over root
+                    locks.push_back( shared_lock{ target_node->guard() } );
+                }
+
+                // if inserting new subkey causes exceeding maximum tree depth?
+                if ( digests.size() + 1 >= MaxTreeDepth )
                 {
                     return wait_and_do_it( in, out, [] { return tuple{ RetCode::MaxTreeDepthExceeded }; } );
                 }
 
                 //insertion
                 {
-                    locks.push_back( shared_lock{ target_node->guard() } );
-
+                    // generate digest for the subkey
                     Digest digest = Bloom::generate_digest( digests.size() + 1, subkey );
 
+                    // find target b-tree node to insertion
                     BTreePath bpath;
                     target_node->find_digest( digest, bpath );
 
+                    // obtain target b-tree node
                     assert( bpath.size() );
                     auto target_btree = cache_.get_node( bpath.back().first );
 
                     return wait_and_do_it( in, out, [&] {
 
                         {
+                            // get exclusive lock over target key
                             assert( locks.size() );
                             exclusive_lock e{ locks.back() };
 
+                            // and insert new subkey
                             BTree::Pos target_pos = bpath.back().second; bpath.pop_back();
                             target_btree->insert( target_pos, bpath, digest, value, good_before, overwrite );
                         }
 
+                        // force filter to respect new digest
                         filter_.add_digest( digest );
 
                         return tuple{ RetCode::Ok };
@@ -494,6 +516,9 @@ namespace jb
                 DigestPath digests;
                 BTreePath bpath;
                 NodeLock locks;
+
+                // check if the volume is Ok
+                if ( RetCode::Ok != status() ) wait_and_do_it( in, out, [&] { return tuple{ status() }; } );
 
                 // check that key presents
                 if ( auto may_present = filter_.test( entry_path, relative_path, digests ); !may_present )
@@ -562,6 +587,9 @@ namespace jb
                 DigestPath digests;
                 BTreePath bpath;
                 NodeLock locks;
+
+                // check if the volume is Ok
+                if ( RetCode::Ok != status() ) wait_and_do_it( in, out, [&] { return tuple{ status() }; } );
 
                 if ( auto may_present = filter_.test( entry_path, relative_path, digests ); !may_present )
                 {
