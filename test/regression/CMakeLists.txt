@@ -19,5 +19,3 @@ add_executable( regression EXCLUDE_FROM_ALL
 target_link_libraries( regression gtest gtest_main )
 
 install( TARGETS regression DESTINATION . )
-
-#add_test( NAME regression COMMAND regression )

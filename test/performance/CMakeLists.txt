@@ -16,5 +16,3 @@ add_executable( performance EXCLUDE_FROM_ALL
 target_link_libraries( performance gtest gtest_main )
 
 install( TARGETS performance DESTINATION . )
-
-#add_test( NAME performance COMMAND regression )

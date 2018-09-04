@@ -648,7 +648,7 @@ namespace jb
 
                     if ( auto ret = prioritize_on_bottom( volume ); ret == RetCode::Ok )
                     {
-                        return std::pair{ RetCode::Ok, volume };
+                        return std::pair{ volume.impl_.lock()->status(), volume };
                     }
                     else
                     {
