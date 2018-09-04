@@ -20,6 +20,10 @@ class TestPackedValue;
 namespace jb
 {
 
+    /** Let us know if values of the type are to be saved as BLOB
+
+    @tparam T - type to be checked
+    */
     template < typename T >
     struct is_blob_type
     {
@@ -27,6 +31,10 @@ namespace jb
         using StreamCharT = char;
     };
 
+
+    //
+    // float considered as not BLOB type
+    //
     template <>
     struct is_blob_type< float >
     {
@@ -34,6 +42,10 @@ namespace jb
         using StreamCharT = char;
     };
 
+
+    //
+    // double considered as not BLOB type
+    //
     template <>
     struct is_blob_type< double >
     {
@@ -41,6 +53,10 @@ namespace jb
         using StreamCharT = char;
     };
 
+
+    //
+    // std::string considered as BLOB type
+    //
     template <>
     struct is_blob_type< std::string >
     {
@@ -48,6 +64,10 @@ namespace jb
         using StreamCharT = char;
     };
 
+
+    //
+    // std::wstring considered as BLOB type
+    //
     template <>
     struct is_blob_type< std::wstring >
     {
@@ -55,6 +75,10 @@ namespace jb
         using StreamCharT = wchar_t;
     };
 
+
+    //
+    // std::basic_string< char16_t > considered as BLOB type
+    //
     template <>
     struct is_blob_type< std::basic_string< char16_t > >
     {
@@ -62,6 +86,10 @@ namespace jb
         using StreamCharT = char16_t;
     };
 
+
+    //
+    // std::basic_string< char32_t > considered as BLOB type
+    //
     template <>
     struct is_blob_type< std::basic_string< char32_t > >
     {
@@ -70,10 +98,13 @@ namespace jb
     };
 
 
+    /** Represent value inside b-tree node
+    */
     template < typename Policies >
     struct Storage< Policies >::PhysicalVolumeImpl::BTree::PackedValue
     {
         friend class TestPackedValue;
+        friend class BTree;
 
         using Value = typename Storage::Value;
         using big_uint64_t = boost::endian::big_uint64_at;
@@ -81,6 +112,10 @@ namespace jb
         uint64_t type_index_;
         uint64_t value_;
 
+
+        //
+        // checks if referred value is BLOB type
+        //
         template < size_t I >
         bool check_for_blob() const
         {
@@ -107,6 +142,9 @@ namespace jb
         }
 
 
+        //
+        // pack a value
+        //
         template < size_t I >
         static PackedValue serialize( Transaction & t, const Value & value )
         {
@@ -155,7 +193,11 @@ namespace jb
             return PackedValue( std::variant_npos, 0 );
         }
 
-        template < size_t I > 
+
+        //
+        // unpack a value
+        //
+        template < size_t I >
         Value deserialize_value( StorageFile & f ) const
         {
             using namespace std;
@@ -203,24 +245,43 @@ namespace jb
             return Value{};
         }
 
+        //
+        // private explicit constructor
+        //
         explicit PackedValue( size_t type_index, uint64_t value ) : type_index_( type_index ), value_( value ) {}
 
     public:
 
+        /** Default constructor, creates dummy object
+        */
         PackedValue() : type_index_( std::variant_npos ) {}
 
+
+        /** Class is copyable...
+        */
         PackedValue( const PackedValue & ) noexcept = default;
         PackedValue( PackedValue&& ) noexcept = default;
 
+
+        /** ...and movable
+        */
         PackedValue & operator = ( const PackedValue & v ) noexcept = default;
         PackedValue & operator = ( PackedValue&& ) noexcept = default;
 
+
+        /** Let's know if assigned value stored as BLOB
+        */
         auto is_blob() const
         {
             return check_for_blob< 0 >();
         }
 
-        /** 
+
+        /** Converts value into packed representation
+
+        @param [in] t - transaction to be used to store BLOB
+        @param [in] value - value to be packed
+        @retval packed value
         */
         static PackedValue make_packed( Transaction & t, const Value & value )
         {
@@ -229,12 +290,21 @@ namespace jb
         }
 
 
+        /** Unpack value
+
+        @param [in] f - file to be used
+        @retval unpacked value
+        */
         Value unpack( StorageFile & f ) const
         {
             return deserialize_value< 0 >( f );
         }
 
         
+        /** Erases associated BLOB
+
+        @param [in] t - transaction
+        */
         void erase_blob( Transaction & t ) const
         {
             if ( check_for_blob< 0 >() )
@@ -243,6 +313,9 @@ namespace jb
             }
         }
 
+
+        /** Output streaming operator
+        */
         friend std::ostream & operator << ( std::ostream & os, const PackedValue & v )
         {
             big_uint64_t type_index = v.type_index_;
@@ -254,6 +327,9 @@ namespace jb
             return os;
         }
 
+
+        /** Input streaming operator
+        */
         friend std::istream & operator >> ( std::istream & is, PackedValue & v )
         {
             big_uint64_t type_index;
