@@ -78,7 +78,7 @@ namespace jb
         using Value = typename Storage::Value;
         using big_uint64_t = boost::endian::big_uint64_at;
 
-        size_t type_index_;
+        uint64_t type_index_;
         uint64_t value_;
 
         template < size_t I >

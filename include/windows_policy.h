@@ -169,7 +169,7 @@ namespace jb
         @retval uint64_t - number of read bytes
         @throw nothing
         */
-        static std::tuple< bool, uint64_t > read_file( HandleT handle, void * buffer, size_t size ) noexcept
+        static std::tuple< bool, size_t > read_file( HandleT handle, void * buffer, size_t size ) noexcept
         {
             if ( size <= std::numeric_limits< DWORD >::max() )
             {

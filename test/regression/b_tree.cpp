@@ -231,7 +231,7 @@ TYPED_TEST( TestBTree, Insert_Find_CheckValue )
         }
 
         // check that tree is balanced
-        EXPECT_GE( 2, depth.size() );
+        EXPECT_GE( 2U, depth.size() );
 
         );
     }
@@ -442,7 +442,7 @@ TYPED_TEST( TestBTree, Insert_Erase )
     }
 
     // check that tree is balanced
-    EXPECT_GE( 2, depth.size() );
+    EXPECT_GE( 2U, depth.size() );
 
     );
 }

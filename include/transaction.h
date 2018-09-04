@@ -224,7 +224,7 @@ namespace jb
                 }
                 {
                     auto[ ok, written ] = Os::write_file( handle, buffer, bytes_to_write );
-                    bytes_written = written;
+                    bytes_written = static_cast< size_t >( written );
                     throw_storage_file_error( ok && written == bytes_to_write, RetCode::IoError );
                 }
 
