@@ -383,15 +383,19 @@ namespace jb
                 BTreePath bpath;
                 NodeLock locks;
 
+                // chech if target path exists
                 if ( auto may_present = filter_.test( entry_path, relative_path, digests ); !may_present )
                 {
                     return wait_and_do_it( in, out, [] { return tuple{ RetCode::NotFound }; } );
                 }
 
+                // initialize target by root
                 auto target_node = cache_.get_node( RootNodeUid );
 
+                // if targte is not root
                 if ( digests.size() )
                 {
+                    // find target b-tree and ensure that children b-tree exisis
                     if ( auto found = navigate( digests, locks, bpath, [] ( auto ) {}, in ) )
                     {
                         assert( bpath.size() );
@@ -399,11 +403,12 @@ namespace jb
 
                         {
                             assert( locks.size() );
-                            exclusive_lock e{ locks.back() };
+                            exclusive_lock e{ locks.front() };
 
                             parent_btree->deploy_children_btree( bpath.back().second );
                         }
 
+                        // set targte b-tree
                         target_node = cache_.get_node( parent_btree->children( bpath.back().second ) );
                     }
                     else
@@ -416,6 +421,7 @@ namespace jb
                     return wait_and_do_it( in, out, [] { return tuple{ RetCode::MaxTreeDepthExceeded }; } );
                 }
 
+                //insertion
                 {
                     locks.push_back( shared_lock{ target_node->guard() } );
 
@@ -489,20 +495,24 @@ namespace jb
                 BTreePath bpath;
                 NodeLock locks;
 
+                // check that key presents
                 if ( auto may_present = filter_.test( entry_path, relative_path, digests ); !may_present )
                 {
                     return wait_and_do_it( in, out, [] { return tuple{ RetCode::NotFound, Value{} }; } );
                 }
+                // find the key
                 else if ( auto found = navigate( digests, locks, bpath, [] ( auto ) {}, in ); !found )
                 {
                     return wait_and_do_it( in, out, [&] { return tuple{ RetCode::NotFound, Value{} }; } );
                 }
                 else
                 {
+                    // get target b-tree
                     auto node = cache_.get_node( bpath.back().first );
 
                     auto pos = bpath.back().second; bpath.pop_back();
 
+                    // return value
                     return wait_and_do_it( in, out, [&] { return tuple{ RetCode::Ok, node->value( pos ) }; } );
                 }
             }
