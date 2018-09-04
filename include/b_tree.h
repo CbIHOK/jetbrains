@@ -304,36 +304,35 @@ namespace jb
         @param [in] r - the right part
         @throw may throw std::exception
         */
-        auto split_node( BTreeP l, BTreeP r ) const
+        auto split_node( BTree & l, BTree & r ) const
         {
             using namespace std;
 
-            throw_btree_error( l && r, RetCode::UnknownError, "Bad logic" );
             throw_btree_error( elements_.size() == BTreeMax, RetCode::UnknownError, "Bad logic" );
 
-            l->elements_.clear(); l->links_.clear();
-            r->elements_.clear(); r->links_.clear();
+            l.elements_.clear(); l.links_.clear();
+            r.elements_.clear(); r.links_.clear();
 
-            l->elements_.insert(
-                begin( l->elements_ ), 
+            l.elements_.insert(
+                begin( l.elements_ ), 
                 make_move_iterator( begin( elements_ ) ), 
                 make_move_iterator( begin( elements_ ) + BTreeMin ) 
             );
 
-            r->elements_.insert(
-                begin( r->elements_ ),
+            r.elements_.insert(
+                begin( r.elements_ ),
                 make_move_iterator( end( elements_ ) - BTreeMin ),
                 make_move_iterator( end( elements_ ) ) 
             );
 
-            l->links_.insert(
-                begin( l->links_ ),
+            l.links_.insert(
+                begin( l.links_ ),
                 begin( links_ ),
                 begin( links_ ) + BTreeMin + 1
             );
 
-            r->links_.insert(
-                begin( r->links_ ),
+            r.links_.insert(
+                begin( r.links_ ),
                 end( links_ ) - BTreeMin - 1,
                 end( links_ )
             );
@@ -408,20 +407,20 @@ namespace jb
             throw_btree_error( elements_.size() == BTreeMax, RetCode::UnknownError, "Bad logic" );
 
             // split this item into 2 new and save them
-            auto l = make_shared< BTree >( file_, cache_ );
-            auto r = make_shared< BTree >( file_, cache_ );
+            BTree l( file_, cache_ );
+            BTree r( file_, cache_ );
 
             split_node( l, r );
 
-            l->save( t );
-            r->save( t );
+            l.save( t );
+            r.save( t );
 
             // leave only mediane element...
             elements_[ 0 ] = move( elements_[ BTreeMin ] );
             elements_.resize( 1 );
 
             // with links to new items
-            links_[ 0 ] = l->uid(); links_[ 1 ] = r->uid();
+            links_[ 0 ] = l.uid(); links_[ 1 ] = r.uid();
             links_.resize( 2 );
 
             // ovewrite root node
@@ -445,12 +444,12 @@ namespace jb
             throw_btree_error( elements_.size() == BTreeMax, RetCode::UnknownError, "Bad logic" );
 
             // split node into 2 new and save them
-            auto l = make_shared< BTree >( file_, cache_ );
-            auto r = make_shared< BTree >( file_, cache_ );
+            BTree l( file_, cache_ );
+            BTree r( file_, cache_ );
 
             split_node( l, r );
-            l->save( t );
-            r->save( t );
+            l.save( t );
+            r.save( t );
 
             // get parent b-tree path
             BTreePath::value_type parent_path = move( bpath.back() ); bpath.pop_back();
@@ -466,9 +465,9 @@ namespace jb
                     t, 
                     bpath, 
                     parent_path.second, 
-                    l->uid_, 
+                    l.uid_, 
                     move( elements_[ BTreeMin ] ),
-                    r->uid_
+                    r.uid_
                 );
         }
 
