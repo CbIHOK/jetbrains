@@ -445,42 +445,51 @@ TEST_F( TestStorage, Erase_WithChildren )
 
 
 //
-// FAIL: Checks that operations on mount points regard physical volume priorities
+// Checks that operations on mount points regard physical volume priorities
 //
-//TEST_F( TestStorage, VolumePriority )
-//{
-//    auto[ rc1, pv1 ] = Storage::OpenPhysicalVolume( "VolumePriority_1.jb" );
-//    ASSERT_EQ( RetCode::Ok, rc1 );
-//
-//    auto[ rc2, pv2 ] = Storage::OpenPhysicalVolume( "VolumePriority_2.jb" );
-//    ASSERT_EQ( RetCode::Ok, rc2 );
-//
-//    auto[ rc, pv3 ] = Storage::OpenPhysicalVolume( "VolumePriority_3.jb" );
-//    ASSERT_EQ( RetCode::Ok, rc2 );
-//
-//    auto[ rc3, vv ] = Storage::OpenVirtualVolume();
-//    ASSERT_EQ( RetCode::Ok, rc3 );
-//
-//    auto[ rc4, mp1 ] = vv.Mount( pv1, "/", "/", "v1" );
-//    EXPECT_EQ( RetCode::Ok, rc4 );
-//
-//    auto[ rc5, mp2 ] = vv.Mount( pv2, "/", "/", "v2" );
-//    EXPECT_EQ( RetCode::Ok, rc5 );
-//
-//    auto[ rc6, mp3 ] = vv.Mount( pv3, "/", "/", "v3" );
-//    EXPECT_EQ( RetCode::Ok, rc6 );
-//
-//    auto[ rc7, sum1 ] = vv.Mount( pv1, "/", "/v3", "sum" );
-//    EXPECT_EQ( RetCode::Ok, rc7 );
-//
-//    auto[ rc8, sum2 ] = vv.Mount( pv2, "/", "/v3", "sum" );
-//    EXPECT_EQ( RetCode::Ok, rc8 );
-//
-//    EXPECT_EQ( RetCode::Ok, vv.Insert( "/v1", "foo", Value{ 1U } ) );
-//    EXPECT_EQ( RetCode::Ok, vv.Insert( "/v2", "foo", Value{ 2U } ) );
-//
-//    EXPECT_EQ( make_tuple( RetCode::Ok, Value{ 1U } ), vv.Get( "/v3/sum/foo" ) );
-//}
+TEST_F( TestStorage, VolumePriority )
+{
+    auto[ rc1, pv1 ] = Storage::OpenPhysicalVolume( "VolumePriority_1.jb" );
+    ASSERT_EQ( RetCode::Ok, rc1 );
+
+    auto[ rc2, pv2 ] = Storage::OpenPhysicalVolume( "VolumePriority_2.jb" );
+    ASSERT_EQ( RetCode::Ok, rc2 );
+
+    auto[ rc, pv3 ] = Storage::OpenPhysicalVolume( "VolumePriority_3.jb" );
+    ASSERT_EQ( RetCode::Ok, rc2 );
+
+    auto[ rc3, vv ] = Storage::OpenVirtualVolume();
+    ASSERT_EQ( RetCode::Ok, rc3 );
+
+    auto[ rc4, mp1 ] = vv.Mount( pv1, "/", "/", "v1" );
+    EXPECT_EQ( RetCode::Ok, rc4 );
+
+    auto[ rc5, mp2 ] = vv.Mount( pv2, "/", "/", "v2" );
+    EXPECT_EQ( RetCode::Ok, rc5 );
+
+    auto[ rc6, mp3 ] = vv.Mount( pv3, "/", "/", "v3" );
+    EXPECT_EQ( RetCode::Ok, rc6 );
+
+    auto[ rc7, sum1 ] = vv.Mount( pv1, "/", "/v3", "sum" );
+    EXPECT_EQ( RetCode::Ok, rc7 );
+
+    auto[ rc8, sum2 ] = vv.Mount( pv2, "/", "/v3", "sum" );
+    EXPECT_EQ( RetCode::Ok, rc8 );
+
+    EXPECT_EQ( RetCode::Ok, vv.Insert( "/v1", "foo", Value{ 1U } ) );
+    EXPECT_EQ( RetCode::Ok, vv.Insert( "/v2", "foo", Value{ 2U } ) );
+
+    // expect that get() selects value from pv1
+    EXPECT_EQ( make_tuple( RetCode::Ok, Value{ 1U } ), vv.Get( "/v3/sum/foo" ) );
+
+    // expect that insert() inserts value to pv1
+    EXPECT_EQ( RetCode::Ok, vv.Insert( "/v3/sum", "boo", Value{ "boo" } ) );
+    EXPECT_EQ( make_tuple( RetCode::Ok, Value{ "boo" } ), vv.Get( "/v1/boo" ) );
+
+    // expect that erase() deletes node from pv1
+    EXPECT_EQ( RetCode::Ok, vv.Erase( "/v3/sum/foo" ) );
+    EXPECT_EQ( make_tuple( RetCode::NotFound, Value{} ), vv.Get( "/v1/foo" ) );
+}
 
 
 //

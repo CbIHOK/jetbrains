@@ -194,8 +194,8 @@ namespace jb
             auto[ from, to ] = paths_.equal_range( mp_path_hash );
 
             // vector on stack
-            static_vector< MountPointImplP, MountLimit > mount_points;
-            //std::vector< MountPointImplP > mount_points;
+            //static_vector< MountPointImplP, MountLimit > mount_points;
+            std::vector< MountPointImplP > mount_points;
 
             // fill the collection with mount points
             for_each( from, to, [&] ( const auto & mount_point ) {
@@ -240,8 +240,8 @@ namespace jb
             using FutureT = future< ContractT >;
 
             // futures, one per mount
-            static_vector< FutureT, MountLimit > futures;
-            //std::vector< FutureT > futures;
+            //static_vector< FutureT, MountLimit > futures;
+            std::vector< FutureT > futures;
             futures.resize( mounts.size( ) );
 
             // execution connectors are pairs of < cancel, do_it > flags
@@ -266,12 +266,7 @@ namespace jb
                 assert( future_it != end( futures ) );
                 auto & future = *future_it;
 
-                //
                 // start the routine
-                //
-                // TODO: something wrong happens here - physical volumes get their connectors in wrong order, e.g.
-                // second physical volume gets IN/OUT signals of first and vice versa
-                //
                 future = async( launch::async, [&] ( ) noexcept { return f( mp, in, out ); } );
             }
 
