@@ -379,6 +379,8 @@ namespace jb
                         pv.second += 1;
                     }
                 } );
+
+                return;
             }
 
             throw std::logic_error( "Unable to find PIMP" );
@@ -409,6 +411,8 @@ namespace jb
                         pv.second -= 1;
                     }
                 } );
+
+                return;
             }
 
             throw std::logic_error( "Unable to find PIMP" );
@@ -453,6 +457,8 @@ namespace jb
                         }
                     } );
                 }
+
+                return;
             }
 
             throw std::logic_error( "Unable to find PIMP" );
@@ -497,6 +503,8 @@ namespace jb
                         }
                     } );
                 }
+
+                return;
             }
 
             throw std::logic_error( "Unable to find PIMP" );
