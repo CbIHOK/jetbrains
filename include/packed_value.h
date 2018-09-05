@@ -3,6 +3,8 @@
 
 
 #include <type_traits>
+#include <variant>
+#include <iostream>
 
 
 #ifndef BOOST_ENDIAN_DEPRECATED_NAMES
@@ -33,7 +35,7 @@ namespace jb
 
 
     //
-    // float considered as not BLOB type
+    // Makes the system to consider float as not blob type
     //
     template <>
     struct is_blob_type< float >
@@ -44,7 +46,7 @@ namespace jb
 
 
     //
-    // double considered as not BLOB type
+    // Makes the system to consider double as not blob type
     //
     template <>
     struct is_blob_type< double >
@@ -55,7 +57,7 @@ namespace jb
 
 
     //
-    // std::string considered as BLOB type
+    // Makes the system to consider std::string as a blob type
     //
     template <>
     struct is_blob_type< std::string >
@@ -66,7 +68,7 @@ namespace jb
 
 
     //
-    // std::wstring considered as BLOB type
+    // Makes the system to consider std::wstring as a blob type
     //
     template <>
     struct is_blob_type< std::wstring >
@@ -77,7 +79,7 @@ namespace jb
 
 
     //
-    // std::basic_string< char16_t > considered as BLOB type
+    // Makes std::basic_string< char16_t > to be considered as BLOB type
     //
     template <>
     struct is_blob_type< std::basic_string< char16_t > >
@@ -88,7 +90,7 @@ namespace jb
 
 
     //
-    // std::basic_string< char32_t > considered as BLOB type
+    // Makes std::basic_string< char32_t > to be considered as BLOB type
     //
     template <>
     struct is_blob_type< std::basic_string< char32_t > >
@@ -99,6 +101,15 @@ namespace jb
 
 
     /** Represent value inside b-tree node
+
+    Since the system uses B-tree for indexing, it does not seem as a good idea to hold
+    massive data pieces inside B-tree node, cuz element value stays unnecessary most of
+    times. This structure handles the situation of massive data piece and store it separately
+    from a B-tree node bringing to node only 2 uint64_t values: value type index and reference
+    stored BLOB. If nevetheless the value can be saved inside uint64_t the structure hold it
+    in place
+
+    @taparam Policies - global settings
     */
     template < typename Policies >
     struct Storage< Policies >::PhysicalVolumeImpl::BTree::PackedValue
@@ -113,9 +124,11 @@ namespace jb
         uint64_t value_;
 
 
-        //
-        // checks if referred value is BLOB type
-        //
+        /* Checks if assigned value is BLOB object
+
+        @retval bool - true if value represented as a BLOB
+        @throw nothing
+        */
         template < size_t I >
         bool check_for_blob() const
         {
@@ -142,11 +155,15 @@ namespace jb
         }
 
 
-        //
-        // pack a value
-        //
+        /* Pack a value
+
+        @param [in] t - active transaction
+        @param [in] value - value to be packed
+        @retval PackedValue - packed value
+        @throw btree_error, storage_file_serror
+        */
         template < size_t I >
-        static PackedValue serialize( Transaction & t, const Value & value )
+        static PackedValue pack( Transaction & t, const Value & value )
         {
             using namespace std;
 
@@ -182,23 +199,30 @@ namespace jb
             }
             else
             {
-                return serialize< I + 1 >( t, value );
+                return pack< I + 1 >( t, value );
             }
         }
 
+
+        //
+        // terminal specialization of pack<>()
+        //
         template <>
-        static PackedValue serialize< std::variant_size_v< Value > >( Transaction & t, const Value & value )
+        static PackedValue pack< std::variant_size_v< Value > >( Transaction & t, const Value & value )
         {
             throw_btree_error( false, RetCode::InvalidData, "Unable to resolve type index" );
             return PackedValue( std::variant_npos, 0 );
         }
 
 
-        //
-        // unpack a value
-        //
+        /* Unpacks value
+
+        @param [in] t - active transaction
+        @retval unpacked - value
+        @throw btree_error, storage_file_serror
+        */
         template < size_t I >
-        Value deserialize_value( StorageFile & f ) const
+        Value unpack( StorageFile & f ) const
         {
             using namespace std;
 
@@ -220,41 +244,51 @@ namespace jb
                 }
                 else
                 {
-                    value_type v_;
+                    value_type value;
 
                     copy(
                         reinterpret_cast< const char* >( &value_ ),
-                        reinterpret_cast< const char* >( &value_ ) + sizeof( v_ ),
-                        reinterpret_cast< char* >( &v_ )
+                        reinterpret_cast< const char* >( &value_ ) + sizeof( value ),
+                        reinterpret_cast< char* >( &value )
                     );
 
-                    return Value{ v_ };
+                    return is_move_constructible_v< value_type > ? Value{ move( value ) } : Value{ value };
                 }
             }
             else
             {
-                return deserialize_value< I + 1 >( f );
+                return unpack< I + 1 >( f );
             }
         }
 
+
+        //
+        // terminal specialization of unpack<>()
+        //
         template <>
-        Value deserialize_value< std::variant_size_v< Value > >( StorageFile & ) const
+        Value unpack< std::variant_size_v< Value > >( StorageFile & ) const
         {
             throw_btree_error( false, RetCode::InvalidData, "Unable to resolve type index" );
-
             return Value{};
         }
 
-        //
-        // private explicit constructor
-        //
-        explicit PackedValue( size_t type_index, uint64_t value ) : type_index_( type_index ), value_( value ) {}
+
+        /* Expilcit consrutor, creates an assigned instance
+
+        @param [in] type_index - index of assigned type
+        @param [in] value - value packed into uint64_t or UID of BLOB object
+        @throw nothing
+        */
+        explicit PackedValue( size_t type_index, uint64_t value ) noexcept : type_index_( type_index ), value_( value ) {}
+
 
     public:
 
         /** Default constructor, creates dummy object
+
+        @throw nothing
         */
-        PackedValue() : type_index_( std::variant_npos ) {}
+        PackedValue() noexcept : type_index_( std::variant_npos ) {}
 
 
         /** Class is copyable...
@@ -282,11 +316,11 @@ namespace jb
         @param [in] t - transaction to be used to store BLOB
         @param [in] value - value to be packed
         @retval packed value
+        @throw storage_file_error
         */
         static PackedValue make_packed( Transaction & t, const Value & value )
         {
-            return serialize< 0 >( t, value );
-            //return PackedValue( std::variant_npos, 0 );;
+            return pack< 0 >( t, value );
         }
 
 
@@ -294,16 +328,18 @@ namespace jb
 
         @param [in] f - file to be used
         @retval unpacked value
+        @throw storage_file_error
         */
         Value unpack( StorageFile & f ) const
         {
-            return deserialize_value< 0 >( f );
+            return unpack< 0 >( f );
         }
 
         
         /** Erases associated BLOB
 
         @param [in] t - transaction
+        @throw storage_file_error
         */
         void erase_blob( Transaction & t ) const
         {
@@ -315,6 +351,11 @@ namespace jb
 
 
         /** Output streaming operator
+
+        @param [in/out] os - output stream
+        @param [in] - value to be streamed out
+        @retval std::ostream - updated output stream
+        @throw btree_error, storage_file_error
         */
         friend std::ostream & operator << ( std::ostream & os, const PackedValue & v )
         {
@@ -332,6 +373,11 @@ namespace jb
 
 
         /** Input streaming operator
+
+        @param [in/out] is - input stream
+        @param [in] - value to be streamed in
+        @retval std::istream - updated input stream
+        @throw btree_error, storage_file_error
         */
         friend std::istream & operator >> ( std::istream & is, PackedValue & v )
         {
