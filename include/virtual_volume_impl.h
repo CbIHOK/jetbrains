@@ -570,7 +570,7 @@ namespace jb
                     for ( auto & future : futures )
                     {
                         // get result
-                        auto[ ret, node_uid, lock ] = future.get();
+                        auto[ ret, node_uid, node_level, lock ] = future.get();
 
                         if ( RetCode::Ok == ret )
                         {

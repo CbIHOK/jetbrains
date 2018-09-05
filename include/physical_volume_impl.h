@@ -19,6 +19,13 @@
 
 namespace jb
 {
+    /** Implementation of Physical Volume
+
+    The class is responsible for creating physical volume infrastructure and for operations over
+    keys: locking, inserting, getting, and erasing, but mostly for navigation by key tree
+
+    @tparam Policies - global settings
+    */
     template < typename Policies >
     class Storage< Policies >::PhysicalVolumeImpl
     {
@@ -34,10 +41,15 @@ namespace jb
         class BTree;
         class BTreeCache;
 
+        /** Represents execution signals: CANCELLED signal and ALLOWED TO APPLY signal
+        */
         struct execution_connector : public std::pair< std::atomic_bool, std::atomic_bool >
         {
             execution_connector() : std::pair< std::atomic_bool, std::atomic_bool >( false, false ){}
         };
+
+        static constexpr auto RootNodeUid = BTree::RootNodeUid;
+        static constexpr auto InvalidNodeUid = BTree::InvalidNodeUid;
 
     private:
 
@@ -54,25 +66,35 @@ namespace jb
         using exclusive_lock = boost::upgrade_to_unique_lock< boost::upgrade_mutex >;
         using BTreePath = typename BTree::BTreePath;
         using DigestPath = typename Bloom::DigestPath;
-        
         using storage_file_error = typename StorageFile::storage_file_error;
         using btree_error = typename BTree::btree_error;
         using bloom_error = typename Bloom::bloom_error;
 
         template < typename T, size_t C > using static_vector = boost::container::static_vector< T, C >;
 
-        static constexpr auto RootNodeUid = BTree::RootNodeUid;
-        static constexpr auto InvalidNodeUid = BTree::InvalidNodeUid;
         static constexpr auto MaxTreeDepth = Policies::PhysicalVolumePolicy::MaxTreeDepth;
 
-        using NodeLock = static_vector< shared_lock, MaxTreeDepth >;
 
+        /* Represents locking over a key
+        */
+        using KeyLock = static_vector< shared_lock, MaxTreeDepth >;
+
+
+        //
+        // data members
+        //
         std::atomic< RetCode > status_ = RetCode::Ok;
         StorageFile file_;
         PathLocker path_locker_;
         Bloom filter_;
         BTreeCache cache_;
 
+
+        /* Sets volume's status
+
+        @param [in] status - status to be set
+        @throw nothing
+        */
         auto set_status( RetCode status ) noexcept
         {
             auto ok = RetCode::Ok;
@@ -86,8 +108,9 @@ namespace jb
         digest from the root of containing b-tree. This path may be used as a hint upon erase operation
         preventing sequental search. Also let us apply a custom action on each found subkey
 
+        @param [in] entry_node - start point for navigating
         @param [in] digests - path to be found
-        @param [out] locks - accumulates locks over root b-tree nodes
+        @param [out] locks - accumulates locks over visited nodes
         @param [out] bpath - holds path in b-tree from root node of a key to a node holding found digest
         @param [in] f - custom action to be done on each found digest
         @param [in] in - incoming execution events
@@ -95,6 +118,7 @@ namespace jb
         */
         template < typename D, typename L, typename P, typename F >
         auto navigate( 
+            BTreeP entry_node,
             const D & digests, 
             L & locks, 
             P & bpath, 
@@ -103,12 +127,11 @@ namespace jb
         {
             using namespace std;
 
+            // if there is something to navigate?
             if ( !digests.size() ) return true;
 
+            auto node = entry_node;
             auto digest_it = begin( digests );
-
-            // retrieve root node
-            auto node = cache_.get_node( RootNodeUid );
 
             while ( !cancelled( in ) )
             {
@@ -177,7 +200,7 @@ namespace jb
         @param [out] out - outgoing execution event
         @param [in] f - action to be applied
         @retval the action result
-        @throws nothing
+        @throws may throw everything what F does
         */
         template < typename F >
         auto static wait_and_do_it( const execution_connector & in, execution_connector & out, const F & f )
@@ -236,13 +259,20 @@ namespace jb
             decltype( f() ) result{};
             std::get< RetCode >( result ) = RetCode::UnknownError;
             return result;
-    }
+        }
 
 
     public:
 
+        /** Explicit constructor 
+
+        Allocates all necessary infrastructure, including creating root directory for new files
+
+        @param path - path to physical storage
+        @throw nothing
+        */
         explicit PhysicalVolumeImpl( const std::filesystem::path & path ) try
-            : file_( path )
+            : file_( path, true )
             , filter_( file_ )
             , cache_( file_ )
         {
@@ -258,7 +288,12 @@ namespace jb
             {
                 set_status( filter_.status() );
             }
+            else if ( RetCode::Ok != path_locker_.status() )
+            {
+                set_status( filter_.status() );
+            }
 
+            // create root
             if ( file_.newly_created() )
             {
                 BTree root( file_, cache_ );
@@ -273,14 +308,19 @@ namespace jb
         }
 
 
-        [ [ nodiscard ] ]
+        /** Provides physical volume status
+
+        @retval RetCode - status
+        @throw nothing
+        */
+        [[ nodiscard ]]
         auto status() const noexcept { return status_.load( std::memory_order_acquire ); }
 
 
         /** Locks specified path due to a mounting operation
 
-        @param [in] entry_node_uid - UID of entry that shall be used as search entry
-        @param [in] entry_path - physical path of search entry
+        @param [in] entry_node_uid - mount point node
+        @param [in] entry_node_level - level of mount point in a tree of physical keys
         @param [in] relative_path - path to be locked
         @param [in] in - incoming execution events
         @param [out] in - outgoing execution events
@@ -289,9 +329,9 @@ namespace jb
         @retval PathLock - lock over all nodes on the path begining from entry path
         */
         [[ nodiscard ]]
-        std::tuple < RetCode, NodeUid, PathLock > lock_path(
-            NodeUid entry_node_uid,
-            const Key & entry_path,
+        std::tuple < RetCode, NodeUid, size_t, PathLock > lock_path(
+            NodeUid entry_key_uid,
+            size_t entry_key_level,
             const Key & relative_path,
             const execution_connector & in,
             execution_connector & out ) noexcept
@@ -302,55 +342,59 @@ namespace jb
             {
                 DigestPath digests;
                 BTreePath bpath;
-                NodeLock locks;
+                KeyLock locks;
                 PathLock path_lock;
 
                 // check if the volume is Ok
-                if ( RetCode::Ok != status() ) wait_and_do_it( in, out, [&] { return tuple{ status() }; } );
+                if ( RetCode::Ok != status() ) wait_and_do_it( in, out, [&] { return tuple{ status(), InvalidNodeUid, 0, PathLock{} }; } );
 
-                // check if path may present
-                if ( auto may_present = filter_.test( entry_path, relative_path, digests ); !may_present )
+                // check if relative path may present
+                if ( auto may_present = filter_.test( entry_key_level, relative_path, digests ); !may_present )
                 {
-                    return wait_and_do_it( in, out, [=] { return tuple{ RetCode::NotFound, InvalidNodeUid, PathLock{} }; } );
+                    return wait_and_do_it( in, out, [=] { return tuple{ RetCode::NotFound, InvalidNodeUid, 0, PathLock{} }; } );
                 }
-                // if root is mounted?
+                // if entry node is being mounted?
                 else if ( digests.empty() )
                 {
-                    return wait_and_do_it( in, out, [] { return tuple{ RetCode::Ok, RootNodeUid, PathLock{} }; } );
+                    return wait_and_do_it( in, out, [&] { return tuple{ RetCode::Ok, entry_key_uid, 0, PathLock{} }; } );
                 }
                 else
                 {
+                    // get entry node
+                    auto entry_node = cache_.get_node( entry_key_uid );
+
                     // navigate through the tree and get locks over visited nodes
-                    auto found = navigate( digests, locks, bpath, [&] ( const BTreeP & p ) {
+                    auto found = navigate( entry_node, digests, locks, bpath, [&] ( const BTreeP & p ) {
                         path_lock << path_locker_.lock( p->uid() );
                     }, in );
 
                     if ( found )
                     {
-                        return wait_and_do_it( in, out, [&] { return tuple{ RetCode::Ok, BTree::RootNodeUid, move( path_lock ) }; } );
+                        assert( bpath.size() );
+                        return wait_and_do_it( in, out, [&] { return tuple{ RetCode::Ok, bpath.front().first, entry_key_level + digests.size(), move( path_lock ) }; } );
                     }
                     else
                     {
-                        return wait_and_do_it( in, out, [=] { return tuple{ RetCode::NotFound, InvalidNodeUid, PathLock{} }; } );
+                        return wait_and_do_it( in, out, [=] { return tuple{ RetCode::NotFound, InvalidNodeUid, 0, PathLock{} }; } );
                     }
                 }
             }
             catch ( const storage_file_error & e )
             {
-                return wait_and_do_it( in, out, [&] { return tuple{ e.code(), InvalidNodeUid, PathLock{} }; } );
+                return wait_and_do_it( in, out, [&] { return tuple{ e.code(), InvalidNodeUid, 0, PathLock{} }; } );
             }
             catch ( const btree_error & e )
             {
-                return wait_and_do_it( in, out, [&] { return tuple{ e.code(), InvalidNodeUid, PathLock{} }; } );
+                return wait_and_do_it( in, out, [&] { return tuple{ e.code(), InvalidNodeUid, 0, PathLock{} }; } );
             }
             catch ( const bloom_error & e )
             {
-                return wait_and_do_it( in, out, [&] { return tuple{ e.code(), InvalidNodeUid, PathLock{} }; } );
+                return wait_and_do_it( in, out, [&] { return tuple{ e.code(), InvalidNodeUid, 0, PathLock{} }; } );
             }
             catch ( ... )
             {
                 set_status( RetCode::UnknownError );
-                return wait_and_do_it( in, out, [&] { return tuple{ RetCode::UnknownError, InvalidNodeUid, PathLock{} }; } );
+                return wait_and_do_it( in, out, [&] { return tuple{ RetCode::UnknownError, InvalidNodeUid, 0, PathLock{} }; } );
             }
         }
 
@@ -359,8 +403,8 @@ namespace jb
 
         path. If the subnode already exists the behavior depends on ovwewrite flag
 
-        @param [in] entry_node_uid - UID of entry that shall be used as search entry
-        @param [in] entry_path - physical path of search entry
+        @param [in] entry_node_uid - mount point node
+        @param [in] entry_node_level - level of mount point in a tree of physical keys
         @param [in] relative_path - path of item to be erased relatively to entry_path_
         @param [in] subkey - name of subkey to be inserted
         @param [in] value - value to be assigned to subkey
@@ -369,10 +413,12 @@ namespace jb
         @param [in] in - incoming execution events
         @param [out] in - outgoing execution events
         @retval RetCode - status of operation
+        @throw nothing
         */
         [[ nodiscard ]]
-        std::tuple< RetCode > insert( NodeUid entry_node_uid,
-            const Key & entry_path,
+        std::tuple< RetCode > insert(
+            NodeUid entry_key_uid,
+            size_t entry_key_level,
             const Key & relative_path,
             const Key & subkey,
             Value && value,
@@ -387,25 +433,26 @@ namespace jb
             {
                 DigestPath digests;
                 BTreePath bpath;
-                NodeLock locks;
+                KeyLock locks;
 
                 // check if the volume is Ok
                 if ( RetCode::Ok != status() ) wait_and_do_it( in, out, [&] { return tuple{ status() }; } );
 
                 // chech if target path exists
-                if ( auto may_present = filter_.test( entry_path, relative_path, digests ); !may_present )
+                if ( auto may_present = filter_.test( entry_key_level, relative_path, digests ); !may_present )
                 {
                     return wait_and_do_it( in, out, [] { return tuple{ RetCode::NotFound }; } );
                 }
 
-                // set target b-tree as root
-                auto target_node = cache_.get_node( RootNodeUid );
+                // set target to entry node
+                auto entry_node = cache_.get_node( entry_key_uid );
+                auto target_node = entry_node;
 
                 // if targte is not root
                 if ( digests.size() )
                 {
                     // find target node and ensure that their children b-tree exisis
-                    if ( auto found = navigate( digests, locks, bpath, [] ( auto ) {}, in ) )
+                    if ( auto found = navigate( entry_node, digests, locks, bpath, [] ( auto ) {}, in ) )
                     {
                         assert( bpath.size() );
                         auto parent_btree = cache_.get_node( bpath.back().first );
@@ -493,18 +540,19 @@ namespace jb
 
         /** Provides value of specified node
 
-        @param [in] entry_node_uid_ - UID of entry that shall be used as search entry
-        @param [in] entry_path_ - physical path of search entry
+        @param [in] entry_node_uid - mount point node
+        @param [in] entry_node_level - level of mount point in a tree of physical keys
         @param [in] relative_path - path of item to be retrieved
         @param [in] in - incoming execution events
         @param [out] in - outgoing execution events
         @retval RetCode - status of operation
-        @retvel Value - if operation succeeded contains the value
+        @retval Value - if operation succeeded contains the value
+        @throw nothing
         */
-        [ [ nodiscard ] ]
+        [[ nodiscard ]]
         std::tuple< RetCode, Value > get(
-            NodeUid entry_node_uid,
-            const Key & entry_path,
+            NodeUid entry_key_uid,
+            size_t entry_key_level,
             const Key & relative_path,
             const execution_connector & in,
             execution_connector & out ) noexcept
@@ -515,18 +563,21 @@ namespace jb
             {
                 DigestPath digests;
                 BTreePath bpath;
-                NodeLock locks;
+                KeyLock locks;
 
                 // check if the volume is Ok
-                if ( RetCode::Ok != status() ) wait_and_do_it( in, out, [&] { return tuple{ status() }; } );
+                if ( RetCode::Ok != status() ) wait_and_do_it( in, out, [&] { return tuple{ status(), Value{} }; } );
+
+                // get entry node
+                auto entry_node = cache_.get_node( entry_key_uid );
 
                 // check that key presents
-                if ( auto may_present = filter_.test( entry_path, relative_path, digests ); !may_present )
+                if ( auto may_present = filter_.test( entry_key_level, relative_path, digests ); !may_present )
                 {
                     return wait_and_do_it( in, out, [] { return tuple{ RetCode::NotFound, Value{} }; } );
                 }
                 // find the key
-                else if ( auto found = navigate( digests, locks, bpath, [] ( auto ) {}, in ); !found )
+                else if ( auto found = navigate( entry_node, digests, locks, bpath, [] ( auto ) {}, in ); !found )
                 {
                     return wait_and_do_it( in, out, [&] { return tuple{ RetCode::NotFound, Value{} }; } );
                 }
@@ -566,16 +617,18 @@ namespace jb
         Physical erasing of related data and releasing of allocated space in physical storage will
         be done upon cleanup routine
 
-        @param [in] entry_node_uid_ - UID of entry that shall be used as search entry
-        @param [in] entry_path_ - physical path of search entry
+        @param [in] entry_node_uid - mount point node
+        @param [in] entry_node_level - level of mount point in a tree of physical keys
         @param [in] relative_path - path of item to be erased relatively to entry_path_
         @param [in] in - incoming execution events
         @param [out] in - outgoing execution events
         @retval RetCode - status of operation
+        @throw nothing
         */
         [[ nodiscard ]]
-        std::tuple< RetCode > erase( NodeUid entry_node_uid,
-            const Key & entry_path,
+        std::tuple< RetCode > erase(
+            NodeUid entry_node_uid,
+            size_t entry_node_level,
             const Key & relative_path,
             const execution_connector & in,
             execution_connector & out ) noexcept
@@ -586,12 +639,15 @@ namespace jb
             {
                 DigestPath digests;
                 BTreePath bpath;
-                NodeLock locks;
+                KeyLock locks;
 
                 // check if the volume is Ok
                 if ( RetCode::Ok != status() ) wait_and_do_it( in, out, [&] { return tuple{ status() }; } );
 
-                if ( auto may_present = filter_.test( entry_path, relative_path, digests ); !may_present )
+                // get entry node
+                auto entry_node = cache_.get_node( entry_node_uid );
+
+                if ( auto may_present = filter_.test( entry_node_level, relative_path, digests ); !may_present )
                 {
                     return wait_and_do_it( in, out, [] { return tuple{ RetCode::NotFound }; } );
                 }
@@ -599,7 +655,7 @@ namespace jb
                 {
                     return wait_and_do_it( in, out, [&] { return tuple{ RetCode::InvalidLogicalPath }; } );
                 }
-                else if ( auto found = navigate( digests, locks, bpath, [] ( auto ) {}, in ); !found )
+                else if ( auto found = navigate( entry_node, digests, locks, bpath, [] ( auto ) {}, in ); !found )
                 {
                     return wait_and_do_it( in, out, [&] { return tuple{ RetCode::NotFound }; } );
                 }

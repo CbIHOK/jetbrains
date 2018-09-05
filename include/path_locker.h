@@ -214,7 +214,7 @@ namespace jb
         @retval the instance as lval
         @throw may throw std:exception for some reasons
         */
-        PathLock & operator << ( PathLock && o )
+        PathLock & operator << ( PathLock & o )
         {
             unlocks_.splice( end( unlocks_ ), o.unlocks_ );
             return *this;

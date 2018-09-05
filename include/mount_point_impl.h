@@ -18,20 +18,24 @@ namespace jb
     class Storage< Policies >::MountPointImpl
     {
 
-    public:
-
         //
         // short aliases
         //
         using RetCode = typename Storage::RetCode;
         using Key = typename Storage::Key;
-        using KeyValue = typename Key::ValueT;
         using Value = typename Storage::Value;
         using VirtualVolumeImpl = typename Storage::VirtualVolumeImpl;
         using PhysicalVolumeImpl = typename Storage::PhysicalVolumeImpl;
         using PhysicalVolumeImplP = std::shared_ptr< PhysicalVolumeImpl >;
-        using PathLock = typename PhysicalVolumeImpl::PathLocker::PathLock;
         using NodeUid = typename PhysicalVolumeImpl::BTree::NodeUid;
+
+        static constexpr auto RootNodeUid = PhysicalVolumeImpl::RootNodeUid;
+        static constexpr auto InvalidNodeUid = PhysicalVolumeImpl::InvalidNodeUid;
+
+
+    public:
+
+        using PathLock = typename PhysicalVolumeImpl::PathLocker::PathLock;
         using execution_connector = typename PhysicalVolumeImpl::execution_connector;
 
 
@@ -39,10 +43,9 @@ namespace jb
 
         std::shared_ptr< PhysicalVolumeImpl > physical_volume_;
         NodeUid entry_node_uid_;
-        KeyValue entry_path_;
+        size_t entry_node_level_;
         PathLock locks_;
         RetCode status_;
-        std::shared_lock< std::shared_mutex > volume_locker_;
 
 
     public:
@@ -59,10 +62,9 @@ namespace jb
         @param [in] physical_path - physical path to be connected
         @param [in] mounted_to_lock - lock object that prevents removing a physical node in whose space we're mounting
         */
-        explicit MountPointImpl( PhysicalVolumeImplP physical_volume, const Key & physical_path, PathLock && mounted_to_lock )
+        explicit MountPointImpl( PhysicalVolumeImplP physical_volume, const Key & physical_path, PathLock && mount_dst_lock )
             : physical_volume_{ physical_volume }
-            , entry_path_{ ( KeyValue )physical_path }
-            , locks_{ std::move( mounted_to_lock ) }
+            , locks_{ std::move( mount_dst_lock ) }
         {
             using namespace std;
 
@@ -72,11 +74,12 @@ namespace jb
             // request physical volume for lock physical of path and entry point UID
             execution_connector in{}; in.second = true;
             execution_connector out{};
-            auto res = physical_volume_->lock_path( 0, Key::root(), physical_path, in, out );
+            auto [ rc, entry_node_uid, entry_node_level, mount_src_lock ] = physical_volume_->lock_path( RootNodeUid, 0, physical_path, in, out );
             
-            status_ = std::get< RetCode >( res );
-            entry_node_uid_ = std::get< NodeUid >( res );
-            locks_ << move( std::get< PathLock >( res ) );
+            status_ = rc;
+            entry_node_uid_ = entry_node_uid;
+            entry_node_level_ = entry_node_level;
+            locks_ << mount_src_lock;
         }
 
 
@@ -107,18 +110,16 @@ namespace jb
         @throw nothing
         */
         [[ nodiscard ]]
-        std::tuple < RetCode, NodeUid, PathLock > lock_path( const Key & relative_path, const execution_connector & in, execution_connector & out ) noexcept
+        std::tuple < RetCode, NodeUid, size_t, PathLock > lock_path( const Key & relative_path, const execution_connector & in, execution_connector & out ) noexcept
         {
-            assert( relative_path );
-
             try
             {
-                return physical_volume_->lock_path( entry_node_uid_, Key{ entry_path_ }, relative_path, in, out );
+                return physical_volume_->lock_path( entry_node_uid_, entry_node_level_, relative_path, in, out );
             }
             catch ( ... )
             {}
 
-            return { RetCode::UnknownError, NodeUid{}, PathLock{} };
+            return { RetCode::UnknownError, NodeUid{}, 0, PathLock{} };
         }
 
 
@@ -137,12 +138,9 @@ namespace jb
         [[ nodiscard ]]
         RetCode insert( const Key & relative_path, const Key & subkey, Value && value, uint64_t good_before, bool overwrite, const execution_connector & in, execution_connector & out ) noexcept
         {
-            assert( relative_path.is_path() );
-            assert( subkey.is_leaf() );
-
             try
             {
-                auto [ rc ] = physical_volume_->insert( entry_node_uid_, Key{ entry_path_ }, relative_path, subkey, std::move( value ), good_before, overwrite, in, out );
+                auto [ rc ] = physical_volume_->insert( entry_node_uid_, entry_node_level_, relative_path, subkey, std::move( value ), good_before, overwrite, in, out );
                 return rc;
             }
             catch ( ... )
@@ -165,11 +163,9 @@ namespace jb
         [[ nodiscard ]]
         std::tuple< RetCode, Value > get( const Key & relative_path, const execution_connector & in, execution_connector & out ) noexcept
         {
-            assert( relative_path.is_path() );
-
             try
             {
-                return physical_volume_->get( entry_node_uid_, Key{ entry_path_ }, relative_path, in, out );
+                return physical_volume_->get( entry_node_uid_, entry_node_level_, relative_path, in, out );
             }
             catch ( ... )
             {
@@ -190,11 +186,9 @@ namespace jb
         [[ nodiscard ]]
         std::tuple< RetCode > erase( const Key & relative_path, const execution_connector & in, execution_connector & out ) noexcept
         {
-            assert( relative_path.is_path() );
-
             try
             {
-                return physical_volume_->erase( entry_node_uid_, Key{ entry_path_ }, relative_path, in, out );
+                return physical_volume_->erase( entry_node_uid_, entry_node_level_, relative_path, in, out );
             }
             catch ( ... )
             {

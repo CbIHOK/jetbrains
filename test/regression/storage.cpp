@@ -122,32 +122,6 @@ TEST_F( TestStorage, PhysicalVolume_Base )
 }
 
 
-TEST_F( TestStorage, PhysicalVolume_Limit )
-{
-    std::set< PhysicalVolume > set;
-    std::unordered_set< PhysicalVolume, Storage::Hash< PhysicalVolume > > hash;
-
-    for ( size_t i = 0; i < Policies::PhysicalVolumePolicy::VolumeLimit; ++i )
-    {
-        auto[ ret, volume ] = Storage::OpenPhysicalVolume( "foo_" + std::to_string( i ) + ".jb" );
-        EXPECT_EQ( RetCode::Ok, ret );
-        set.insert( volume );
-        hash.insert( volume );
-    }
-
-    EXPECT_EQ( set.size(), Policies::PhysicalVolumePolicy::VolumeLimit );
-    EXPECT_EQ( hash.size(), Policies::PhysicalVolumePolicy::VolumeLimit );
-
-    auto[ ret, volume ] = Storage::OpenPhysicalVolume( "foo.jb" );
-    EXPECT_EQ( RetCode::LimitReached, ret );
-    EXPECT_FALSE( volume );
-
-    EXPECT_EQ( RetCode::Ok, Storage::CloseAll() );
-
-    for ( auto volume : set ) EXPECT_FALSE( volume );
-}
-
-
 TEST_F( TestStorage, PhysicalVolume_Priorities )
 {
     auto[ ret_1, pv_1 ] = Storage::OpenPhysicalVolume( "foo1.jb" );

@@ -168,58 +168,48 @@ namespace jb
 
         /** Checks if given key MAY present in the storage
 
-        @param [in] prefix - prefix key
-        @param [in] suffix - suffix key
-        @retval RetCode - operation status
-        @retval size_t - number of generated digest
+        @param [in] entry_level - level mount point key
+        @param [in] relative_path - path to the key relatively to mount point key
         @retval bool - if combined key may present
         @throw bloom_error
         */
-        bool test( const Key & prefix, const Key & suffix, DigestPath & digests ) const
+        bool test( size_t entry_level, const Key & relative_path, DigestPath & digests ) const
         {
             using namespace std;
 
             digests.clear();
 
-            if ( !prefix.is_path() && !suffix.is_path() )
+            // nothing to test
+            if ( Key::root() == relative_path )
+            {
+                return true;
+            }
+
+            if ( !relative_path.is_path() )
             {
                 throw bloom_error( RetCode::UnknownError, "Bad path" );
             }
 
-            size_t level = 1;
+            // generate digests
+            Key rest = relative_path;
 
-            auto get_digests = [&] ( const auto & key ) {
-                
-                if ( Key::root() != key )
+            while ( rest.size() )
+            {
+                if ( entry_level + digests.size() >= BloomFnCount )
                 {
-                    auto rest = key;
-
-                    while ( rest.size() )
-                    {
-                        if ( digests.size() >= BloomFnCount )
-                        {
-                            throw bloom_error( RetCode::MaxTreeDepthExceeded, "" );
-                        }
-
-                        auto[ split_ok, prefix, suffix ] = rest.split_at_head();
-                        auto[ trunc_ok, stem ] = prefix.cut_lead_separator();
-                        auto digest = generate_digest( level, stem );
-
-                        digests.push_back( digest );
-
-                        rest = suffix;
-                        level++;
-                    }
+                    throw bloom_error( RetCode::MaxTreeDepthExceeded, "" );
                 }
-            };
 
-            get_digests( prefix );
-            get_digests( suffix );
+                auto[ split_ok, prefix, suffix ] = rest.split_at_head();
+                auto[ trunc_ok, stem ] = prefix.cut_lead_separator();
+                auto digest = generate_digest( ++entry_level, stem );
 
-            if ( !digests.size() ) return true;
+                digests.push_back( digest );
+                rest = suffix;
+            }
 
+            // check
             auto may_present = true;
-
             for ( auto digest : digests )
             {
                 const auto byte_no = ( digest / 8 ) % BloomSize;
