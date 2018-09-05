@@ -323,6 +323,7 @@ namespace jb
 
             os.write( reinterpret_cast< const char* >( &type_index ), sizeof( type_index ) );
             throw_btree_error( os.good(), RetCode::UnknownError );
+
             os.write( reinterpret_cast< const char* >( &value ), sizeof( value ) );
             throw_btree_error( os.good(), RetCode::UnknownError );
 
@@ -339,6 +340,7 @@ namespace jb
 
             is.read( reinterpret_cast< char* >( &type_index ), sizeof( type_index ) );
             throw_btree_error( is.good(), RetCode::UnknownError );
+
             is.read( reinterpret_cast< char* >( &value ), sizeof( value ) );
             throw_btree_error( is.good(), RetCode::UnknownError );
 

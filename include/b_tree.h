@@ -98,11 +98,20 @@ namespace jb
 
 
         //
-        // throws exception if condition failed
+        // throws btree_error if condition failed
         //
         auto static throw_btree_error( bool condition, RetCode rc, const char * what = "" )
         {
             if ( !condition ) throw btree_error( rc, what );
+        }
+
+
+        //
+        // throws std::logic_error if condition failed
+        //
+        auto static throw_logic_error( bool condition, const char * what = "" )
+        {
+            if ( !condition ) throw std::logic_error( what );
         }
 
 
@@ -206,25 +215,33 @@ namespace jb
         //
         friend std::ostream & operator << ( std::ostream & os, const BTree & node )
         {
-            throw_btree_error( node.elements_.size() + 1 == node.links_.size(), RetCode::UnknownError, "Broken b-tree node" );
-
-            big_uint64_t size = node.elements_.size();
-            os.write( reinterpret_cast< const char * >( &size ), sizeof( size ) );
-            throw_btree_error( os.good(), RetCode::UnknownError );
-
-            for ( const auto & e : node.elements_ )
+            try
             {
-                os << e;
-            }
+                throw_logic_error( node.elements_.size() < BTreeMax, "Node overflown" );
+                throw_logic_error( node.elements_.size() + 1 == node.links_.size(), "Broken b-tree node" );
 
-            for ( auto l : node.links_ )
-            {
-                big_uint64_t link = l;
-                os.write( reinterpret_cast< const char * >( &link ), sizeof( link ) );
+                big_uint64_t size = node.elements_.size();
+                os.write( reinterpret_cast< const char * >( &size ), sizeof( size ) );
                 throw_btree_error( os.good(), RetCode::UnknownError );
-            }
 
-            return os;
+                for ( const auto & e : node.elements_ )
+                {
+                    os << e;
+                }
+
+                for ( auto l : node.links_ )
+                {
+                    big_uint64_t link = l;
+                    os.write( reinterpret_cast< const char * >( &link ), sizeof( link ) );
+                    throw_btree_error( os.good(), RetCode::UnknownError );
+                }
+
+                return os;
+            }
+            catch ( const std::logic_error & )
+            {
+                terminate();
+            }
         }
 
 
@@ -269,12 +286,8 @@ namespace jb
         @param [in] t - transaction
         @throw may throw btree_error, storage_file_error
         */
-        void save( Transaction & t ) const
+        auto save( Transaction & t ) const
         {
-            if ( !std::is_sorted( elements_.begin(), elements_.end() ) && elements_.size() > 1 )
-            {
-                auto br = false;
-            }
             auto buffer = t.get_chain_writer< char >();
 
             std::ostream os( &buffer );
@@ -293,7 +306,7 @@ namespace jb
         @param [in] t - transaction
         @throw may throw btree_error, storage_file_error
         */
-        void overwrite( Transaction & t ) const
+        auto overwrite( Transaction & t ) const
         {
             if ( !std::is_sorted( elements_.begin(), elements_.end() ) && elements_ .size() > 1 )
             {
@@ -309,9 +322,12 @@ namespace jb
         }
 
 
-        /** 
+        /* Loads b-tree node from storage file
+
+        @param [in] uid - UID of the b-tree node to be loaded
+        @throw may throw btree_error, storage_file_error
         */
-        void load( NodeUid uid )
+        auto load( NodeUid uid )
         {
             //auto buffer = file_.get_chain_reader< uint64_t >( uid );
             auto buffer = file_.get_chain_reader< char >( uid );
@@ -325,42 +341,36 @@ namespace jb
 
         /* Splits overflown node into 2 ones
 
-        @param [in] l - the left part
-        @param [in] r - the right part
-        @throw may throw std::exception
+        Insert an element into b-tree node may cause node overflow. In this case overflown node must
+        splited into 2 ones and mediane element of original node must be pushed up. This routine only
+        copies data from original node into the left and right placeholder
+
+        @param [in] l - the left part placeholder
+        @param [in] r - the right part placeholder
+        @pre the node must be overflown
+        @throw nothing
         */
-        auto split_node( BTree & l, BTree & r ) const
+        auto split_overflown_node( BTree & l, BTree & r ) const noexcept
         {
             using namespace std;
 
-            throw_btree_error( elements_.size() == BTreeMax, RetCode::UnknownError, "Bad logic" );
+            try
+            {
+                if ( elements_.size() != BTreeMax ) throw std::logic_error( "Attempt to split non-overflown node" );
 
-            l.elements_.clear(); l.links_.clear();
-            r.elements_.clear(); r.links_.clear();
+                l.elements_.clear(); l.links_.clear();
+                r.elements_.clear(); r.links_.clear();
 
-            l.elements_.insert(
-                begin( l.elements_ ), 
-                make_move_iterator( begin( elements_ ) ), 
-                make_move_iterator( begin( elements_ ) + BTreeMin ) 
-            );
+                l.elements_.insert( begin( l.elements_ ), begin( elements_ ), begin( elements_ ) + BTreeMin );
+                r.elements_.insert( begin( r.elements_ ), end( elements_ ) - BTreeMin, end( elements_ ) );
 
-            r.elements_.insert(
-                begin( r.elements_ ),
-                make_move_iterator( end( elements_ ) - BTreeMin ),
-                make_move_iterator( end( elements_ ) ) 
-            );
-
-            l.links_.insert(
-                begin( l.links_ ),
-                begin( links_ ),
-                begin( links_ ) + BTreeMin + 1
-            );
-
-            r.links_.insert(
-                begin( r.links_ ),
-                end( links_ ) - BTreeMin - 1,
-                end( links_ )
-            );
+                l.links_.insert( begin( l.links_ ), begin( links_ ), begin( links_ ) + BTreeMin + 1 );
+                r.links_.insert( begin( r.links_ ), end( links_ ) - BTreeMin - 1, end( links_ ) );
+            }
+            catch ( ... )
+            {
+                terminate();
+            }
         }
 
 
@@ -371,7 +381,6 @@ namespace jb
         @param [in] pos - insert position
         @param [in] ow - if overwritting allowed
         @retval RetCode - operation status
-        @throw nothing
         */
         void insert_element( Transaction & t, Pos pos, BTreePath & bpath, Element && e, bool ow )
         {
@@ -435,7 +444,7 @@ namespace jb
             BTree l( file_, cache_ );
             BTree r( file_, cache_ );
 
-            split_node( l, r );
+            split_overflown_node( l, r );
 
             l.save( t );
             r.save( t );
@@ -472,7 +481,7 @@ namespace jb
             BTree l( file_, cache_ );
             BTree r( file_, cache_ );
 
-            split_node( l, r );
+            split_overflown_node( l, r );
             l.save( t );
             r.save( t );
 
