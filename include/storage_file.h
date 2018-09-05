@@ -282,11 +282,10 @@ namespace jb
         }
 
 
-        /* Initialize newly create file
+        /* Initialize newly create file with valid header
 
-        @retvar RetCode - operation status
-        @throw nothing
-        @warning not thread safe
+        @throw storage_file_error
+        @note function does not imply concurrent execution
         */
         auto deploy()
         {
@@ -348,10 +347,12 @@ namespace jb
         }
 
 
-        /* Applies transaction
+        /* Commit transaction
+
+        Applies all the changes that have been done during last successful transaction
 
         @retval operation status
-        @throw nothing
+        @throw storage_file_error
         */
         auto commit()
         {
@@ -466,9 +467,12 @@ namespace jb
 
         /* Rollback transaction
 
-        @throw noexcept
+        Revert all the changes that has been done to the file since start of transaction (except
+        Bloom filter data)
+
+        @throw nothing
         */
-        auto rollback()
+        auto rollback() noexcept
         {
             try
             {
@@ -500,6 +504,16 @@ namespace jb
         }
 
 
+        /* Reads another chunk of a chain
+
+        @param [in] handle - file handle to be used
+        @param [in] chunk - uid of chunk to be read
+        @param [out] buffer - i/o buffer
+        @param [in] buffer_size - maximum abount of bytes to be read
+        @retval size_t - number of read bytes
+        @retval ChunkUid - the next chunk in the chain
+        @throw storage_file_error
+        */
         [[ nodiscard ]]
         std::tuple< size_t, ChunkUid > read_chunk( Handle handle, ChunkUid chunk, void * buffer, size_t buffer_size )
         {
@@ -655,7 +669,11 @@ namespace jb
         }
 
 
-        /** Destructor, releases allocated resources
+        /** Destructor
+        
+        releases allocated resources
+
+        @throw nothing
         */
         ~StorageFile()
         {
@@ -685,22 +703,27 @@ namespace jb
 
         /** Provides creation status
 
+        @retval RetCode - object status
         @throw nothing
         */
         [[nodiscard]]
         auto status() const noexcept { return status_.load( std::memory_order_acquire ); }
 
 
+        /** Let's know if associated file has been just created
+
+        @retval bool - true if this is new file
+        @throw nothing
+        */
         [[nodiscard]]
         auto newly_created() const noexcept { return newly_created_; }
 
 
         /** Reads data for Bloom filter
 
-        @param [out] bloom_buffer - target for Bloom data
-        @return RetCode - status of operation
-        @throw nothing
-        @wraning not thread safe
+        @param [out] bloom_buffer - target buffer for Bloom data
+        @throw storage_file_error
+        @note the function does not imply concurrent calls
         */
         auto read_bloom( uint8_t * bloom_buffer )
         {
@@ -740,12 +763,11 @@ namespace jb
         }
 
 
-        /** Write changes from Bloom filter
+        /** Write another digest to Bloom filter section
 
         @param [in] byte_no - ordinal number of byte in the array
         @param [in] byte - value to be written
-        @retval - operation status
-        @thrown nothing
+        @thrown storage_file_error
         @note the function is not thread safe, but it's guaranied by the caller
         */
         auto add_bloom_digest( size_t byte_no, uint8_t byte )
@@ -778,6 +800,9 @@ namespace jb
 
 
         /** Starts new transaction
+
+        @retval Transaction - transaction object
+        @throw storage_file_error
         */
         Transaction open_transaction()
         {
@@ -792,10 +817,8 @@ namespace jb
         /** Provides input stream buffer for given chunk
 
         @param [in] chain - uid of start chunk of chain to be read
-        @return stream buffer object
-        @throw nothing
-        @note in theory the body may fire an exception, but in this case the better to die on noexcept
-              and analyze the crash than investigate a deadlock
+        @return istreambuf - input stream buffer
+        @throw storage_file_error
         */
         template < typename CharT >
         istreambuf< CharT > get_chain_reader( ChunkUid chain )

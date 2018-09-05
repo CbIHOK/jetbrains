@@ -3,7 +3,14 @@
 
 
 #include <mutex>
-#include <exception>
+
+#ifndef BOOST_ENDIAN_DEPRECATED_NAMES
+#define BOOST_ENDIAN_DEPRECATED_NAMES
+#include <boost/endian/endian.hpp>
+#undef BOOST_ENDIAN_DEPRECATED_NAMES
+#else
+#include <boost/endian/endian.hpp>
+#endif
 
 
 namespace jb
@@ -18,14 +25,23 @@ namespace jb
     {
         template < typename T > friend class TestStorageFile;
 
+        //
+        // needs access to private constructor
+        //
         friend class StorageFile;
+
+        //
+        // needs access to private write()
+        //
         template < typename CharT > friend class ostreambuf;
 
+        //
+        // data members
+        //
         RetCode status_ = RetCode::Ok;
         StorageFile & file_;
         std::unique_lock< std::mutex > write_lock_;
         streamer_t & writer_;
-
         uint64_t file_size_;
         ChunkUid free_space_;
         ChunkUid released_head_ = InvalidChunkUid, released_tile_ = InvalidChunkUid;
@@ -37,10 +53,11 @@ namespace jb
         bool commited_ = false;
 
 
-        /* Constructor
+        /* Explicit private constructor
 
         @param [in] file - related file object
-        @param [in] lock - write lock
+        @param [in] writer - write handle and associated i/o buffer
+        @param [in] lock - write lock over the file
         @throw nothing
         */
         explicit Transaction( StorageFile & file, streamer_t & writer, std::unique_lock< std::mutex > && lock ) noexcept
@@ -99,9 +116,8 @@ namespace jb
 
         /* Provides next available chunk uid
 
-        @retval RetCode - operation status
         @retval uint64_t - next available chunk
-        @throw nothing
+        @throw storage_file_error
         */
         [[nodiscard]]
         auto get_next_chunk()
@@ -156,12 +172,12 @@ namespace jb
         }
 
 
-        /* Writes data coming through output stream
+        /* Writes data coming from output stream
 
-        @param [in] data - data to be written
-        @param [in] sz - data size
-        @retval operation status
-        @throw nothing
+        @param [in] buffer - buffer to be written
+        @param [in] buffer_size - number of bytes to be written
+        @retval number of written bytes
+        @throw storage_file_error
         */
         [[nodiscard]]
         size_t write( const void * buffer, size_t buffer_size )
@@ -252,19 +268,9 @@ namespace jb
 
     public:
 
-        /** Default constructor, creates dummy transaction
+        /** The class is not default constructible/copyable
         */
         Transaction() = delete;
-
-
-        ~Transaction()
-        {
-            if ( !commited_ ) file_.rollback();
-        }
-
-
-        /** The class is not copyable
-        */
         Transaction( const Transaction & ) = delete;
         Transaction & operator = ( const Transaction & ) = delete;
 
@@ -272,6 +278,18 @@ namespace jb
         /** But movable
         */
         Transaction( Transaction&& ) noexcept = default;
+
+
+        /** Destructor
+
+        Rolls back uncomited transaction and releases write lock over the file
+
+        @throw nothing
+        */
+        ~Transaction()
+        {
+            if ( !commited_ ) file_.rollback();
+        }
 
 
         /** Provides transaction status
@@ -285,9 +303,10 @@ namespace jb
 
         /** Provides streaming buffer for overwriting of existing chain with preservation of start chunk uid
 
+        @tparam CharT - type of character to be used by stream
         @param [in] uid - uid of chain to be overwritten
         @retval output stream buffer object
-        @throw nothing
+        @throw storage_file_error
         */
         template< typename CharT >
         ostreambuf< CharT > get_chain_overwriter( ChunkUid uid )
@@ -345,8 +364,9 @@ namespace jb
 
         /** Provides streaming buffer for writting a chain
 
+        @tparam CharT - type of character to be used by stream
         @retval output stream buffer object
-        @throw nothing
+        @throw storage_file_error
         */
         template< typename CharT >
         auto get_chain_writer()
@@ -373,8 +393,8 @@ namespace jb
 
         /** Provides uid of the first chunk in written chain
 
-        @retval ChunkUid - uid of the first chunk
-        @throw nothing
+        @retval ChunkUid - uid of the first written chunk
+        @throw storgae_file_error
         */
         [[nodiscard]]
         ChunkUid get_first_written_chunk()
@@ -401,8 +421,7 @@ namespace jb
         /** Marks a chain started from given chunk as released
 
         @param [in] chunk - staring chunk
-        @retval operation status
-        @throw nothing
+        @throw storgae_file_error
         */
         auto erase_chain( ChunkUid chunk )
         {
@@ -473,8 +492,7 @@ namespace jb
 
         /** Commit transaction
 
-        @retval - operation status
-        @throw nothing
+        @throw storgae_file_error
         */
         auto commit() 
         {
