@@ -32,14 +32,23 @@ namespace jb
         friend class TestNodeLocker;
         friend class TestBloom;
 
-
     public:
 
+        //
+        // internal classes
+        //
         class PathLocker;
         class Bloom;
         class StorageFile;
         class BTree;
         class BTreeCache;
+
+        //
+        // export few aliases
+        //
+        static constexpr auto RootNodeUid = BTree::RootNodeUid;
+        static constexpr auto InvalidNodeUid = BTree::InvalidNodeUid;
+
 
         /** Represents execution signals: CANCELLED signal and ALLOWED TO APPLY signal
         */
@@ -48,11 +57,12 @@ namespace jb
             execution_connector() : std::pair< std::atomic_bool, std::atomic_bool >( false, false ){}
         };
 
-        static constexpr auto RootNodeUid = BTree::RootNodeUid;
-        static constexpr auto InvalidNodeUid = BTree::InvalidNodeUid;
 
     private:
 
+        //
+        // importing aliases
+        //
         using RetCode = typename Storage::RetCode;
         using Key = typename Storage::Key;
         using Value = typename Storage::Value;
