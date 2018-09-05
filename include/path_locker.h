@@ -12,27 +12,37 @@
 
 namespace jb
 {
-    /** Implements locking of logical path to assure mount consistency
+    /** Implements locking of physical paths to assure mount consistency
 
     @tparam Policies - global settings
-    @tparam Pad - test pad
     */
     template < typename Policies >
     class Storage< Policies >::PhysicalVolumeImpl::PathLocker
     {
+        //
+        // importing aliases
+        //
         using NodeUid = typename PhysicalVolumeImpl::NodeUid;
+        static constexpr auto MaxTreeDepth = Policies::PhysicalVolumePolicy::MaxTreeDepth;
+        static constexpr auto MountPointLimit = Policies::PhysicalVolumePolicy::MountPointLimit;
+        static constexpr auto PreallocatedSize = MaxTreeDepth * MountPointLimit;
 
+
+        //
+        // data members
+        //
         mutable std::shared_mutex guard_;
         std::unordered_map< NodeUid, std::atomic< size_t > > locked_nodes_;
         RetCode status_ = RetCode::Ok;
 
-        static constexpr auto MaxTreeDepth = Policies::PhysicalVolumePolicy::MaxTreeDepth;
-        static constexpr auto MountPointLimit = Policies::PhysicalVolumePolicy::MountPointLimit;
-        static constexpr auto PreallocatedSize = MaxTreeDepth * MountPointLimit;
         
     public:
 
+
+        /** Lock over a path in physical valume
+        */
         class PathLock;
+
 
         /** Default constructor
 
@@ -59,6 +69,7 @@ namespace jb
         /** Provides object status
 
         @retval RetCode::Ok if object created successfully, otherwise - error code
+        @throw nothing
         */
         auto status() const noexcept { return status_; }
 
@@ -110,7 +121,6 @@ namespace jb
     /** Holds a lock over a key in physical volume
 
     @tparam Policies - global settings
-    @tparam Pad - test pad
     */
     template < typename Policies >
     class Storage< Policies >::PhysicalVolumeImpl::PathLocker::PathLock
