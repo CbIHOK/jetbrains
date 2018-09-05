@@ -9,46 +9,92 @@
 
 namespace jb
 {
+    /** Represent key with fast syntax operation without any copying and heap allocations
+    
+    @tparam Policies - global settings
+    */
     template < typename Policies >
     class Storage< Policies >::Key
     {
 
     public:
 
+        //
+        // public aliases
+        //
         using CharT = typename Policies::KeyCharT;
         using ValueT = std::basic_string< CharT >;
         using ViewT = std::basic_string_view< CharT >;
 
     private:
 
+
+        //
+        // Storage::Hash<> needs access to private memebers
+        //
         friend class Storage;
         template < typename T > friend struct Storage::Hash;
 
+
+        //
+        // private aliases
+        //
         static constexpr decltype( ViewT::npos ) npos = ViewT::npos;
         static constexpr CharT separator{ '/' };
 
+
+        //
+        // data members
+        //
         ViewT view_;
         
+
+        //
+        // explicit private constructor
+        //
         explicit Key( const ViewT & view ) noexcept : view_( view ) {}
 
 
     public:
 
+        /** Default construcor, creates empty key
+
+        @throw nothing
+        */
         Key( ) noexcept = default;
 
+
+        /** Copy constructor
+
+        @throw nothing
+        */
         Key( const Key & o ) : view_{ o.view_ }
         {
         }
         
+
+        /** Copy assignment
+        */
         Key & operator = ( const Key & o )
         {
             view_ = o.view_;
             return *this;
         }
 
+
+        /** Move constructor/assignment
+        */
         Key( Key && ) noexcept = default;
         Key & operator = ( Key && ) noexcept = default;
 
+
+        /** Explicit constructor from string
+
+        Validates given string and makes key on its base, source string must stay alive till
+        key is in use
+
+        @throw may throw std::exception
+        */
         explicit Key( const ValueT & value )
         {
             using namespace std;
@@ -67,8 +113,13 @@ namespace jb
             }
         }
 
+
+        //
+        // type conversion
+        //
         operator ValueT() const { return ValueT{ cbegin( view_ ), cend( view_ ) }; }
         operator ViewT() const { return view_; }
+
 
         //
         // Few little helpers

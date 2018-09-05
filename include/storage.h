@@ -26,9 +26,6 @@ template < typename T > class TestBTree;
 namespace jb
 {
 
-    struct DefaultPad {};
-
-
     /**
     */
     template < typename Policies >
@@ -37,9 +34,8 @@ namespace jb
 
     public:
 
-        //
-        //
-        //
+        /** Defines hash operator
+        */
         template < typename T >
         struct Hash
         {
@@ -49,8 +45,15 @@ namespace jb
 
     private:
 
+        //
+        // let apply Hash to internal types
+        //
         template < typename T > friend struct Hash;
 
+
+        //
+        // tests need access to internal classes
+        //
         friend class TestStorage;
         friend class TestKey;
         friend class TestNodeLocker;
@@ -59,14 +62,23 @@ namespace jb
         template < typename T > friend class TestStorageFile;
         template < typename T > friend class TestBTree;
 
+
+        //
+        // needs access to private methods
+        //
         friend class VirtualVolume;
         friend class PhysicalVolume;
         friend class MountPoint;
 
+
+        //
+        // interanal classes
+        //
         class Key;
         class VirtualVolumeImpl;
         class PhysicalVolumeImpl;
         class MountPointImpl;
+
 
     public:
 
@@ -95,17 +107,23 @@ namespace jb
             UnableToOpen,           ///< Cannot open specified file
             TooManyConcurrentOps,   ///< The limit of concurent operations over physical volume is reached
             IoError,                ///< General I/O error
-            InvalidData,
+            InvalidData,            ///< Data read from storage file is invalid
             InsufficientMemory,     ///< Operation failed due to low memory
             UnknownError,           ///< Something wrong happened
-                                    ///
             NotYetImplemented
         };
 
+
+        //
+        // export public aliases
+        //
         using KeyValue = typename Key::ValueT;
         using Value = typename Policies::ValueT;
 
 
+        //
+        // public classes
+        //
         class VirtualVolume;
         class PhysicalVolume;
         class MountPoint;
@@ -174,6 +192,7 @@ namespace jb
 
 
     private:
+
 
         //
         // declares singletons policy for volume type
@@ -552,7 +571,6 @@ namespace jb
 
             bool valid_ = false;
             const CollectionT & collection_;
-
         };
 
 

@@ -147,7 +147,7 @@ namespace jb
         @retval KeyHashT - hash value of nearest mounted path
         @throw nothing
         */
-        [[nodiscard]]
+        [[ nodiscard ]]
         auto find_nearest_mounted_path( const Key & logical_path ) const noexcept
         {
             using namespace std;
@@ -181,7 +181,7 @@ namespace jb
         @retval vector< MountPointImplP > sorted in priority of corresponding Physical Volumes
         @throw may throw std::exception for some reasons
         */
-        [[nodiscard]]
+        [[ nodiscard ]]
         auto get_mount_points( KeyHashT & mp_path_hash ) const
         {
             using namespace std;
@@ -503,7 +503,7 @@ namespace jb
         @throw nothing
         */
         [[ nodiscard ]]
-        std::tuple< RetCode, MountPointImplP > mount (   PhysicalVolumeImplP physical_volume, 
+        std::tuple< RetCode, MountPointImplP > mount (  PhysicalVolumeImplP physical_volume, 
                                                         const Key & physical_path,
                                                         const Key & logical_path,
                                                         const Key & alias   ) noexcept
