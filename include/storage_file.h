@@ -29,6 +29,10 @@
 
 namespace jb
 {
+    /** Implements physical storage
+
+    @tparam Policies - global settings
+    */
     template < typename Policies >
     class Storage< Policies >::PhysicalVolumeImpl::StorageFile
     {
@@ -72,7 +76,15 @@ namespace jb
 
     private:
 
+        //
+        // needs access to private commit() & rollback()
+        //
         friend class Transaction;
+
+
+        //
+        // needs access to private read_chunk()
+        //
         template < typename CharT > class istreambuf;
 
 
@@ -96,7 +108,6 @@ namespace jb
         std::mutex readers_mutex_;
         std::condition_variable readers_cv_;
         std::array< io_buffer_t, ReaderNumber > read_buffers_;
-        static_vector< streamer_t, ReaderNumber > readers_;
         using reader_stack_t = std::stack< streamer_t, static_vector< streamer_t, ReaderNumber > >;
         reader_stack_t reader_stack_;
 
@@ -141,26 +152,26 @@ namespace jb
         //
         struct header_t
         {
-            boost::endian::big_uint64_t compatibility_stamp;        //< software compatibility stamp
+            big_uint64_t compatibility_stamp;         //< software compatibility stamp
 
             uint8_t bloom_[ BloomSize ];              //< bloom filter data
 
             struct transactional_data_t
             {
-                big_uint64_t file_size_;             //< current file size
-                big_uint64_t free_space_;            //< pointer to first free chunk (garbage collector)
+                big_uint64_t file_size_;              //< current file size
+                big_uint64_t free_space_;             //< pointer to first free chunk (garbage collector)
             };
 
             transactional_data_t transactional_data_; //< original copy
             transactional_data_t transaction_;        //< transaction copy
-            boost::endian::big_uint64_t transaction_crc_;           //< transaction CRC (identifies valid transaction)
+            big_uint64_t transaction_crc_;            //< transaction CRC (identifies valid transaction)
 
             struct preserved_chunk_t
             {
-                big_uint64_t target_;                  //< target chunk uid
+                big_uint64_t target_;                 //< target chunk uid
                 chunk_t chunk_;                       //< preserved chunk
             };
-            preserved_chunk_t overwritten__chunk_;       //< let us make one writing per transaction with preservation of original chunk uid
+            preserved_chunk_t overwritten__chunk_;    //< let us make one writing per transaction with preservation of original chunk uid
         };
 
 
@@ -219,7 +230,9 @@ namespace jb
 
     public:
 
+        //
         // declares uid of the Root chunk
+        //
         static constexpr ChunkUid RootChunkUid = static_cast< ChunkUid >( HeaderOffsets::of_Root );
 
         class storage_file_error : public std::runtime_error
@@ -231,21 +244,36 @@ namespace jb
             RetCode code() const { return rc_; }
         };
 
+
     private:
 
+
+        /* Sets object status
+
+        @param [in] status - status to be set
+        @throw nothing
+        */
         auto set_status( RetCode status ) noexcept
         {
             auto ok = RetCode::Ok;
             status_.compare_exchange_weak( ok, status, std::memory_order_acq_rel, std::memory_order_relaxed );
         }
 
+
+        /* Throws storage_file_error exception if given condition failed
+
+        @param [in] condition - condition to be checked
+        @param [in] rc - return code to be assigned to an exception
+        @param [in] what - text message to be assigned to an exception
+        @throw storage_file_error
+        */
         static auto throw_storage_file_error( bool condition, RetCode rc, const char * what = "" )
         {
             if ( !condition ) throw storage_file_error( rc, what );
         }
 
 
-        /* Generates compatibility stamp
+        /* Generates compatibility stamp basing on the system policies
 
         @retval unique stamp of software settings
         @throw nothing
@@ -260,8 +288,8 @@ namespace jb
 
         /* Check software to file compatibility
 
-        @throws nothing
-        @warning  not thread safe
+        @throws storage_file_error
+        @note function does not imply concurrent execution
         */
         auto check_compatibility()
         {
@@ -579,8 +607,7 @@ namespace jb
 
         /** Constructs an instance
 
-        @param [in] path - path to physical file
-        @param [in] suppress_lock - do not lock the file (test mode)
+        @param [in] path - path to physical file@param [in] suppress_lock - do not lock the file (test mode)
         @throw nothing
         */
         explicit StorageFile( const std::filesystem::path & path, bool suppress_lock = false ) try
@@ -588,11 +615,6 @@ namespace jb
             , writer_( InvalidHandle, std::ref( write_buffer_ ) )
         {
             using namespace std;
-
-            for ( size_t i = 0; i < ReaderNumber; ++i )
-            {
-                readers_.emplace_back( InvalidHandle, read_buffers_[ 0 ] );
-            }
 
             if ( !suppress_lock )
             {
@@ -646,14 +668,13 @@ namespace jb
             }
 
             // open readers
-            for ( auto & reader : readers_ )
+            for ( size_t i = 0; i < ReaderNumber; ++i )
             {
                 auto[ opened, tried_create, handle ] = Os::open_file( path );
-                throw_storage_file_error( ( reader.first = handle ) != InvalidHandle, RetCode::UnableToOpen );
-            }
+                throw_storage_file_error( InvalidHandle != handle, RetCode::UnableToOpen );
 
-            // initialize stack of readers
-            reader_stack_ = move( reader_stack_t{ readers_ } );
+                reader_stack_.push( streamer_t{ handle, ref( read_buffers_[ i ] ) } );
+            }
         }
         catch ( const storage_file_error & e )
         {
@@ -686,10 +707,11 @@ namespace jb
             if ( bloom_ != InvalidHandle ) Os::close_file( bloom_ );
 
             // release readers
-            assert( readers_.size() == ReaderNumber );
-            for ( auto & reader : readers_ )
-            { 
+            while ( reader_stack_.size() )
+            {
+                streamer_t & reader = reader_stack_.top();
                 if ( reader.first != InvalidHandle ) Os::close_file( reader.first );
+                reader_stack_.pop();
             }
 
             // unlock file name

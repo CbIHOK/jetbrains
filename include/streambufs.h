@@ -17,22 +17,29 @@
 
 namespace jb
 {
-
+    /** Reflects char type -> integer type
+    */
     template < typename CharT > struct store_adaptor_type
     {
         using type = typename std::char_traits< CharT >::int_type;
     };
 
+
+    /** Specialization for CharT=char
+    */
     template <> struct store_adaptor_type< char >
     {
         using type = char;
     };
 
+
+    /** Short alias for store_adaptor_type<>::type
+    */
     template < typename CharT > using store_adaptor_type_t = typename store_adaptor_type< CharT >::type;
 
-    //
-    // provides stored type for Char_T
-    //
+
+    /* Reflects character type -> stored type
+    */
     template < typename CharT > struct stored_type
     {
         using be_type = boost::endian::endian_arithmetic<
@@ -48,18 +55,19 @@ namespace jb
         using type = std::conditional_t< i == c[ 0 ], be_type, CharT >;
     };
 
+    /** Specialization for CharT=char
+    */
     template <> struct stored_type< char > { using type = char; };
 
-    //
-    // short alias
-    //
+
+    /* Short alias for stored_type<>::type
+    */
     template < typename CharT > using stored_type_t = typename stored_type< CharT >::type;
 
 
     /** Represents input stream from storage file
 
     @tparam Policies - global setting
-    @tparam Pad - test stuff
     */
     template < typename Policies >
     template < typename CharT >
@@ -246,7 +254,6 @@ namespace jb
     /** Represents output stream to storage file
 
     @tparam Policies - global setting
-    @tparam Pad - test stuff
     */
     template < typename Policies >
     template < typename CharT >
@@ -363,10 +370,12 @@ namespace jb
         */
         ostreambuf() = delete;
 
+
         /* The class is not copyable...
         */
         ostreambuf( const ostreambuf & ) = delete;
         ostreambuf & operator = ( const ostreambuf & ) = delete;
+
 
         /** ...but movable
         */
