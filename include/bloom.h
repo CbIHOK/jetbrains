@@ -177,54 +177,61 @@ namespace jb
         {
             using namespace std;
 
-            digests.clear();
-
-            // nothing to test
-            if ( Key::root() == relative_path )
+            try
             {
-                return true;
-            }
+                digests.clear();
 
-            if ( !relative_path.is_path() )
-            {
-                throw bloom_error( RetCode::UnknownError, "Bad path" );
-            }
-
-            // generate digests
-            Key rest = relative_path;
-
-            while ( rest.size() )
-            {
-                if ( entry_level + digests.size() >= BloomFnCount )
+                // nothing to test
+                if ( relative_path.empty() || Key::root() == relative_path )
                 {
-                    throw bloom_error( RetCode::MaxTreeDepthExceeded, "" );
+                    return true;
                 }
 
-                auto[ split_ok, prefix, suffix ] = rest.split_at_head();
-                auto[ trunc_ok, stem ] = prefix.cut_lead_separator();
-                auto digest = generate_digest( ++entry_level, stem );
-
-                digests.push_back( digest );
-                rest = suffix;
-            }
-
-            // check
-            auto may_present = true;
-            for ( auto digest : digests )
-            {
-                const auto byte_no = ( digest / 8 ) % BloomSize;
-                const auto bit_no = digest % 8;
-                    
-                auto check = filter_[ byte_no ] & ( 1 << bit_no );
-
-                if ( check == 0 )
+                if ( !relative_path.is_path() )
                 {
-                    may_present = false;
-                    break;
+                    throw bloom_error( RetCode::UnknownError, "Bad path" );
                 }
-            };
 
-            return may_present;
+                // generate digests
+                Key rest = relative_path;
+
+                while ( rest.size() )
+                {
+                    if ( entry_level + digests.size() >= BloomFnCount )
+                    {
+                        throw bloom_error( RetCode::MaxTreeDepthExceeded, "" );
+                    }
+
+                    auto[ prefix, suffix ] = rest.split_at_head();
+                    auto stem = prefix.cut_lead_separator();
+                    auto digest = generate_digest( ++entry_level, stem );
+
+                    digests.push_back( digest );
+                    rest = suffix;
+                }
+
+                // check
+                auto may_present = true;
+                for ( auto digest : digests )
+                {
+                    const auto byte_no = ( digest / 8 ) % BloomSize;
+                    const auto bit_no = digest % 8;
+
+                    auto check = filter_[ byte_no ] & ( 1 << bit_no );
+
+                    if ( check == 0 )
+                    {
+                        may_present = false;
+                        break;
+                    }
+                };
+
+                return may_present;
+            }
+            catch ( const logic_error & )
+            {
+                abort();
+            }
         }
     };
 }

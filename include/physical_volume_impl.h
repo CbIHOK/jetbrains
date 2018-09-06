@@ -431,7 +431,7 @@ namespace jb
             size_t entry_key_level,
             const Key & relative_path,
             const Key & subkey,
-            Value && value,
+            const Value & value,
             uint64_t good_before,
             bool overwrite,
             const execution_connector & in,

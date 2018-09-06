@@ -12,9 +12,12 @@ class TestVirtualVolume;
 
 namespace jb
 {
+
     /** Virtual Volume
 
-    Implements monostate pattern, allows many instances to share the same Virtual Volume
+    Implements user-end handle of virtual volume
+
+    @tparam Policies - global setting
     */
     template < typename Policies >
     class Storage< Policies >::VirtualVolume
@@ -41,73 +44,38 @@ namespace jb
         std::weak_ptr< Impl > impl_;
 
 
-        /* Instantiating constructor
-
-        Assignes the instance with implementationw
+        /* Explicit private constructor, creates an handle with given PIMP instance
 
         @param [in] impl - implementation instance to be referred
         @throw nothing
         */
-        VirtualVolume( const std::shared_ptr< Impl > & impl ) noexcept : impl_( impl ) {}
+        explicit VirtualVolume( const std::shared_ptr< Impl > & impl ) noexcept : impl_( impl ) {}
 
 
     public:
 
-        /** Default constructor
-
-        Creates dummy instance that is not attached to an existing Virtual Volume
+        /** Default constructor, creates dummy virtual volume handle
 
         @throw nothing
         */
         VirtualVolume( ) noexcept = default;
 
 
-        /** Copy constructor
-
-        Initializes new instance as a copy of the origin
-
-        @param [in] o - origin
-        @throw nothing
+        /** The class is copy/move constructible
         */
-        VirtualVolume( const VirtualVolume & o ) noexcept = default;
+        VirtualVolume( const VirtualVolume & ) noexcept = default;
+        VirtualVolume( VirtualVolume && ) noexcept = default;
 
 
-        /** Copying assignment
-
-        Sets the instance with a copy of origin
-
-        @param [in] o - origin
-        @return lvalue of the instance
-        @throw nothing
+        /** The class provides copy/move assignment
         */
-        VirtualVolume & operator = ( const VirtualVolume & o ) noexcept = default;
+        VirtualVolume & operator = ( const VirtualVolume & ) noexcept = default;
+        VirtualVolume & operator = ( VirtualVolume && ) noexcept = default;
 
 
-        /** Moving constructor
+        /** operator bool()
 
-        Initializes new instance by moving a content from given origin
-
-        @param [in] o - origin
-        @return lvalue of created instance
-        @throw nothing
-        */
-        VirtualVolume( VirtualVolume && o ) noexcept = default;
-
-
-        /** Moving assignment
-
-        Sets the instance by moving content from given origin
-
-        @param [in] o - origin
-        @return lvalue of the instance
-        @throw nothing
-        */
-        VirtualVolume & operator = ( VirtualVolume && o ) noexcept = default;
-
-
-        /** Checks if an instance is valid i.e. it represents existing volume
-
-        @return true if instance is valid
+        @retval bool - true if the handle is associated with virtual volume
         @throw nothing
         */
         operator bool() const noexcept { return (bool)impl_.lock(); }
@@ -115,40 +83,13 @@ namespace jb
 
         /** Comparison operators
 
-        @param [in] l - left part of comparison operator
-        @param [in] r - right part of comparison operator
-        @return true if the arguments meet condition
+        @return bool true if the arguments meet condition
         @throw nothing
         */
-        friend auto operator == (const VirtualVolume & l, const VirtualVolume & r) noexcept
-        {
-            return l.impl_.lock( ) == r.impl_.lock( );
-        }
+        friend auto operator == (const VirtualVolume & l, const VirtualVolume & r) noexcept { return l.impl_.lock( ) == r.impl_.lock( ); }
+        friend auto operator != (const VirtualVolume & l, const VirtualVolume & r) noexcept { return l.impl_.lock( ) != r.impl_.lock( ); }
+        friend auto operator < ( const VirtualVolume & l, const VirtualVolume & r ) noexcept { return l.impl_.lock( ) < r.impl_.lock( ); }
 
-        friend auto operator != (const VirtualVolume & l, const VirtualVolume & r) noexcept
-        {
-            return l.impl_.lock( ) != r.impl_.lock( );
-        }
-
-        friend auto operator < ( const VirtualVolume & l, const VirtualVolume & r ) noexcept
-        {
-            return l.impl_.lock( ) < r.impl_.lock( );
-        }
-
-        friend auto operator > ( const VirtualVolume & l, const VirtualVolume & r ) noexcept
-        {
-            return l.impl_.lock( ) > r.impl_.lock( );
-        }
-
-        friend auto operator <= ( const VirtualVolume & l, const VirtualVolume & r ) noexcept
-        {
-            return l.impl_.lock( ) <= r.impl_.lock( );
-        }
-
-        friend auto operator >= ( const VirtualVolume & l, const VirtualVolume & r ) noexcept
-        {
-            return l.impl_.lock( ) >= r.impl_.lock( );
-        }
 
         /** Detaches associated Virtual Volume and close it
         
@@ -167,7 +108,17 @@ namespace jb
         }
 
 
-        RetCode Insert( const KeyValue & key, const KeyValue & subkey, Value && value, uint64_t good_before = 0, bool overwrite = false ) noexcept
+        /** Inserts subkey with specified value and expiration timemark at given path
+
+        @param [in] key - insertion path
+        @param [in] subkey - subkey to be inserted
+        @param [in] value - subkey's value
+        @param [in] good_before - subkey's expiration timemark (in msecs from epoch)
+        @param [in] overwrite - allows to overwrite existing subkey
+        @retval RetCode - operation status
+        @throw nothing
+        */
+        RetCode Insert( const KeyValue & key, const KeyValue & subkey, const Value & value, uint64_t good_before = 0, bool overwrite = false ) noexcept
         {
             using namespace std;
 
@@ -186,7 +137,6 @@ namespace jb
                 }
 
                 uint64_t now = chrono::system_clock::now().time_since_epoch() / chrono::milliseconds( 1 );
-
                 if ( good_before && good_before < now )
                 {
                     return { RetCode::AlreadyExpired };
@@ -194,16 +144,12 @@ namespace jb
 
                 if ( auto impl = impl_.lock( ) )
                 {
-                    return impl->insert( key_, subkey_, std::move( value ), good_before, overwrite );
+                    return impl->insert( key_, subkey_, value, good_before, overwrite );
                 }
                 else
                 {
                     return { RetCode::InvalidHandle };
                 }
-            }
-            catch ( const bad_alloc & )
-            {
-                return { RetCode::InsufficientMemory };
             }
             catch ( ... )
             {
@@ -213,7 +159,13 @@ namespace jb
         }
 
 
-        
+        /** Provides value of specified key
+
+        @param [in] key - key to be read
+        @retval RetCode - operation status
+        @retval Value - key's value
+        @throw nothing
+        */
         std::tuple< RetCode, Value > Get( const KeyValue & key ) noexcept
         {
             using namespace std;
@@ -235,10 +187,6 @@ namespace jb
                     return { RetCode::InvalidHandle, Value{} };
                 }
             }
-            catch ( const std::bad_alloc & )
-            {
-                return { RetCode::InsufficientMemory, Value{} };
-            }
             catch ( ... )
             {
             }
@@ -247,6 +195,13 @@ namespace jb
         }
 
 
+        /** Erases given key
+
+        @param [in] key - key to be removed
+        @param [in] force - allows to erase key's children subtree if exist
+        @retval RetCode - operation status
+        @throw nothing
+        */
         RetCode Erase( const KeyValue & key, bool force = false ) noexcept
         {
             using namespace std;
@@ -280,7 +235,16 @@ namespace jb
         }
 
 
-        [[nodiscard]]
+        /** Mounts specified path of physical volume at given logical path with given alias
+
+        @param [in] physical_volume - physical volume
+        @param [in] physical_path - physical path to be mounted
+        @param [in] logical_path - path to new mount point
+        @param [in] alias - name of new mount point
+        @retval RetCode - operation status
+        @retval MountPoint - mount point handle
+        @throw nothing
+        */
         std::tuple< RetCode, MountPoint > Mount( const PhysicalVolume & physical_volume, const KeyValue & physical_path, const KeyValue & logical_path, const KeyValue & alias ) noexcept
         {
             using namespace std;
@@ -323,10 +287,6 @@ namespace jb
                 {
                     return { RetCode::InvalidHandle, MountPoint{} };
                 }
-            }
-            catch ( const std::bad_alloc & )
-            {
-                return { RetCode::InsufficientMemory, MountPoint{} };
             }
             catch ( ... )
             {

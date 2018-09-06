@@ -152,26 +152,31 @@ namespace jb
         {
             using namespace std;
 
-            auto current = logical_path;
-
-            while ( current != Key{} )
+            try
             {
-                static Hash< Key > hasher{};
+                auto current = logical_path;
 
-                auto current_hash = hasher( current );
-
-                if ( paths_.count( current_hash ) )
+                while ( current != Key{} )
                 {
-                    return tuple{ current, current_hash };
+                    static Hash< Key > hasher{};
+
+                    auto current_hash = hasher( current );
+
+                    if ( paths_.count( current_hash ) )
+                    {
+                        return tuple{ current, current_hash };
+                    }
+
+                    auto[ superkey, subkey ] = current.split_at_tile();
+                    current = superkey;
                 }
 
-                auto [ ret, superkey, subkey ] = current.split_at_tile( );
-                assert( ret );
-
-                current = move( superkey );
+                return tuple{ Key{}, KeyHashT{} };
             }
-
-            return tuple{ Key{}, KeyHashT{} };
+            catch ( const logic_error & )
+            {
+                abort();
+            }
         }
 
 
@@ -307,7 +312,7 @@ namespace jb
         @throw nothing
         */
         [[ nodiscard ]]
-        RetCode insert( const Key & path, const Key & subkey, Value && value, uint64_t good_before, bool overwrite ) noexcept
+        RetCode insert( const Key & path, const Key & subkey, const Value & value, uint64_t good_before, bool overwrite ) noexcept
         {
             using namespace std;
 
@@ -327,11 +332,10 @@ namespace jb
 
                     // get relative path as a rest from mount point
                     auto[ is_superkey, relative_path ] = mount_path.is_superkey( path );
-                    assert( is_superkey );
 
                     // run insert() for all mounts in parallel
                     auto futures = std::move( run_parallel( mounts, [&] ( const auto & mount, const auto & in, auto & out ) noexcept {
-                        return mount->insert( relative_path, subkey, std::move( value ), good_before, overwrite, in, out );
+                        return mount->insert( relative_path, subkey, value, good_before, overwrite, in, out );
                     } ) );
 
                     // through all futures
@@ -359,6 +363,10 @@ namespace jb
                 {
                     return RetCode::InvalidLogicalPath;
                 }
+            }
+            catch ( const std::logic_error & )
+            {
+                abort();
             }
             catch(...)
             {
@@ -389,7 +397,6 @@ namespace jb
 
                     // get relative path as a rest from mount point
                     auto[ is_superkey, relative_path ] = mount_path.is_superkey( key );
-                    assert( is_superkey );
 
                     // run get() for all mounts in parallel
                     auto futures = std::move( run_parallel( mounts, [&] ( const auto & mount, const auto & in, auto & out ) noexcept {
@@ -422,6 +429,10 @@ namespace jb
                     return { RetCode::InvalidLogicalPath, Value{} };
                 }
             }
+            catch ( const std::logic_error & )
+            {
+                abort();
+            }
             catch ( ... )
             {
             }
@@ -452,7 +463,6 @@ namespace jb
 
                     // get relative path as a rest from mount point
                     auto[ is_superkey, relative_path ] = mount_path.is_superkey( key );
-                    assert( is_superkey );
 
                     // run erase() for all mounts in parallel
                     auto futures = move( run_parallel( mounts, [&] ( const auto & mount, const auto & in, auto & out ) noexcept {
@@ -484,6 +494,10 @@ namespace jb
                 {
                     return RetCode::InvalidLogicalPath;
                 }
+            }
+            catch ( const std::logic_error & )
+            {
+                abort();
             }
             catch ( ... )
             {
@@ -556,7 +570,6 @@ namespace jb
 
                     // get physical path as a rest from mount point
                     auto[ is_superkey, relative_path ] = parent_path.is_superkey( logical_path );
-                    assert( is_superkey );
 
                     // run lock_path() for all parent mounts in parallel
                     auto futures = move( run_parallel( parent_mounts, [&] ( const auto & mount, const auto & in, auto & out ) noexcept {
@@ -620,6 +633,10 @@ namespace jb
             catch ( const bad_alloc & )
             {
                 return { RetCode::InsufficientMemory, MountPointImplP{} };
+            }
+            catch ( const std::logic_error & )
+            {
+                abort();
             }
             catch ( ... )
             {

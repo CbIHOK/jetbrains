@@ -9,7 +9,6 @@ namespace jb
     /** Replesent Mount Point handle object
 
     @tparam Policies - global setting
-    @tparam Pad - test stuff
     */
     template < typename Policies >
     class Storage< Policies >::MountPoint
@@ -27,7 +26,7 @@ namespace jb
 
         /*
         */
-        MountPoint( const std::shared_ptr< Impl > & impl, const std::shared_ptr< VirtualVolumeImpl > & volume_impl ) noexcept
+        explicit MountPoint( const std::shared_ptr< Impl > & impl, const std::shared_ptr< VirtualVolumeImpl > & volume_impl ) noexcept
             : impl_( impl )
             , volume_impl_( volume_impl)
         {
@@ -77,6 +76,7 @@ namespace jb
         */
         friend bool operator == (const MountPoint & l, const MountPoint & r) noexcept { return l.impl_.lock() == r.impl_.lock(); }
         friend bool operator != (const MountPoint & l, const MountPoint & r) noexcept { return l.impl_.lock() != r.impl_.lock(); }
+        friend bool operator < ( const MountPoint & l, const MountPoint & r ) noexcept { return l.impl_.lock() < r.impl_.lock(); }
 
 
         /** Unmount the mount point

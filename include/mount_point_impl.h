@@ -133,9 +133,9 @@ namespace jb
         @throw nothing
         */
         [[ nodiscard ]]
-        RetCode insert( const Key & relative_path, const Key & subkey, Value && value, uint64_t good_before, bool overwrite, const execution_connector & in, execution_connector & out ) noexcept
+        RetCode insert( const Key & relative_path, const Key & subkey, const Value & value, uint64_t good_before, bool overwrite, const execution_connector & in, execution_connector & out ) noexcept
         {
-            auto [rc] = physical_volume_->insert( entry_node_uid_, entry_node_level_, relative_path, subkey, std::move( value ), good_before, overwrite, in, out );
+            auto [rc] = physical_volume_->insert( entry_node_uid_, entry_node_level_, relative_path, subkey, value, good_before, overwrite, in, out );
             return rc;
         }
 

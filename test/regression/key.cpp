@@ -1,6 +1,7 @@
 #include <gtest/gtest.h>
 #include <storage.h>
 #include <policies.h>
+#include <exception>
 
 
 using namespace std;
@@ -106,112 +107,194 @@ TEST_F( TestKey, Compare )
 
 TEST_F( TestKey, SplitAtHead )
 {
+    using namespace std;
+
     {
-        Key in{};
-        auto[ ret, super_key, sub_key ] = in.split_at_head( );
-        EXPECT_FALSE( ret );
-        EXPECT_EQ( Key{}, super_key );
-        EXPECT_EQ( Key{}, sub_key );
+        KeyValue in;
+        std::tuple< Key, Key > res;
+        EXPECT_THROW( res = Key{ in }.split_at_head(), std::logic_error );
     }
 
     {
         KeyValue in = { "/"s };
-        auto[ ret, super_key, sub_key ] = Key{ in }.split_at_head();
-        EXPECT_TRUE( ret );
-        EXPECT_EQ( Key{}, super_key );
-        EXPECT_EQ( Key{}, sub_key );
+        std::tuple< Key, Key > res;
+        EXPECT_NO_THROW( res = Key{ in }.split_at_head() );
+        EXPECT_EQ( Key{}, get< 0 >( res ) );
+        EXPECT_EQ( Key{}, get< 1 >( res ) );
     }
 
     {
         KeyValue in{ "/foo"s };
-        auto[ ret, super_key, sub_key ] = Key{ in }.split_at_head();
-        EXPECT_TRUE( ret );
-        EXPECT_EQ( Key{ "/foo"s }, super_key );
-        EXPECT_EQ( Key{}, sub_key );
+        std::tuple< Key, Key > res;
+        EXPECT_NO_THROW( res = Key{ in }.split_at_head() );
+        EXPECT_EQ( Key{ "/foo"s }, get< 0 >( res ) );
+        EXPECT_EQ( Key{}, get< 1 >( res ) );
     }
 
     {
         KeyValue in{ "/foo/boo"s };
-        auto[ ret, super_key, sub_key ] = Key{ in }.split_at_head();
-        EXPECT_TRUE( ret );
-        EXPECT_EQ( Key{ "/foo"s }, super_key );
-        EXPECT_EQ( Key{ "/boo"s }, sub_key );
+        std::tuple< Key, Key > res;
+        EXPECT_NO_THROW( res = Key{ in }.split_at_head() );
+        EXPECT_EQ( Key{ "/foo"s }, get< 0 >( res ) );
+        EXPECT_EQ( Key{ "/boo"s }, get< 1 >( res ) );
     }
 }
 
 
 TEST_F( TestKey, SplitAtTile )
 {
+    using namespace std;
+
     {
         KeyValue in{};
-        auto[ ret, super_key, sub_key ] = Key{ in }.split_at_tile();
-        EXPECT_FALSE( ret );
-        EXPECT_EQ( Key{}, super_key );
-        EXPECT_EQ( Key{}, sub_key );
+        std::tuple< Key, Key > res;
+        EXPECT_THROW( res = Key{ in }.split_at_tile(), logic_error );
     }
 
     {
-        KeyValue in{ "/"s };
-        auto[ ret, super_key, sub_key ] = Key{ in }.split_at_tile( );
-        EXPECT_TRUE( ret );
-        EXPECT_EQ( Key{}, super_key );
-        EXPECT_EQ( Key{}, sub_key );
+        KeyValue in = { "/"s };
+        std::tuple< Key, Key > res;
+        EXPECT_NO_THROW( res = Key{ in }.split_at_tile() );
+        EXPECT_EQ( Key{}, get< 0 >( res ) );
+        EXPECT_EQ( Key{}, get< 1 >( res ) );
     }
 
     {
         KeyValue in{ "/foo"s };
-        auto[ ret, super_key, sub_key ] = Key{ in }.split_at_tile( );
-        EXPECT_TRUE( ret );
-        EXPECT_EQ( Key{}, super_key );
-        EXPECT_EQ( Key{ "/foo"s }, sub_key );
+        std::tuple< Key, Key > res;
+        EXPECT_NO_THROW( res = Key{ in }.split_at_tile() );
+        EXPECT_EQ( Key{}, get< 0 >( res ) );
+        EXPECT_EQ( Key{ "/foo"s }, get< 1 >( res ) );
     }
 
     {
         KeyValue in{ "/foo/boo"s };
-        auto[ ret, super_key, sub_key ] = Key{ in }.split_at_tile( );
-        EXPECT_TRUE( ret );
-        EXPECT_EQ( Key{ "/foo"s }, super_key );
-        EXPECT_EQ( Key{ "/boo"s }, sub_key );
+        std::tuple< Key, Key > res;
+        EXPECT_NO_THROW( res = Key{ in }.split_at_tile() );
+        EXPECT_EQ( Key{ "/foo"s }, get< 0 >( res ) );
+        EXPECT_EQ( Key{ "/boo"s }, get< 1 >( res ) );
     }
 }
 
 
 TEST_F( TestKey, IsSubkey )
 {
-    EXPECT_FALSE( std::get< bool >( Key{}.is_subkey( Key{} ) ) );
+    using namespace std;
 
-    EXPECT_TRUE( std::get< bool >( Key{ "/foo"s }.is_subkey( Key{} ) ) );
-    EXPECT_EQ( Key{ "/foo"s }, std::get< Key >( Key{ "/foo"s }.is_subkey( Key{} ) ) );
+    {
+        KeyValue in;
+        EXPECT_THROW( Key{ in }.is_subkey( Key{ "/foo"s } ), logic_error );
+    }
+    
+    {
+        KeyValue in{ "foo"s };
+        EXPECT_THROW( Key{ in }.is_subkey( Key{ "/boo"s } ), logic_error );
+    }
 
-    EXPECT_TRUE( std::get< bool >( Key{ "/foo"s }.is_subkey( Key::root() ) ) );
-    EXPECT_EQ( Key{ "/foo"s }, std::get< Key >( Key{ "/foo"s }.is_subkey( Key::root() ) ) );
+    {
+        std::tuple< bool, Key > res;
+        EXPECT_NO_THROW( res = Key::root().is_subkey( Key::root() ) );
+        EXPECT_FALSE( get< 0 >( res ) );
+    }
 
-    EXPECT_FALSE( std::get< bool >( Key{}.is_subkey( Key{ "/foo"s } ) ) );
-    EXPECT_FALSE( std::get< bool >( Key{ "/boo"s }.is_subkey( Key{ "boo"s } ) ) );
+    {
+        std::tuple< bool, Key > res;
+        EXPECT_NO_THROW( res = Key::root().is_subkey( Key{ "/foo"s } ) );
+        EXPECT_FALSE( get< 0 >( res ) );
+    }
 
-    EXPECT_FALSE( std::get< bool >( Key{ "/boo"s }.is_subkey( Key{ "boo"s } ) ) );
-    EXPECT_FALSE( std::get< bool >( Key{ "boo"s }.is_subkey( Key{ "/boo"s } ) ) );
-    EXPECT_FALSE( std::get< bool >( Key{ "/foo"s }.is_subkey( Key{ "/boo"s } ) ) );
-    EXPECT_FALSE( std::get< bool >( Key{ "/foo"s }.is_subkey( Key{ "/boo/foo"s } ) ) );
+    {
+        KeyValue in{ "/foo"s };
+        EXPECT_THROW( Key{ in }.is_subkey( Key{} ), logic_error );
+        EXPECT_THROW( Key{ in }.is_subkey( Key{ "boo"s } ), logic_error );
 
-    EXPECT_TRUE( std::get< bool >( Key{ "/foo/boo"s }.is_subkey( Key{ "/foo"s } ) ) );
-    EXPECT_EQ( Key{ "/boo"s }, std::get< Key >( Key{ "/foo/boo"s }.is_subkey( Key{ "/foo"s } ) ) );
+        std::tuple< bool, Key > res;
+
+        EXPECT_NO_THROW( res = Key{ in }.is_subkey( Key::root() ) );
+        EXPECT_TRUE( get< 0 >( res ) );
+        EXPECT_EQ( Key{ "/foo"s }, get< 1 >( res ) );
+
+        EXPECT_NO_THROW( res = Key{ in }.is_subkey( Key{ "/foo"s } ) );
+        EXPECT_FALSE( get< 0 >( res ) );
+
+        EXPECT_NO_THROW( res = Key{ in }.is_subkey( Key{ "/boo"s } ) );
+        EXPECT_FALSE( get< 0 >( res ) );
+
+        EXPECT_NO_THROW( res = Key{ in }.is_subkey( Key{ "/foo/boo"s } ) );
+        EXPECT_FALSE( get< 0 >( res ) );
+
+        EXPECT_NO_THROW( res = Key{ in }.is_subkey( Key{ "/boo/foo"s } ) );
+        EXPECT_FALSE( get< 0 >( res ) );
+    }
+
+    {
+        KeyValue in{ "/foo/boo"s };
+        std::tuple< bool, Key > res;
+
+        EXPECT_NO_THROW( res = Key{ in }.is_subkey( Key{ "/boo"s } ) );
+        EXPECT_FALSE( get< 0 >( res ) );
+
+        EXPECT_NO_THROW( res = Key{ in }.is_subkey( Key{ "/foo"s } ) );
+        EXPECT_TRUE( get< 0 >( res ) );
+        EXPECT_EQ( Key{ "/boo"s }, get< 1 >( res ) );
+    }
 }
 
 
 TEST_F( TestKey, IsSuperkey )
 {
-    EXPECT_FALSE( std::get< bool >( Key{}.is_superkey( Key{} ) ) );
-    EXPECT_FALSE( std::get< bool >( Key{ "/foo"s }.is_superkey( Key{} ) ) );
-    
-    EXPECT_TRUE( std::get< bool >( Key{}.is_superkey( Key{ "/foo"s } ) ) );
-    EXPECT_EQ( Key{ "/foo"s }, std::get< Key >( Key{}.is_superkey( Key{ "/foo"s } ) ) );
+    using namespace std;
 
-    EXPECT_FALSE( std::get< bool >( Key{ "/boo"s }.is_superkey( Key{ "boo"s } ) ) );
-    EXPECT_FALSE( std::get< bool >( Key{ "boo"s }.is_superkey( Key{ "/boo"s } ) ) );
-    EXPECT_FALSE( std::get< bool >( Key{ "/foo"s }.is_superkey( Key{ "/boo"s } ) ) );
-    EXPECT_FALSE( std::get< bool >( Key{ "/foo"s }.is_superkey( Key{ "/boo/foo"s } ) ) );
-    
-    EXPECT_TRUE( std::get< bool >( Key{ "/foo"s }.is_superkey( Key{ "/foo/boo"s } ) ) );
-    EXPECT_EQ( Key{ "/boo"s }, std::get< Key >( Key{ "/foo"s }.is_superkey( Key{ "/foo/boo"s } ) ) );
+    {
+        KeyValue in;
+        EXPECT_THROW( Key{ in }.is_superkey( Key{ "/foo"s } ), logic_error );
+    }
+
+    {
+        KeyValue in{ "foo"s };
+        EXPECT_THROW( Key{ in }.is_superkey( Key{ "/boo"s } ), logic_error );
+    }
+
+    {
+        std::tuple< bool, Key > res;
+        EXPECT_NO_THROW( res = Key::root().is_superkey( Key::root() ) );
+        EXPECT_FALSE( get< 0 >( res ) );
+    }
+
+    {
+        KeyValue foo = "/foo"s;
+
+        std::tuple< bool, Key > res;
+        EXPECT_NO_THROW( res = Key::root().is_superkey( Key{ foo } ) );
+        EXPECT_TRUE( get< 0 >( res ) );
+        EXPECT_EQ( Key{ foo }, get< 1 >( res ) );
+    }
+
+    {
+        KeyValue foo = "/foo"s;
+        KeyValue boo = "/boo"s;
+        KeyValue foo_boo = "/foo/boo"s;
+        KeyValue boo_foo = "/boo/foo"s;
+
+        EXPECT_THROW( Key{ foo }.is_superkey( Key{} ), logic_error );
+        EXPECT_THROW( Key{ foo }.is_superkey( Key{ "boo"s } ), logic_error );
+
+        std::tuple< bool, Key > res;
+
+        EXPECT_NO_THROW( res = Key{ foo }.is_superkey( Key::root() ) );
+        EXPECT_FALSE( get< 0 >( res ) );
+
+        EXPECT_NO_THROW( res = Key{ foo }.is_superkey( Key{ foo } ) );
+        EXPECT_FALSE( get< 0 >( res ) );
+
+        EXPECT_NO_THROW( res = Key{ foo }.is_superkey( Key{ boo } ) );
+        EXPECT_FALSE( get< 0 >( res ) );
+
+        EXPECT_NO_THROW( res = Key{ foo }.is_superkey( Key{ boo_foo } ) );
+        EXPECT_FALSE( get< 0 >( res ) );
+
+        EXPECT_NO_THROW( res = Key{ foo }.is_superkey( Key{ foo_boo } ) );
+        EXPECT_TRUE( get< 0 >( res ) );
+        EXPECT_EQ( Key{ boo }, get< 1 >( res ) );
+    }
 }
