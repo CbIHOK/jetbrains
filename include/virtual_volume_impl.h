@@ -156,18 +156,16 @@ namespace jb
             {
                 auto current = logical_path;
 
-                while ( current != Key{} )
+                while ( Key::root() != current )
                 {
-                    static Hash< Key > hasher{};
+                    auto[ superkey, subkey ] = current.split_at_tile();
+                    auto hash = variadic_hash( superkey, subkey );
 
-                    auto current_hash = hasher( current );
-
-                    if ( paths_.count( current_hash ) )
+                    if ( paths_.count( hash ) )
                     {
-                        return tuple{ current, current_hash };
+                        return tuple{ current, hash };
                     }
 
-                    auto[ superkey, subkey ] = current.split_at_tile();
                     current = superkey;
                 }
 
@@ -619,7 +617,7 @@ namespace jb
                 auto backtrace_ptr = make_shared< MountPointBacktrace >();
 
                 // combine logical path for new mount
-                auto mounted_hash = Hash< KeyValue >{}( logical_path / alias );
+                auto mounted_hash = variadic_hash( logical_path, alias );
 
                 // insert all the keys and fill backtrace
                 backtrace_ptr->uid_ = uids_.insert( uid ).first;

@@ -29,8 +29,6 @@ TEST_F( TestKey, Dummy )
     EXPECT_TRUE( key <= Key{} );
     EXPECT_FALSE( key > Key{} );
     EXPECT_TRUE( key >= Key{} );
-
-    EXPECT_EQ( "", ( KeyValue )key );
 }
 
 
@@ -155,7 +153,7 @@ TEST_F( TestKey, SplitAtTile )
         KeyValue in = { "/"s };
         std::tuple< Key, Key > res;
         EXPECT_NO_THROW( res = Key{ in }.split_at_tile() );
-        EXPECT_EQ( Key{}, get< 0 >( res ) );
+        EXPECT_EQ( Key::root(), get< 0 >( res ) );
         EXPECT_EQ( Key{}, get< 1 >( res ) );
     }
 
@@ -163,8 +161,8 @@ TEST_F( TestKey, SplitAtTile )
         KeyValue in{ "/foo"s };
         std::tuple< Key, Key > res;
         EXPECT_NO_THROW( res = Key{ in }.split_at_tile() );
-        EXPECT_EQ( Key{}, get< 0 >( res ) );
-        EXPECT_EQ( Key{ "/foo"s }, get< 1 >( res ) );
+        EXPECT_EQ( Key::root(), get< 0 >( res ) );
+        EXPECT_EQ( Key{ "foo"s }, get< 1 >( res ) );
     }
 
     {
@@ -172,7 +170,7 @@ TEST_F( TestKey, SplitAtTile )
         std::tuple< Key, Key > res;
         EXPECT_NO_THROW( res = Key{ in }.split_at_tile() );
         EXPECT_EQ( Key{ "/foo"s }, get< 0 >( res ) );
-        EXPECT_EQ( Key{ "/boo"s }, get< 1 >( res ) );
+        EXPECT_EQ( Key{ "boo"s }, get< 1 >( res ) );
     }
 }
 

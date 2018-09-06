@@ -659,6 +659,7 @@ namespace jb
                         bpath.emplace_back( uid_, pos + 1 );
                         auto node = left_child;
 
+                        // search for maximum element of the left subtree
                         while ( InvalidNodeUid != node->links_.back() )
                         {
                             bpath.emplace_back( node->uid_, node->elements_.size() );
@@ -693,13 +694,14 @@ namespace jb
                         bpath.emplace_back( uid_, pos + 1 );
                         auto node = right_child;
 
+                        // search for minimum element of the right subtree
                         while ( InvalidNodeUid != node->links_[ 0 ] )
                         {
                             bpath.emplace_back( node->uid_, 0 );
                             node = cache_.get_node( node->links_[ 0 ] );
                         }
 
-                        // bring the minimum element of right subtree
+                        // bring the minimum element of the right subtree
                         elements_[ pos ] = node->elements_[ 0 ];
 
                         // and erase it

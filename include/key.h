@@ -121,13 +121,6 @@ namespace jb
 
 
         //
-        // type conversion
-        //
-        operator ValueT() const { return ValueT{ cbegin( view_ ), cend( view_ ) }; }
-        operator ViewT() const { return view_; }
-
-
-        //
         // Few little helpers
         //
         operator bool() const noexcept { return view_.size() > 0; }
@@ -168,26 +161,6 @@ namespace jb
         friend auto operator <= ( const Key & l, const Key & r ) noexcept { return l.view_ <= r.view_; }
         friend auto operator >= ( const Key & l, const Key & r ) noexcept { return l.view_ >= r.view_; }
         friend auto operator > ( const Key & l, const Key & r ) noexcept { return l.view_ > r.view_; }
-
-
-        /* TODO consider does it really need
-        */
-        friend auto operator / ( const Key & l, const Key & r )
-        {
-            if ( l == root() || r.is_path() )
-            {
-                return ( ValueT )l.view_ + ( ValueT )r.view_;
-            }
-            else if ( r.is_leaf() )
-            {
-                return ( ValueT )l.view_ + separator + ( ValueT )r.view_;
-            }
-            else
-            {
-                assert( false );
-                return ValueT{};
-            }
-        }
 
 
         /** Splits given key into two ones by the first segment
@@ -234,23 +207,17 @@ namespace jb
         {
             using namespace std;
 
-            if ( is_path() )
+            if ( auto last_sep = view_.find_last_of( separator ); last_sep == ViewT::npos )
             {
-                if ( auto not_sep = view_.find_last_not_of( separator ); not_sep == ViewT::npos )
-                {
-                    return { Key{}, Key{} };
-                }
-                else
-                {
-                    auto sep = view_.find_last_of( separator );
-                    assert( sep != ViewT::npos );
-
-                    return { Key{ view_.substr( 0, sep ) }, Key{ view_.substr( sep ) } };
-                }
+                throw logic_error( "The key is not a path" );
+            }
+            else if ( last_sep + 1 == view_.size() )
+            {
+                return { Key::root(), Key{} };
             }
             else
             {
-                throw logic_error( "The key is not a path" );
+                return { last_sep == 0 ? Key::root() : Key{ view_.substr( 0, last_sep ) }, Key{ view_.substr( last_sep + 1 ) } };
             }
         }
 
