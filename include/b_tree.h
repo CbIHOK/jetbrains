@@ -250,31 +250,24 @@ namespace jb
         */
         friend std::ostream & operator << ( std::ostream & os, const BTree & node )
         {
-            try
+            throw_logic_error( node.elements_.size() < BTreeMax, "Maximum size of b-tree node exceeded" );
+            throw_logic_error( node.elements_.size() + 1 == node.links_.size(), "Broken b-tree node" );
+
+            big_uint64_t size = node.elements_.size();
+            os.write( reinterpret_cast< const char * >( &size ), sizeof( size ) );
+
+            for ( const auto & e : node.elements_ )
             {
-                throw_logic_error( node.elements_.size() < BTreeMax, "Maximum size of b-tree node exceeded" );
-                throw_logic_error( node.elements_.size() + 1 == node.links_.size(), "Broken b-tree node" );
-
-                big_uint64_t size = node.elements_.size();
-                os.write( reinterpret_cast< const char * >( &size ), sizeof( size ) );
-
-                for ( const auto & e : node.elements_ )
-                {
-                    os << e;
-                }
-
-                for ( auto l : node.links_ )
-                {
-                    big_uint64_t link = l;
-                    os.write( reinterpret_cast< const char * >( &link ), sizeof( link ) );
-                }
-
-                return os;
+                os << e;
             }
-            catch ( const std::logic_error & )
+
+            for ( auto l : node.links_ )
             {
-                abort();
+                big_uint64_t link = l;
+                os.write( reinterpret_cast< const char * >( &link ), sizeof( link ) );
             }
+
+            return os;
         }
 
 
