@@ -122,40 +122,32 @@ namespace jb
         {
             using namespace std;
 
-            try
+            Key key_{ key };
+            if ( !key_.is_path( ) )
             {
-                Key key_{ key };
-                if ( !key_.is_path( ) )
-                {
-                    return { RetCode::InvalidKey };
-                }
-
-                Key subkey_{ subkey };
-                if ( !subkey_.is_leaf( ) )
-                {
-                    return { RetCode::InvalidSubkey };
-                }
-
-                uint64_t now = chrono::system_clock::now().time_since_epoch() / chrono::milliseconds( 1 );
-                if ( good_before && good_before < now )
-                {
-                    return { RetCode::AlreadyExpired };
-                }
-
-                if ( auto impl = impl_.lock( ) )
-                {
-                    return impl->insert( key_, subkey_, value, good_before, overwrite );
-                }
-                else
-                {
-                    return { RetCode::InvalidHandle };
-                }
-            }
-            catch ( ... )
-            {
+                return { RetCode::InvalidKey };
             }
 
-            return { RetCode::UnknownError };
+            Key subkey_{ subkey };
+            if ( !subkey_.is_leaf( ) )
+            {
+                return { RetCode::InvalidSubkey };
+            }
+
+            uint64_t now = chrono::system_clock::now().time_since_epoch() / chrono::milliseconds( 1 );
+            if ( good_before && good_before < now )
+            {
+                return { RetCode::AlreadyExpired };
+            }
+
+            if ( auto impl = impl_.lock( ) )
+            {
+                return impl->insert( key_, subkey_, value, good_before, overwrite );
+            }
+            else
+            {
+                return { RetCode::InvalidHandle };
+            }
         }
 
 
@@ -170,28 +162,20 @@ namespace jb
         {
             using namespace std;
 
-            try
+            Key key_{ key };
+            if ( !key_.is_path( ) )
             {
-                Key key_{ key };
-                if ( !key_.is_path( ) )
-                {
-                    return { RetCode::InvalidKey, Value{} };
-                }
-
-                if ( auto impl = impl_.lock( ) )
-                {
-                    return impl->get( key_ );
-                }
-                else
-                {
-                    return { RetCode::InvalidHandle, Value{} };
-                }
-            }
-            catch ( ... )
-            {
+                return { RetCode::InvalidKey, Value{} };
             }
 
-            return { RetCode::UnknownError, Value{} };
+            if ( auto impl = impl_.lock( ) )
+            {
+                return impl->get( key_ );
+            }
+            else
+            {
+                return { RetCode::InvalidHandle, Value{} };
+            }
         }
 
 
@@ -206,32 +190,24 @@ namespace jb
         {
             using namespace std;
 
-            try
-            {
-                Key key_{ key };
+            Key key_{ key };
 
-                if ( !key_.is_path( ) )
-                {
-                    return RetCode::InvalidKey;
-                }
-                else if ( force )
-                {
-                    return RetCode::NotYetImplemented;
-                }
-                else if ( auto impl = impl_.lock( ) )
-                {
-                    return impl->erase( key_, force );
-                }
-                else
-                {
-                    return RetCode::InvalidHandle;
-                }
-            }
-            catch ( ... )
+            if ( !key_.is_path( ) )
             {
+                return RetCode::InvalidKey;
             }
-
-            return RetCode::UnknownError;
+            else if ( force )
+            {
+                return RetCode::NotYetImplemented;
+            }
+            else if ( auto impl = impl_.lock( ) )
+            {
+                return impl->erase( key_, force );
+            }
+            else
+            {
+                return RetCode::InvalidHandle;
+            }
         }
 
 
@@ -249,50 +225,42 @@ namespace jb
         {
             using namespace std;
 
-            try
+            Key physical_path_{ physical_path };
+            if ( !physical_path_.is_path( ) )
             {
-                Key physical_path_{ physical_path };
-                if ( !physical_path_.is_path( ) )
-                {
-                    return { RetCode::InvalidKey, MountPoint{} };
-                }
+                return { RetCode::InvalidKey, MountPoint{} };
+            }
 
-                Key logical_path_{ logical_path };
-                if ( !logical_path_.is_path( ) )
-                {
-                    return { RetCode::InvalidKey, MountPoint{} };
-                }
+            Key logical_path_{ logical_path };
+            if ( !logical_path_.is_path( ) )
+            {
+                return { RetCode::InvalidKey, MountPoint{} };
+            }
 
-                Key alias_{ alias };
-                if ( !alias_.is_leaf( ) )
-                {
-                    return { RetCode::InvalidSubkey, MountPoint{} };
-                }
+            Key alias_{ alias };
+            if ( !alias_.is_leaf( ) )
+            {
+                return { RetCode::InvalidSubkey, MountPoint{} };
+            }
 
-                auto impl = impl_.lock( );
-                auto physical_impl = physical_volume.impl_.lock( );
+            auto impl = impl_.lock( );
+            auto physical_impl = physical_volume.impl_.lock( );
 
-                if ( impl && physical_impl )
+            if ( impl && physical_impl )
+            {
+                if ( auto[ ret, mp_impl ] = impl->mount( physical_impl, physical_path_, logical_path_, alias_ );  RetCode::Ok == ret )
                 {
-                    if ( auto[ ret, mp_impl ] = impl->mount( physical_impl, physical_path_, logical_path_, alias_ );  RetCode::Ok == ret )
-                    {
-                        return { RetCode::Ok, MountPoint{ mp_impl, impl } };
-                    }
-                    else
-                    {
-                        return { ret, MountPoint{} };
-                    }
+                    return { RetCode::Ok, MountPoint{ mp_impl, impl } };
                 }
                 else
                 {
-                    return { RetCode::InvalidHandle, MountPoint{} };
+                    return { ret, MountPoint{} };
                 }
             }
-            catch ( ... )
+            else
             {
+                return { RetCode::InvalidHandle, MountPoint{} };
             }
-
-            return { RetCode::UnknownError, MountPoint{} };
         }
     };
 }
