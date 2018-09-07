@@ -78,7 +78,7 @@ namespace jb
 
         @param [in] node - uid of the key to be locked (uid of the head B-tree node of a key)
         @retval lock over the key
-        @throw may throw std::exception for some reasons
+        @throw nothing
         */
         auto lock( NodeUid node )
         {

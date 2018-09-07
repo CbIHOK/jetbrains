@@ -79,8 +79,6 @@ TEST_F( TestPackedValue, Char )
         
     auto p = PackedValue::make_packed( t, v );
 
-    EXPECT_EQ( RetCode::Ok, t.status() );
-        
     t.commit();
     EXPECT_EQ( RetCode::Ok, f.status() );
         
@@ -106,8 +104,6 @@ TEST_F( TestPackedValue, Int )
     auto t = f.open_transaction();
 
     auto p = PackedValue::make_packed( t, v );
-
-    EXPECT_EQ( RetCode::Ok, t.status() );
 
     t.commit();
     EXPECT_EQ( RetCode::Ok, f.status() );
@@ -135,8 +131,6 @@ TEST_F( TestPackedValue, Uint64 )
 
     auto p = PackedValue::make_packed( t, v );
 
-    EXPECT_EQ( RetCode::Ok, t.status() );
-
     t.commit();
     EXPECT_EQ( RetCode::Ok, f.status() );
 
@@ -162,8 +156,6 @@ TEST_F( TestPackedValue, Float )
     auto t = f.open_transaction();
 
     auto p = PackedValue::make_packed( t, v );
-
-    EXPECT_EQ( RetCode::Ok, t.status() );
 
     t.commit();
     EXPECT_EQ( RetCode::Ok, f.status() );
@@ -191,8 +183,6 @@ TEST_F( TestPackedValue, Double )
 
     auto p = PackedValue::make_packed( t, v );
 
-    EXPECT_EQ( RetCode::Ok, t.status() );
-
     t.commit();
     EXPECT_EQ( RetCode::Ok, f.status() );
 
@@ -219,8 +209,6 @@ TEST_F( TestPackedValue, String )
 
     auto p = PackedValue::make_packed( t, v );
 
-    EXPECT_EQ( RetCode::Ok, t.status() );
-
     t.commit();
     EXPECT_EQ( RetCode::Ok, f.status() );
 
@@ -246,8 +234,6 @@ TEST_F( TestPackedValue, WString )
     auto t = f.open_transaction();
 
     auto p = PackedValue::make_packed( t, v );
-
-    EXPECT_EQ( RetCode::Ok, t.status() );
 
     t.commit();
     EXPECT_EQ( RetCode::Ok, f.status() );
@@ -292,8 +278,6 @@ TEST_F( TestPackedValue, Custom )
     auto t = f.open_transaction();
 
     auto p = PackedValue::make_packed( t, v );
-
-    EXPECT_EQ( RetCode::Ok, t.status() );
 
     t.commit();
     EXPECT_EQ( RetCode::Ok, f.status() );

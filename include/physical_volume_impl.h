@@ -78,7 +78,7 @@ namespace jb
         using DigestPath = typename Bloom::DigestPath;
         using storage_file_error = typename StorageFile::storage_file_error;
         using btree_error = typename BTree::btree_error;
-        using bloom_error = typename Bloom::bloom_error;
+        using btree_cache_error = typename BTreeCache::btree_cache_error;
 
         template < typename T, size_t C > using static_vector = boost::container::static_vector< T, C >;
 
@@ -93,22 +93,25 @@ namespace jb
         //
         // data members
         //
-        std::atomic< RetCode > status_ = RetCode::Ok;
-        StorageFile file_;
-        PathLocker path_locker_;
-        Bloom filter_;
-        BTreeCache cache_;
+        RetCode status_ = RetCode::Ok;
+        std::unique_ptr< StorageFile > file_;
+        std::unique_ptr< PathLocker > path_locker_;
+        std::unique_ptr< Bloom > filter_;
+        std::unique_ptr< BTreeCache > cache_;
 
 
-        /* Sets volume's status
+        /* Throws std::logic_error if a condition failed and immediately dies on noexcept guard
 
-        @param [in] status - status to be set
+        calling terminate() handler. That gives the ability to collect crash dump for futher
+        analysis
+
+        @param [in] condition - condition to be checked
+        @param [in] what - text message to be assigned to an error
         @throw nothing
         */
-        auto set_status( RetCode status ) noexcept
+        auto static throw_logic_error( bool condition, const char * what = "" ) noexcept
         {
-            auto ok = RetCode::Ok;
-            status_.compare_exchange_weak( ok, status, std::memory_order_acq_rel, std::memory_order_relaxed );
+            if ( !condition ) throw std::logic_error( what );
         }
 
 
@@ -160,7 +163,7 @@ namespace jb
                 if ( !found ) return false;
 
                 // get node containing the digest
-                node = cache_.get_node( bpath.back().first );
+                node = cache_->get_node( bpath.back().first );
                 auto digest_pos = bpath.back().second;
 
                 // get digest's expiration
@@ -180,7 +183,7 @@ namespace jb
                 auto child_uid = node->children( digest_pos );
 
                 // load root of children collection and continue search
-                node = cache_.get_node( child_uid );
+                node = cache_->get_node( child_uid );
             }
 
             return false;
@@ -281,40 +284,57 @@ namespace jb
         @param path - path to physical storage
         @throw nothing
         */
-        explicit PhysicalVolumeImpl( const std::filesystem::path & path ) try
-            : file_( path )
-            , filter_( file_ )
-            , cache_( file_ )
+        explicit PhysicalVolumeImpl( const std::filesystem::path & path ) noexcept try
         {
-            if ( RetCode::Ok != file_.status() )
+            // initialize file storage
+            file_ = std::make_unique< StorageFile >( path, true );
+            if ( auto file_status = file_->status(); RetCode::Ok != file_status )
             {
-                set_status( file_.status() );
-            }
-            else if ( RetCode::Ok != cache_.status() )
-            {
-                set_status( cache_.status() );
-            }
-            else if ( RetCode::Ok != filter_.status() )
-            {
-                set_status( filter_.status() );
-            }
-            else if ( RetCode::Ok != path_locker_.status() )
-            {
-                set_status( filter_.status() );
+                status_ = file_status;
+                return;
             }
 
-            // create root
-            if ( file_.newly_created() )
+            // initialize B-tree cache
+            cache_ = std::make_unique< BTreeCache >( *file_ );
+            if ( auto cache_status = cache_->status(); RetCode::Ok != cache_status )
             {
-                BTree root( file_, cache_ );
-                auto t = file_.open_transaction();
+                status_ = cache_status;
+                return;
+            }
+
+            // initialize Bloom filter
+            filter_ = std::make_unique< Bloom >( *file_ );
+            if ( auto filter_status = filter_->status(); RetCode::Ok != filter_status )
+            {
+                status_ = filter_status;
+                return;
+            }
+
+            // initialize path locker
+            path_locker_ = std::make_unique< PathLocker >();
+            if ( auto locker_status = path_locker_->status(); RetCode::Ok != locker_status )
+            {
+                status_ = locker_status;
+                return;
+            }
+
+            // if physical file has been just created
+            if ( file_->newly_created() )
+            {
+                // deploy root b-tree
+                BTree root( *file_, *cache_ );
+                auto t = file_->open_transaction();
                 root.save( t );
                 t.commit();
             }
         }
+        catch ( const std::bad_alloc & )
+        {
+            status_ = RetCode::InsufficientMemory;
+        }
         catch ( ... )
         {
-            set_status( RetCode::UnknownError );
+            status_ = RetCode::UnknownError;
         }
 
 
@@ -324,7 +344,7 @@ namespace jb
         @throw nothing
         */
         [[ nodiscard ]]
-        auto status() const noexcept { return status_.load( std::memory_order_acquire ); }
+        auto status() const noexcept { return status_; }
 
 
         /** Locks specified path due to a mounting operation
@@ -356,10 +376,10 @@ namespace jb
                 PathLock path_lock;
 
                 // check if the volume is Ok
-                if ( RetCode::Ok != status() ) wait_and_do_it( in, out, [&] { return tuple{ status(), InvalidNodeUid, 0, PathLock{} }; } );
+                throw_logic_error( RetCode::Ok == status_, "Invalid physical volume" );
 
                 // check if relative path may present
-                if ( auto may_present = filter_.test( entry_key_level, relative_path, digests ); !may_present )
+                if ( auto may_present = filter_->test( entry_key_level, relative_path, digests ); !may_present )
                 {
                     return wait_and_do_it( in, out, [=] { return tuple{ RetCode::NotFound, InvalidNodeUid, 0, PathLock{} }; } );
                 }
@@ -371,11 +391,11 @@ namespace jb
                 else
                 {
                     // get entry node
-                    auto entry_node = cache_.get_node( entry_key_uid );
+                    auto entry_node = cache_->get_node( entry_key_uid );
 
                     // navigate through the tree and get locks over visited nodes
                     auto found = navigate( entry_node, digests, locks, bpath, [&] ( const BTreeP & p ) {
-                        path_lock << path_locker_.lock( p->uid() );
+                        path_lock << path_locker_->lock( p->uid() );
                     }, in );
 
                     if ( found )
@@ -397,14 +417,13 @@ namespace jb
             {
                 return wait_and_do_it( in, out, [&] { return tuple{ e.code(), InvalidNodeUid, 0, PathLock{} }; } );
             }
-            catch ( const bloom_error & e )
+            catch ( const btree_cache_error & e )
             {
                 return wait_and_do_it( in, out, [&] { return tuple{ e.code(), InvalidNodeUid, 0, PathLock{} }; } );
             }
-            catch ( ... )
+            catch ( const std::bad_alloc & )
             {
-                set_status( RetCode::UnknownError );
-                return wait_and_do_it( in, out, [&] { return tuple{ RetCode::UnknownError, InvalidNodeUid, 0, PathLock{} }; } );
+                return wait_and_do_it( in, out, [&] { return tuple{ RetCode::InsufficientMemory, InvalidNodeUid, 0, PathLock{} }; } );
             }
         }
 
@@ -446,16 +465,16 @@ namespace jb
                 KeyLock locks;
 
                 // check if the volume is Ok
-                if ( RetCode::Ok != status() ) wait_and_do_it( in, out, [&] { return tuple{ status() }; } );
+                throw_logic_error( RetCode::Ok == status_, "Invalid physical volume" );
 
                 // chech if target path exists
-                if ( auto may_present = filter_.test( entry_key_level, relative_path, digests ); !may_present )
+                if ( auto may_present = filter_->test( entry_key_level, relative_path, digests ); !may_present )
                 {
                     return wait_and_do_it( in, out, [] { return tuple{ RetCode::NotFound }; } );
                 }
 
                 // set target to entry node
-                auto entry_node = cache_.get_node( entry_key_uid );
+                auto entry_node = cache_->get_node( entry_key_uid );
                 auto target_node = entry_node;
 
                 // if targte is not root
@@ -465,7 +484,7 @@ namespace jb
                     if ( auto found = navigate( entry_node, digests, locks, bpath, [] ( auto ) {}, in ) )
                     {
                         assert( bpath.size() );
-                        auto parent_btree = cache_.get_node( bpath.back().first );
+                        auto parent_btree = cache_->get_node( bpath.back().first );
 
                         {
                             // exclusively lock target node
@@ -477,7 +496,7 @@ namespace jb
                         }
 
                         // set just deployed children b-tree as target
-                        target_node = cache_.get_node( parent_btree->children( bpath.back().second ) );
+                        target_node = cache_->get_node( parent_btree->children( bpath.back().second ) );
                     }
                     else
                     {
@@ -507,7 +526,7 @@ namespace jb
 
                     // obtain target b-tree node
                     assert( bpath.size() );
-                    auto target_btree = cache_.get_node( bpath.back().first );
+                    auto target_btree = cache_->get_node( bpath.back().first );
 
                     return wait_and_do_it( in, out, [&] {
 
@@ -522,7 +541,7 @@ namespace jb
                         }
 
                         // force filter to respect new digest
-                        filter_.add_digest( digest );
+                        filter_->add_digest( digest );
 
                         return tuple{ RetCode::Ok };
                     } );
@@ -536,15 +555,14 @@ namespace jb
             {
                 return wait_and_do_it( in, out, [&] { return tuple{ e.code() }; } );
             }
-            catch ( const bloom_error & e )
+            catch ( const btree_cache_error & e )
             {
                 return wait_and_do_it( in, out, [&] { return tuple{ e.code() }; } );
             }
-            catch ( ... )
+            catch ( const std::bad_alloc & )
             {
-                set_status( RetCode::UnknownError );
+                return wait_and_do_it( in, out, [&] { return tuple{ RetCode::InsufficientMemory }; } );
             }
-            return wait_and_do_it( in, out, [&] { return tuple{ RetCode::UnknownError }; } );
         }
 
 
@@ -576,13 +594,13 @@ namespace jb
                 KeyLock locks;
 
                 // check if the volume is Ok
-                if ( RetCode::Ok != status() ) wait_and_do_it( in, out, [&] { return tuple{ status(), Value{} }; } );
+                throw_logic_error( RetCode::Ok == status_, "Invalid physical volume" );
 
                 // get entry node
-                auto entry_node = cache_.get_node( entry_key_uid );
+                auto entry_node = cache_->get_node( entry_key_uid );
 
                 // check that key presents
-                if ( auto may_present = filter_.test( entry_key_level, relative_path, digests ); !may_present )
+                if ( auto may_present = filter_->test( entry_key_level, relative_path, digests ); !may_present )
                 {
                     return wait_and_do_it( in, out, [] { return tuple{ RetCode::NotFound, Value{} }; } );
                 }
@@ -594,7 +612,7 @@ namespace jb
                 else
                 {
                     // get target b-tree
-                    auto node = cache_.get_node( bpath.back().first );
+                    auto node = cache_->get_node( bpath.back().first );
 
                     auto pos = bpath.back().second; bpath.pop_back();
 
@@ -610,14 +628,13 @@ namespace jb
             {
                 return wait_and_do_it( in, out, [&] { return tuple{ e.code(), Value{} }; } );
             }
-            catch ( const bloom_error & e )
+            catch ( const btree_cache_error & e )
             {
                 return wait_and_do_it( in, out, [&] { return tuple{ e.code(), Value{} }; } );
             }
-            catch ( ... )
+            catch ( const std::bad_alloc & )
             {
-                set_status( RetCode::UnknownError );
-                return wait_and_do_it( in, out, [&] { return tuple{ RetCode::UnknownError, Value{} }; } );
+                return wait_and_do_it( in, out, [&] { return tuple{ RetCode::InsufficientMemory, Value{} }; } );
             }
         }
 
@@ -652,12 +669,12 @@ namespace jb
                 KeyLock locks;
 
                 // check if the volume is Ok
-                if ( RetCode::Ok != status() ) wait_and_do_it( in, out, [&] { return tuple{ status() }; } );
+                throw_logic_error( RetCode::Ok == status_, "Invalid physical volume" );
 
                 // get entry node
-                auto entry_node = cache_.get_node( entry_node_uid );
+                auto entry_node = cache_->get_node( entry_node_uid );
 
-                if ( auto may_present = filter_.test( entry_node_level, relative_path, digests ); !may_present )
+                if ( auto may_present = filter_->test( entry_node_level, relative_path, digests ); !may_present )
                 {
                     return wait_and_do_it( in, out, [] { return tuple{ RetCode::NotFound }; } );
                 }
@@ -673,7 +690,7 @@ namespace jb
                 {
                     // check if the key is locked by mount
                     assert( bpath.size() );
-                    if ( !path_locker_.is_removable( bpath.front().first ) )
+                    if ( !path_locker_->is_removable( bpath.front().first ) )
                     {
                         return wait_and_do_it( in, out, [&] { return tuple{ RetCode::PathLocked }; } );
                     }
@@ -682,7 +699,7 @@ namespace jb
                     auto node_uid = bpath.back().first;
                     auto pos = bpath.back().second;
                     bpath.pop_back();
-                    auto node = cache_.get_node( node_uid );
+                    auto node = cache_->get_node( node_uid );
 
                     return wait_and_do_it( in, out, [&] {
 
@@ -704,15 +721,14 @@ namespace jb
             {
                 return wait_and_do_it( in, out, [&] { return tuple{ e.code() }; } );
             }
-            catch ( const bloom_error & e )
+            catch ( const btree_cache_error & e )
             {
                 return wait_and_do_it( in, out, [&] { return tuple{ e.code() }; } );
             }
-            catch ( ... )
+            catch ( const std::bad_alloc & )
             {
-                set_status( RetCode::UnknownError );
+                return wait_and_do_it( in, out, [&] { return tuple{ RetCode::InsufficientMemory }; } );
             }
-            return wait_and_do_it( in, out, [&] { return tuple{ RetCode::UnknownError }; } );
         }
     };
 }

@@ -294,7 +294,7 @@ namespace jb
         //
         virtual int_type overflow( int_type c ) override
         {
-            if ( c != traits_type::eof() && RetCode::Ok == transaction_.status() )
+            if ( c != traits_type::eof() )
             {
                 *pptr() = c;
                 pbump( 1 );
@@ -312,11 +312,6 @@ namespace jb
 
             // nothing to write
             if ( pptr() == pbase() )
-            {
-                return 0;
-            }
-
-            if ( RetCode::Ok != transaction_.status() )
             {
                 return 0;
             }

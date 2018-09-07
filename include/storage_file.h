@@ -89,7 +89,7 @@ namespace jb
 
 
         // status
-        std::atomic< RetCode > status_ = RetCode::Ok;
+        RetCode status_ = RetCode::Ok;
         bool newly_created_ = false;
 
         // file locking
@@ -253,11 +253,11 @@ namespace jb
         @param [in] status - status to be set
         @throw nothing
         */
-        auto set_status( RetCode status ) noexcept
-        {
-            auto ok = RetCode::Ok;
-            status_.compare_exchange_weak( ok, status, std::memory_order_acq_rel, std::memory_order_relaxed );
-        }
+        //auto set_status( RetCode status ) noexcept
+        //{
+        //    auto ok = RetCode::Ok;
+        //    status_.compare_exchange_weak( ok, status, std::memory_order_acq_rel, std::memory_order_relaxed );
+        //}
 
 
         /* Throws storage_file_error exception if given condition failed
@@ -270,6 +270,20 @@ namespace jb
         static auto throw_storage_file_error( bool condition, RetCode rc, const char * what = "" )
         {
             if ( !condition ) throw storage_file_error( rc, what );
+        }
+
+
+        /* If a condition failed throws std::logic_error with given text message an immediately die
+
+        on noexcept guard calling terminate() handler. That gives the ability to collect crash dump
+
+        @param [in] condition - condition to be checked
+        @param [in] what - text message to be fired
+        @throw nothing
+        */
+        static auto throw_logic_error( bool condition, const char * what ) noexcept
+        {
+            if ( !condition ) throw std::logic_error( what );
         }
 
 
@@ -293,8 +307,10 @@ namespace jb
         */
         auto check_compatibility()
         {
+            throw_logic_error( RetCode::Ok == status_, "Invalid file object" );
+
             Handle handle = writer_.first;
-            throw_storage_file_error( InvalidHandle != handle, RetCode::UnknownError, "Invalid file handle" );
+            throw_logic_error( InvalidHandle != handle, "Invalid file handle" );
 
             big_uint64_t stamp;
             {
@@ -317,8 +333,10 @@ namespace jb
         */
         auto deploy()
         {
+            throw_logic_error( RetCode::Ok == status_, "Invalid file object" );
+
             Handle handle = writer_.first;
-            throw_storage_file_error( InvalidHandle != handle, RetCode::UnknownError, "Invalid file handle" );
+            throw_logic_error( InvalidHandle != handle, "Invalid file handle" );
 
             // reserve space for header
             {
@@ -384,111 +402,103 @@ namespace jb
         */
         auto commit()
         {
-            try
+            throw_logic_error( RetCode::Ok == status_, "Invalid file object" );
+
+            Handle handle = writer_.first;
+            throw_logic_error( InvalidHandle != handle, "Invalid file handle" );
+
+            // read transaction data
+            header_t::transactional_data_t transaction;
             {
-                throw_storage_file_error( RetCode::Ok == status(), RetCode::UnknownError, "Attempt to access invalid file" );
+                auto[ ok, pos ] = Os::seek_file( handle, HeaderOffsets::of_Transaction );
+                throw_storage_file_error( ok && pos == HeaderOffsets::of_Transaction, RetCode::IoError );
+            }
+            {
+                auto[ ok, read ] = Os::read_file( handle, &transaction, sizeof( transaction ) );
+                throw_storage_file_error( ok && read == sizeof( transaction ), RetCode::IoError );
+            }
 
-                Handle & writer = writer_.first;
-                throw_storage_file_error( InvalidHandle != writer, RetCode::UnknownError, "Invalid file handle" );
+            // read CRC
+            boost::endian::big_uint64_t transaction_crc;
+            {
+                auto[ ok, pos ] = Os::seek_file( handle, HeaderOffsets::of_TransactionCrc );
+                throw_storage_file_error( ok && pos == HeaderOffsets::of_TransactionCrc, RetCode::IoError );
+            }
+            {
+                auto[ ok, read ] = Os::read_file( handle, &transaction_crc, sizeof( transaction_crc ) );
+                throw_storage_file_error( ok && read == sizeof( transaction_crc ), RetCode::IoError );
+            }
 
-                // read transaction data
-                header_t::transactional_data_t transaction;
+            // validate transaction
+            uint64_t file_size = transaction.file_size_, free_space = transaction.free_space_;
+            auto valid_transaction = ( transaction_crc == variadic_hash( file_size, free_space ) );
+
+            // if we have valid transaction
+            if ( valid_transaction )
+            {
+                // read preserved chunk target
+                big_uint64_t preserved_target;
                 {
-                    auto[ ok, pos ] = Os::seek_file( writer, HeaderOffsets::of_Transaction );
-                    throw_storage_file_error( ok && pos == HeaderOffsets::of_Transaction, RetCode::IoError );
+                    auto[ ok, pos ] = Os::seek_file( handle, HeaderOffsets::of_PreservedChunk + PreservedChunkOffsets::of_Target );
+                    throw_storage_file_error( ok && pos == HeaderOffsets::of_PreservedChunk + PreservedChunkOffsets::of_Target, RetCode::IoError );
+                }
+
+                {
+                    auto[ ok, read ] = Os::read_file( handle, &preserved_target, sizeof( preserved_target ) );
+                    throw_storage_file_error( ok && read == sizeof( preserved_target ), RetCode::IoError );
+                }
+
+                // if there is preserved chunk
+                if ( preserved_target != InvalidChunkUid )
+                {
+                    // read preserved chunk
+                    chunk_t preserved_chunk;
+                    {
+                        auto[ ok, pos ] = Os::seek_file( handle, HeaderOffsets::of_PreservedChunk + PreservedChunkOffsets::of_Chunk );
+                        throw_storage_file_error( ok && pos == HeaderOffsets::of_PreservedChunk + PreservedChunkOffsets::of_Chunk, RetCode::IoError );
+                    }
+                    {
+                        auto[ ok, read ] = Os::read_file( handle, &preserved_chunk, sizeof( preserved_chunk ) );
+                        throw_storage_file_error( ok && read == sizeof( preserved_chunk ), RetCode::IoError );
+                    }
+
+                    // copy preserved chunk to target
+                    {
+                        auto[ ok, pos ] = Os::seek_file( handle, preserved_target );
+                        throw_storage_file_error( ok && pos == preserved_target, RetCode::IoError );
+                    }
+                    {
+                        auto[ ok, written ] = Os::write_file( handle, &preserved_chunk, sizeof( preserved_chunk ) );
+                        throw_storage_file_error( ok && written == sizeof( preserved_chunk ), RetCode::IoError );
+                    }
+                }
+
+                // apply transaction
+                {
+                    auto[ ok, pos ] = Os::seek_file( handle, HeaderOffsets::of_TransactionalData );
+                    throw_storage_file_error( ok && pos == HeaderOffsets::of_TransactionalData, RetCode::IoError );
                 }
                 {
-                    auto[ ok, read ] = Os::read_file( writer, &transaction, sizeof( transaction ) );
-                    throw_storage_file_error( ok && read == sizeof( transaction ), RetCode::IoError );
+                    auto[ ok, written ] = Os::write_file( handle, &transaction, sizeof( transaction ) );
+                    throw_storage_file_error( ok && written == sizeof( transaction ), RetCode::IoError );
                 }
 
-                // read CRC
-                boost::endian::big_uint64_t transaction_crc;
+                // invalidate transaction
                 {
-                    auto[ ok, pos ] = Os::seek_file( writer, HeaderOffsets::of_TransactionCrc );
+                    auto[ ok, pos ] = Os::seek_file( handle, HeaderOffsets::of_TransactionCrc );
                     throw_storage_file_error( ok && pos == HeaderOffsets::of_TransactionCrc, RetCode::IoError );
                 }
                 {
-                    auto[ ok, read ] = Os::read_file( writer, &transaction_crc, sizeof( transaction_crc ) );
-                    throw_storage_file_error( ok && read == sizeof( transaction_crc ), RetCode::IoError );
-                }
+                    uint64_t file_size = transaction.file_size_, free_space = transaction.free_space_;
+                    boost::endian::big_uint64_t invalid_crc = variadic_hash( file_size, free_space ) + 1;
 
-                // validate transaction
-                uint64_t file_size = transaction.file_size_, free_space = transaction.free_space_;
-                auto valid_transaction = ( transaction_crc == variadic_hash( file_size, free_space ) );
-
-                // if we have valid transaction
-                if ( valid_transaction )
-                {
-                    // read preserved chunk target
-                    big_uint64_t preserved_target;
-                    {
-                        auto[ ok, pos ] = Os::seek_file( writer, HeaderOffsets::of_PreservedChunk + PreservedChunkOffsets::of_Target );
-                        throw_storage_file_error( ok && pos == HeaderOffsets::of_PreservedChunk + PreservedChunkOffsets::of_Target, RetCode::IoError );
-                    }
-
-                    {
-                        auto[ ok, read ] = Os::read_file( writer, &preserved_target, sizeof( preserved_target ) );
-                        throw_storage_file_error( ok && read == sizeof( preserved_target ), RetCode::IoError );
-                    }
-
-                    // if there is preserved chunk
-                    if ( preserved_target != InvalidChunkUid )
-                    {
-                        // read preserved chunk
-                        chunk_t preserved_chunk;
-                        {
-                            auto[ ok, pos ] = Os::seek_file( writer, HeaderOffsets::of_PreservedChunk + PreservedChunkOffsets::of_Chunk );
-                            throw_storage_file_error( ok && pos == HeaderOffsets::of_PreservedChunk + PreservedChunkOffsets::of_Chunk, RetCode::IoError );
-                        }
-                        {
-                            auto[ ok, read ] = Os::read_file( writer, &preserved_chunk, sizeof( preserved_chunk ) );
-                            throw_storage_file_error( ok && read == sizeof( preserved_chunk ), RetCode::IoError );
-                        }
-
-                        // copy preserved chunk to target
-                        {
-                            auto[ ok, pos ] = Os::seek_file( writer, preserved_target );
-                            throw_storage_file_error( ok && pos == preserved_target, RetCode::IoError );
-                        }
-                        {
-                            auto[ ok, written ] = Os::write_file( writer, &preserved_chunk, sizeof( preserved_chunk ) );
-                            throw_storage_file_error( ok && written == sizeof( preserved_chunk ), RetCode::IoError );
-                        }
-                    }
-
-                    // apply transaction
-                    {
-                        auto[ ok, pos ] = Os::seek_file( writer, HeaderOffsets::of_TransactionalData );
-                        throw_storage_file_error( ok && pos == HeaderOffsets::of_TransactionalData, RetCode::IoError );
-                    }
-                    {
-                        auto[ ok, written ] = Os::write_file( writer, &transaction, sizeof( transaction ) );
-                        throw_storage_file_error( ok && written == sizeof( transaction ), RetCode::IoError );
-                    }
-
-                    // invalidate transaction
-                    {
-                        auto[ ok, pos ] = Os::seek_file( writer, HeaderOffsets::of_TransactionCrc );
-                        throw_storage_file_error( ok && pos == HeaderOffsets::of_TransactionCrc, RetCode::IoError );
-                    }
-                    {
-                        uint64_t file_size = transaction.file_size_, free_space = transaction.free_space_;
-                        boost::endian::big_uint64_t invalid_crc = variadic_hash( file_size, free_space ) + 1;
-
-                        auto[ ok, written ] = Os::write_file( writer, &invalid_crc, sizeof( invalid_crc ) );
-                        throw_storage_file_error( ok && written == sizeof( invalid_crc ), RetCode::IoError );
-                    }
-                }
-                else
-                {
-                    rollback();
+                    auto[ ok, written ] = Os::write_file( handle, &invalid_crc, sizeof( invalid_crc ) );
+                    throw_storage_file_error( ok && written == sizeof( invalid_crc ), RetCode::IoError );
                 }
             }
-            catch ( const storage_file_error & e )
+            else
             {
-                set_status( e.code() );
-                throw e;
+                rollback();
             }
         }
 
@@ -496,38 +506,31 @@ namespace jb
         /* Rollback transaction
 
         Revert all the changes that has been done to the file since start of transaction (except
-        Bloom filter data)
+        Bloom filter data). If an error occures the function throw an exception and immediately die
+        on noexcept guard calling terminate() handler. That gives the ability to collect crash dump
 
         @throw nothing
         */
         auto rollback() noexcept
         {
-            try
+            throw_logic_error( RetCode::Ok == status_, "Invalid file object" );
+
+            Handle handle = writer_.first;
+            throw_logic_error( InvalidHandle != handle, "Invalid file handle" );
+
+            // just restore file size
+            big_uint64_t file_size;
             {
-                throw_storage_file_error( RetCode::Ok == status(), RetCode::UnknownError, "Attempt to access invalid file" );
-
-                Handle handle = writer_.first;
-                throw_storage_file_error( InvalidHandle != handle, RetCode::UnknownError, "Invalid file handle" );
-
-                // just restore file size
-                big_uint64_t file_size;
-                {
-                    auto[ ok, pos ] = Os::seek_file( handle, HeaderOffsets::of_TransactionalData + TransactionDataOffsets::of_FileSize );
-                    throw_storage_file_error( ok && pos == HeaderOffsets::of_TransactionalData + TransactionDataOffsets::of_FileSize, RetCode::IoError );
-                }
-                {
-                    auto[ ok, read ] = Os::read_file( handle, &file_size, sizeof( file_size ) );
-                    throw_storage_file_error( ok && read == sizeof( file_size ), RetCode::IoError );
-                }
-                {
-                    auto[ ok, size ] = Os::resize_file( handle, file_size );
-                    throw_storage_file_error( ok && size == file_size, RetCode::IoError );
-                }
-
+                auto[ ok, pos ] = Os::seek_file( handle, HeaderOffsets::of_TransactionalData + TransactionDataOffsets::of_FileSize );
+                throw_storage_file_error( ok && pos == HeaderOffsets::of_TransactionalData + TransactionDataOffsets::of_FileSize, RetCode::IoError );
             }
-            catch ( const storage_file_error & e )
             {
-                set_status( e.code() );
+                auto[ ok, read ] = Os::read_file( handle, &file_size, sizeof( file_size ) );
+                throw_storage_file_error( ok && read == sizeof( file_size ), RetCode::IoError );
+            }
+            {
+                auto[ ok, size ] = Os::resize_file( handle, file_size );
+                throw_storage_file_error( ok && size == file_size, RetCode::IoError );
             }
         }
 
@@ -545,55 +548,47 @@ namespace jb
         [[ nodiscard ]]
         std::tuple< size_t, ChunkUid > read_chunk( Handle handle, ChunkUid chunk, void * buffer, size_t buffer_size )
         {
-            try
+            throw_logic_error( RetCode::Ok == status_, "Invalid file object" );
+            throw_logic_error( InvalidHandle != handle, "Invalid file handle" );
+            throw_logic_error( InvalidChunkUid != chunk && chunk >= HeaderOffsets::of_Root, "Invalid chunk" );
+            throw_logic_error( buffer && buffer_size, "Invalid read buffer" );
+
+            // get next used
+            big_uint64_t next_used;
             {
-                throw_storage_file_error( RetCode::Ok == status_, RetCode::UnknownError, "Attempt to access invalid file" );
-                throw_storage_file_error( InvalidHandle != handle, RetCode::UnknownError, "Invalid file handle" );
-                throw_storage_file_error( InvalidChunkUid != chunk && chunk >= HeaderOffsets::of_Root, RetCode::UnknownError, "Invalid chunk" );
-                throw_storage_file_error( buffer && buffer_size, RetCode::UnknownError, "Invalid read buffer" );
-
-                // get next used
-                big_uint64_t next_used;
-                {
-                    auto[ ok, pos ] = Os::seek_file( handle, chunk + ChunkOffsets::of_NextUsed );
-                    throw_storage_file_error( ok && pos == chunk + ChunkOffsets::of_NextUsed, RetCode::IoError );
-                }
-                {
-                    auto[ ok, read ] = Os::read_file( handle, &next_used, sizeof( next_used ) );
-                    throw_storage_file_error( ok && read == sizeof( next_used ), RetCode::IoError );
-                }
-
-                // get size of utilized space in chunk
-                big_uint32_t used_size;
-                {
-                    auto[ ok, pos ] = Os::seek_file( handle, chunk + ChunkOffsets::of_UsedSize );
-                    throw_storage_file_error( ok && pos == chunk + ChunkOffsets::of_UsedSize, RetCode::IoError );
-                }
-                {
-                    auto[ ok, read ] = Os::read_file( handle, &used_size, sizeof( used_size ) );
-                    throw_storage_file_error( ok && read == sizeof( used_size ), RetCode::IoError );
-                }
-
-                // read size
-                auto size_to_read = std::min( buffer_size, static_cast< size_t >( used_size ) );
-
-                // read data
-                {
-                    auto[ ok, pos ] = Os::seek_file( handle, chunk + ChunkOffsets::of_Space );
-                    throw_storage_file_error( ok && pos == chunk + ChunkOffsets::of_Space, RetCode::IoError );
-                }
-                {
-                    auto[ ok, read ] = Os::read_file( handle, buffer, size_to_read );
-                    throw_storage_file_error( ok && read == size_to_read, RetCode::IoError );
-                }
-
-                return { size_to_read, next_used };
+                auto[ ok, pos ] = Os::seek_file( handle, chunk + ChunkOffsets::of_NextUsed );
+                throw_storage_file_error( ok && pos == chunk + ChunkOffsets::of_NextUsed, RetCode::IoError );
             }
-            catch ( const storage_file_error & e )
             {
-                set_status( e.code() );
-                throw e;
+                auto[ ok, read ] = Os::read_file( handle, &next_used, sizeof( next_used ) );
+                throw_storage_file_error( ok && read == sizeof( next_used ), RetCode::IoError );
             }
+
+            // get size of utilized space in chunk
+            big_uint32_t used_size;
+            {
+                auto[ ok, pos ] = Os::seek_file( handle, chunk + ChunkOffsets::of_UsedSize );
+                throw_storage_file_error( ok && pos == chunk + ChunkOffsets::of_UsedSize, RetCode::IoError );
+            }
+            {
+                auto[ ok, read ] = Os::read_file( handle, &used_size, sizeof( used_size ) );
+                throw_storage_file_error( ok && read == sizeof( used_size ), RetCode::IoError );
+            }
+
+            // read size
+            auto size_to_read = std::min( buffer_size, static_cast< size_t >( used_size ) );
+
+            // read data
+            {
+                auto[ ok, pos ] = Os::seek_file( handle, chunk + ChunkOffsets::of_Space );
+                throw_storage_file_error( ok && pos == chunk + ChunkOffsets::of_Space, RetCode::IoError );
+            }
+            {
+                auto[ ok, read ] = Os::read_file( handle, buffer, size_to_read );
+                throw_storage_file_error( ok && read == size_to_read, RetCode::IoError );
+            }
+
+            return { size_to_read, next_used };
         }
 
 
@@ -678,7 +673,7 @@ namespace jb
         }
         catch ( const storage_file_error & e )
         {
-            set_status( e.code() );
+            status_ = e.code();
         }
         catch ( const std::bad_alloc & )
         {
@@ -729,7 +724,7 @@ namespace jb
         @throw nothing
         */
         [[nodiscard]]
-        auto status() const noexcept { return status_.load( std::memory_order_acquire ); }
+        auto status() const noexcept { return status_; }
 
 
         /** Let's know if associated file has been just created
@@ -749,38 +744,30 @@ namespace jb
         */
         auto read_bloom( uint8_t * bloom_buffer )
         {
-            try
+            throw_logic_error( RetCode::Ok == status_, "Invalid file" );
+
+            if ( !newly_created_ )
             {
-                throw_storage_file_error( RetCode::Ok == status_, RetCode::UnknownError, "Attempt to access invalid file" );
+                throw_logic_error( InvalidHandle != bloom_, "Invalid handle" );
 
-                if ( !newly_created_ )
+                // seek & read data
                 {
-                    throw_storage_file_error( InvalidHandle != bloom_, RetCode::UnknownError );
-
-                    // seek & read data
-                    {
-                        auto[ ok, pos ] = Os::seek_file( bloom_, HeaderOffsets::of_Bloom );
-                        throw_storage_file_error( ok && pos == HeaderOffsets::of_Bloom, RetCode::IoError );
-                    }
-                    {
-                        auto[ ok, read ] = Os::read_file( bloom_, bloom_buffer, BloomSize );
-                        throw_storage_file_error( ok && read == BloomSize, RetCode::IoError );
-                    }
+                    auto[ ok, pos ] = Os::seek_file( bloom_, HeaderOffsets::of_Bloom );
+                    throw_storage_file_error( ok && pos == HeaderOffsets::of_Bloom, RetCode::IoError );
                 }
-                else
                 {
-                    assert( reinterpret_cast< size_t >( bloom_buffer ) % sizeof( uint64_t ) == 0 && BloomSize % sizeof( uint64_t ) == 0 );
-
-                    // STOSB -> STOSQ
-                    const auto start = reinterpret_cast< uint64_t* >( bloom_buffer );
-                    const auto end = start + BloomSize / sizeof( uint64_t );
-                    std::fill( start, end, 0 );
+                    auto[ ok, read ] = Os::read_file( bloom_, bloom_buffer, BloomSize );
+                    throw_storage_file_error( ok && read == BloomSize, RetCode::IoError );
                 }
             }
-            catch ( const storage_file_error & e )
+            else
             {
-                set_status( e.code() );
-                throw e;
+                assert( reinterpret_cast< size_t >( bloom_buffer ) % sizeof( uint64_t ) == 0 && BloomSize % sizeof( uint64_t ) == 0 );
+
+                // STOSB -> STOSQ
+                const auto start = reinterpret_cast< uint64_t* >( bloom_buffer );
+                const auto end = start + BloomSize / sizeof( uint64_t );
+                std::fill( start, end, 0 );
             }
         }
 
@@ -794,29 +781,18 @@ namespace jb
         */
         auto add_bloom_digest( size_t byte_no, uint8_t byte )
         {
-            try
+            throw_logic_error( RetCode::Ok == status_, "Invalid file" );
+            throw_logic_error( InvalidHandle != bloom_, "Invalid handle" );
+            throw_logic_error( byte_no < BloomSize, "Invalid Bloom offset" );
+
+            // seek & write data
             {
-                throw_storage_file_error( RetCode::Ok == status_, RetCode::UnknownError, "Attempt to access invalid file" );
-
-                if ( byte_no >= BloomSize )
-                {
-                    throw std::out_of_range( "Invalid Bloom offset" );
-                }
-
-                // seek & write data
-                {
-                    auto[ ok, pos ] = Os::seek_file( bloom_, HeaderOffsets::of_Bloom + byte_no );
-                    throw_storage_file_error( ok && pos == HeaderOffsets::of_Bloom + byte_no, RetCode::IoError );
-                }
-                {
-                    auto[ ok, written ] = Os::write_file( bloom_, &byte, 1 );
-                    throw_storage_file_error( ok && written == 1, RetCode::IoError );
-                }
+                auto[ ok, pos ] = Os::seek_file( bloom_, HeaderOffsets::of_Bloom + byte_no );
+                throw_storage_file_error( ok && pos == HeaderOffsets::of_Bloom + byte_no, RetCode::IoError );
             }
-            catch ( const storage_file_error & e )
             {
-                set_status( e.code() );
-                throw e;
+                auto[ ok, written ] = Os::write_file( bloom_, &byte, 1 );
+                throw_storage_file_error( ok && written == 1, RetCode::IoError );
             }
         }
 
@@ -830,8 +806,7 @@ namespace jb
         {
             using namespace std;
 
-            throw_storage_file_error( RetCode::Ok == status_, RetCode::UnknownError, "Attempt to access invalid file" );
-
+            throw_logic_error( RetCode::Ok == status_, "Invalid file" );
             return Transaction{ *this, move( writer_ ), move( unique_lock{ write_mutex_ } ) };
         }
 
@@ -847,7 +822,7 @@ namespace jb
         {
             using namespace std;
 
-            throw_storage_file_error( RetCode::Ok == status_, RetCode::UnknownError, "Attempt to access invalid file" );
+            throw_logic_error( RetCode::Ok == status_, "Invalid file" );
 
             // acquire reading handle
             unique_lock lock{ readers_mutex_ };

@@ -622,8 +622,15 @@ namespace jb
 
                 if ( auto[ ret, volume ] = open< PhysicalVolume >( filesystem::absolute( path ) );  RetCode::Ok == ret )
                 {
-                    prioritize_on_bottom( volume );
-                    return { volume.impl_.lock()->status(), volume };
+                    if ( auto volume_status = volume.impl_.lock()->status(); RetCode::Ok != volume_status )
+                    {
+                        return { volume_status, PhysicalVolume {} };
+                    }
+                    else
+                    {
+                        prioritize_on_bottom( volume );
+                        return { RetCode::Ok, volume };
+                    }
                 }
                 else
                 {

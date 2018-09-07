@@ -183,7 +183,6 @@ TYPED_TEST( TestStorageFile, Transaction_Lock )
 
     {
         auto t = f.open_transaction();
-        EXPECT_EQ( RetCode::Ok, t.status() );
         EXPECT_EQ( false, get_transaction_mutex( f ).try_lock() );
     }
 
@@ -203,16 +202,13 @@ TYPED_TEST( TestStorageFile, Transaction_Rollback )
     {
         EXPECT_NO_THROW(
             auto t = f.open_transaction();
-            ASSERT_EQ( RetCode::Ok, t.status() );
 
             auto b = t.get_chain_writer< char >();
-            EXPECT_EQ( RetCode::Ok, t.status() );
 
             ostream os( &b );
             os << "abcdefghijklmnopqrstuvwxyz";
             os.flush();
             uid = t.get_first_written_chunk();
-            EXPECT_EQ( RetCode::Ok, t.status() );
             EXPECT_EQ( RetCode::Ok, f.status() );
         );
     }
@@ -244,7 +240,6 @@ TYPED_TEST( TestStorageFile, Transaction_Commit )
 
     {
         auto t = f.open_transaction();
-        ASSERT_EQ( RetCode::Ok, t.status() );
 
         for ( size_t i = 0; i < count; ++i )
         {
@@ -253,7 +248,6 @@ TYPED_TEST( TestStorageFile, Transaction_Commit )
 
             EXPECT_NO_THROW(
                 auto b = t.get_chain_writer< char >();
-                EXPECT_EQ( RetCode::Ok, t.status() );
 
                 ostream os( &b );
                 os << data;
@@ -262,7 +256,6 @@ TYPED_TEST( TestStorageFile, Transaction_Commit )
             );
         }
 
-        EXPECT_EQ( RetCode::Ok, t.status() );
         EXPECT_NO_THROW( t.commit() );
     }
 
@@ -297,17 +290,13 @@ TYPED_TEST( TestStorageFile, Transaction_RollbackOnOpen )
 
         EXPECT_NO_THROW(
             auto t = f.open_transaction();
-            ASSERT_EQ( RetCode::Ok, t.status() );
 
             auto b = t.get_chain_writer< char >();
-            EXPECT_EQ( RetCode::Ok, t.status() );
 
             ostream os( &b );
             os << "abcdefghijklmnopqrstuvwxyz";
             os.flush();
             uid = t.get_first_written_chunk();
-
-            EXPECT_EQ( RetCode::Ok, t.status() );
         );
     }
 
@@ -342,7 +331,6 @@ TYPED_TEST( TestStorageFile, Overwriting )
 
     {
         auto t = f.open_transaction();
-        ASSERT_EQ( RetCode::Ok, t.status() );
 
         for ( size_t i = 0; i < count; ++i )
         {
@@ -351,7 +339,6 @@ TYPED_TEST( TestStorageFile, Overwriting )
 
             EXPECT_NO_THROW(
                 auto b = t.get_chain_writer< char >();
-                EXPECT_EQ( RetCode::Ok, t.status() );
 
                 ostream os( &b );
                 os << data;
@@ -360,28 +347,24 @@ TYPED_TEST( TestStorageFile, Overwriting )
             );
         }
 
-        EXPECT_EQ( RetCode::Ok, t.status() );
         EXPECT_NO_THROW( t.commit() );
     }
 
     for ( size_t i = 0; i < count; ++i )
     {
         auto t = f.open_transaction();
-        ASSERT_EQ( RetCode::Ok, t.status() );
 
         size_t sz = static_cast< size_t >( Policy::PhysicalVolumePolicy::ChunkSize * factor[ 9 - i ] );
         string data( sz, 'A' + char( i ) );
 
         EXPECT_NO_THROW( 
             auto b = t.get_chain_overwriter< char >( uid[ i ] );
-            EXPECT_EQ( RetCode::Ok, t.status() );
 
             ostream os( &b );
             os << data;
             os.flush();
         );
 
-        EXPECT_EQ( RetCode::Ok, t.status() );
         EXPECT_NO_THROW( t.commit() );
     }
 
@@ -401,50 +384,6 @@ TYPED_TEST( TestStorageFile, Overwriting )
 }
 
 
-TYPED_TEST( TestStorageFile, Sequent_Overwriting )
-{
-    using namespace std;
-
-    StorageFile f{ std::filesystem::path{ "Sequent_Overwriting.jb" }, true };
-    ASSERT_EQ( RetCode::Ok, f.status() );
-
-    // create root record
-    ASSERT_NO_THROW(
-    {
-        auto t = f.open_transaction();
-        ASSERT_EQ( RetCode::Ok, t.status() );
-
-        // create root node
-        auto b = t.get_chain_writer< char >();
-        ostream os( &b );
-        os << "Root node";
-        os.flush();
-
-        ASSERT_EQ( RetCode::Ok, t.status() );
-
-        t.commit();
-        ASSERT_EQ( RetCode::Ok, f.status() );
-    }
-    
-    );
-
-    EXPECT_THROW(
-
-        {
-            auto t = f.open_transaction();
-            ASSERT_EQ( RetCode::Ok, t.status() );
-
-            auto b = t.get_chain_overwriter< char >( StorageFile::RootChunkUid );
-            ASSERT_EQ( RetCode::Ok, t.status() );
-
-            auto b1 = t.get_chain_overwriter< char >( StorageFile::RootChunkUid );
-        }
-        ,
-        storage_file_error
-    );
-}
-
-
 TYPED_TEST( TestStorageFile, GarbageCollector )
 {
     using namespace std;
@@ -459,7 +398,6 @@ TYPED_TEST( TestStorageFile, GarbageCollector )
         EXPECT_NO_THROW(
 
         auto t = f.open_transaction();
-        EXPECT_EQ( RetCode::Ok, t.status() );
 
         {
             StorageFile::ostreambuf< char > b = t.get_chain_writer< char >();
@@ -468,7 +406,6 @@ TYPED_TEST( TestStorageFile, GarbageCollector )
             os << "0000000";
             os.flush();
 
-            EXPECT_EQ( RetCode::Ok, t.status() );
             uid_0 = t.get_first_written_chunk();
         }
         {
@@ -478,7 +415,6 @@ TYPED_TEST( TestStorageFile, GarbageCollector )
             os << "1111111111";
             os.flush();
 
-            EXPECT_EQ( RetCode::Ok, t.status() );
             uid_1 = t.get_first_written_chunk();
         }
         {
@@ -488,7 +424,6 @@ TYPED_TEST( TestStorageFile, GarbageCollector )
             os << "2222222222222";
             os.flush();
 
-            EXPECT_EQ( RetCode::Ok, t.status() );
             uid_2 = t.get_first_written_chunk();
         }
 
@@ -502,10 +437,7 @@ TYPED_TEST( TestStorageFile, GarbageCollector )
         EXPECT_NO_THROW(
 
             auto t = f.open_transaction();
-            EXPECT_EQ( RetCode::Ok, t.status() );
-
             t.erase_chain( uid_1 );
-            EXPECT_EQ( RetCode::Ok, t.status() );
 
             // now 2nd chain marked as free space
             t.commit();
@@ -517,15 +449,12 @@ TYPED_TEST( TestStorageFile, GarbageCollector )
         EXPECT_NO_THROW(
 
             auto t = f.open_transaction();
-            EXPECT_EQ( RetCode::Ok, t.status() );
 
             StorageFile::ostreambuf< char > b = t.get_chain_writer< char >();
 
             ostream os( &b );
             os << "3333333333333333333333333333333333333333333333333";
             os.flush();
-
-            EXPECT_EQ( RetCode::Ok, t.status() );
 
             // make sure that new chain utilized space from erased one
             uid_3 = t.get_first_written_chunk();
@@ -570,7 +499,6 @@ TYPED_TEST( TestStorageFile, Streaming_Wchar )
 
     {
         auto t = f.open_transaction();
-        ASSERT_EQ( RetCode::Ok, t.status() );
 
         for ( size_t i = 0; i < count; ++i )
         {
@@ -578,15 +506,12 @@ TYPED_TEST( TestStorageFile, Streaming_Wchar )
             wstring data( sz, '0' + char( i ) );
 
             auto b = t.get_chain_writer< wchar_t >();
-            EXPECT_EQ( RetCode::Ok, t.status() );
 
             wostream os( &b );
             os << data;
             os.flush();
             uid[ i ] = t.get_first_written_chunk();
         }
-
-        EXPECT_EQ( RetCode::Ok, t.status() );
 
         t.commit();
         EXPECT_EQ( RetCode::Ok, f.status() );
@@ -638,7 +563,6 @@ TYPED_TEST( TestStorageFile, Streaming_Char16 )
 
     {
         auto t = f.open_transaction();
-        ASSERT_EQ( RetCode::Ok, t.status() );
 
         for ( size_t i = 0; i < count; ++i )
         {
@@ -646,15 +570,12 @@ TYPED_TEST( TestStorageFile, Streaming_Char16 )
             std::basic_string< char16_t > data( sz, '0' + char( i ) );
 
             auto b = t.get_chain_writer< char16_t >();
-            EXPECT_EQ( RetCode::Ok, t.status() );
 
             std::basic_ostream< char16_t > os( &b );
             os << data;
             os.flush();
             uid[ i ] = t.get_first_written_chunk();
         }
-
-        EXPECT_EQ( RetCode::Ok, t.status() );
 
         t.commit();
         EXPECT_EQ( RetCode::Ok, f.status() );
@@ -705,7 +626,6 @@ TYPED_TEST( TestStorageFile, Streaming_Char32 )
 
     {
         auto t = f.open_transaction();
-        ASSERT_EQ( RetCode::Ok, t.status() );
 
         for ( size_t i = 0; i < count; ++i )
         {
@@ -713,15 +633,12 @@ TYPED_TEST( TestStorageFile, Streaming_Char32 )
             std::basic_string< char32_t > data( sz, '0' + char( i ) );
 
             auto b = t.get_chain_writer< char32_t >();
-            EXPECT_EQ( RetCode::Ok, t.status() );
 
             std::basic_ostream< char32_t > os( &b );
             os << data;
             os.flush();
             uid[ i ] = t.get_first_written_chunk();
         }
-
-        EXPECT_EQ( RetCode::Ok, t.status() );
 
         t.commit();
         EXPECT_EQ( RetCode::Ok, f.status() );

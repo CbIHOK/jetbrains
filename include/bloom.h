@@ -35,19 +35,23 @@ namespace jb
         //
         // data members
         //
-        std::atomic< RetCode > status_ = RetCode::Ok;
+        RetCode status_ = RetCode::Ok;
         StorageFile & file_;
         std::array< uint8_t, BloomSize > alignas( sizeof( uint64_t ) ) filter_;
 
 
-        /* Sets filter status
+        /* If an condition failed throws std::logic error with given message...
+        
+        ...and immediately die on noexcept guard calling terminate() handled that gives the ability
+        to collect crash dump
 
-        @param [in] status - status to be set
+        @param [in] condition - condition to be checked
+        @param [in] what - message to be thrown
+        @throw nothing
         */
-        auto set_status( RetCode status ) noexcept
+        static auto throw_logic_error( bool condition, const char * what ) noexcept
         {
-            auto ok = RetCode::Ok;
-            status_.compare_exchange_weak( ok, status, std::memory_order_acq_rel, std::memory_order_relaxed );
+            if ( !condition ) throw std::logic_error( what );
         }
 
 
@@ -66,17 +70,6 @@ namespace jb
         */
         using DigestPath = boost::container::static_vector< Digest, BloomFnCount >;
         //using DigestPath = std::vector< Digest >;
-
-
-        /** Bloom filter exception
-        */
-        struct bloom_error : public std::runtime_error
-        {
-            bloom_error( RetCode rc, const char * what ) : std::runtime_error( what ), rc_( rc ) {}
-            RetCode code() const noexcept { return rc_; }
-        private:
-            RetCode rc_;
-        };
 
 
         /** No default constructible/copyable/movable
@@ -101,11 +94,11 @@ namespace jb
         }
         catch ( const storage_file_error & e )
         {
-            set_status( e.code() );
+            status_ = e.code();
         }
         catch ( ... )
         {
-            set_status( RetCode::UnknownError );
+            status_ = RetCode::UnknownError;
         }
 
 
@@ -117,28 +110,24 @@ namespace jb
         [[ nodiscard ]]
         auto status() const noexcept
         {
-            return status_.load( std::memory_order_acquire );
+            return status_;
         }
 
 
         /** Generate digest for a key's segment considering segment level
 
+        If an error occurs due to invalid parameters fires exception and immediately die on noexcept
+        guard calling terminate() handled that gives the ability to collect crash dump
+
         @param [in] level - key level
         @param [in] key - key segment
         @retval Digest - key digest
-        @throw throw bloom_error
+        @throw nothing
         */
-        static Digest generate_digest( size_t level, const Key & key )
+        static Digest generate_digest( size_t level, const Key & key ) noexcept
         {
-            if ( level >= BloomFnCount )
-            {
-                throw bloom_error( RetCode::MaxTreeDepthExceeded, "" );
-            }
-
-            if ( !key.is_leaf() )
-            {
-                throw bloom_error( RetCode::InvalidSubkey, "" );
-            }
+            throw_logic_error( level < BloomFnCount, "Maximum tree depth exceeded" );
+            throw_logic_error( key.is_leaf(), "Invalid key" );
 
             static constexpr auto max = std::numeric_limits< uint32_t >::max();
             return static_cast< Digest >( variadic_hash( level, key ) & max );
@@ -171,67 +160,54 @@ namespace jb
         @param [in] entry_level - level mount point key
         @param [in] relative_path - path to the key relatively to mount point key
         @retval bool - if combined key may present
-        @throw bloom_error
+        @throw nothing
         */
-        bool test( size_t entry_level, const Key & relative_path, DigestPath & digests ) const
+        bool test( size_t entry_level, const Key & relative_path, DigestPath & digests ) const noexcept
         {
             using namespace std;
 
-            try
+            digests.clear();
+
+            // nothing to test
+            if ( relative_path.empty() || Key::root() == relative_path )
             {
-                digests.clear();
-
-                // nothing to test
-                if ( relative_path.empty() || Key::root() == relative_path )
-                {
-                    return true;
-                }
-
-                if ( !relative_path.is_path() )
-                {
-                    throw bloom_error( RetCode::UnknownError, "Bad path" );
-                }
-
-                // generate digests
-                Key rest = relative_path;
-
-                while ( rest.size() )
-                {
-                    if ( entry_level + digests.size() >= BloomFnCount )
-                    {
-                        throw bloom_error( RetCode::MaxTreeDepthExceeded, "" );
-                    }
-
-                    auto[ prefix, suffix ] = rest.split_at_head();
-                    auto stem = prefix.cut_lead_separator();
-                    auto digest = generate_digest( ++entry_level, stem );
-
-                    digests.push_back( digest );
-                    rest = suffix;
-                }
-
-                // check
-                auto may_present = true;
-                for ( auto digest : digests )
-                {
-                    const auto byte_no = ( digest / 8 ) % BloomSize;
-                    const auto bit_no = digest % 8;
-
-                    auto check = filter_[ byte_no ] & ( 1 << bit_no );
-
-                    if ( check == 0 )
-                    {
-                        may_present = false;
-                        break;
-                    }
-                };
-
-                return may_present;
+                return true;
             }
-            catch ( const logic_error & )
+
+            throw_logic_error( relative_path.is_path(), "Invalid path" );
+
+            // generate digests
+            Key rest = relative_path;
+
+            while ( rest.size() )
             {
-                abort();
+                throw_logic_error( entry_level + digests.size() < BloomFnCount, "Maximum tree depth exceeded" );
+
+                auto[ prefix, suffix ] = rest.split_at_head();
+                auto stem = prefix.cut_lead_separator();
+                auto digest = generate_digest( ++entry_level, stem );
+
+                digests.push_back( digest );
+                rest = suffix;
             }
+
+            // check
+            auto may_present = true;
+            for ( auto digest : digests )
+            {
+                const auto byte_no = ( digest / 8 ) % BloomSize;
+                const auto bit_no = digest % 8;
+
+                auto check = filter_[ byte_no ] & ( 1 << bit_no );
+
+                if ( check == 0 )
+                {
+                    may_present = false;
+                    break;
+                }
+            };
+
+            return may_present;
         }
     };
 }
