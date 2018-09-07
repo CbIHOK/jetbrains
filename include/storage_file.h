@@ -605,28 +605,25 @@ namespace jb
         @param [in] path - path to physical file@param [in] suppress_lock - do not lock the file (test mode)
         @throw nothing
         */
-        explicit StorageFile( const std::filesystem::path & path, bool suppress_lock = false ) try
+        explicit StorageFile( const std::filesystem::path & path, bool suppress_lock = false ) noexcept try
             : file_lock_name_( "jb_lock_" + std::to_string( std::filesystem::hash_value( path ) ) )
             , writer_( InvalidHandle, std::ref( write_buffer_ ) )
         {
             using namespace std;
 
-            if ( !suppress_lock )
+            //
+            // Unfortunately MS does not care about standards as usual and HANDLED exceptions easily leaves
+            // try-catch constructors by an rethrow. That is why I have to use such workaround
+            //
+            if ( !suppress_lock ) try
             {
-                //
-                // Unfortunately MS does not care about standards as usual and HANDLED exceptions easily leaves
-                // try-catch constructors by an rethrow. That is why I have to use such workaround
-                //
-                try
-                {
-                    // lock file
-                    file_lock_ = std::make_shared< boost::interprocess::named_mutex >( boost::interprocess::create_only_t{}, file_lock_name_.c_str() );
-                }
-                catch ( const boost::interprocess::interprocess_exception & )
-                {
-                    status_ = RetCode::AlreadyOpened;
-                    return;
-                }
+                // lock file
+                file_lock_ = std::make_shared< boost::interprocess::named_mutex >( boost::interprocess::create_only_t{}, file_lock_name_.c_str() );
+            }
+            catch ( const boost::interprocess::interprocess_exception & )
+            {
+                status_ = RetCode::AlreadyOpened;
+                return;
             }
 
             // open writter
@@ -678,10 +675,6 @@ namespace jb
         catch ( const std::bad_alloc & )
         {
             status_ = RetCode::InsufficientMemory;
-        }
-        catch ( ... )
-        {
-            status_ = RetCode::UnknownError;
         }
 
 

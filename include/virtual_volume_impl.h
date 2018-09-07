@@ -152,29 +152,22 @@ namespace jb
         {
             using namespace std;
 
-            try
+            auto current = logical_path;
+
+            while ( Key::root() != current )
             {
-                auto current = logical_path;
+                auto[ superkey, subkey ] = current.split_at_tile();
+                auto hash = variadic_hash( superkey, subkey );
 
-                while ( Key::root() != current )
+                if ( paths_.count( hash ) )
                 {
-                    auto[ superkey, subkey ] = current.split_at_tile();
-                    auto hash = variadic_hash( superkey, subkey );
-
-                    if ( paths_.count( hash ) )
-                    {
-                        return tuple{ current, hash };
-                    }
-
-                    current = superkey;
+                    return tuple{ current, hash };
                 }
 
-                return tuple{ Key{}, KeyHashT{} };
+                current = superkey;
             }
-            catch ( const logic_error & )
-            {
-                abort();
-            }
+
+            return tuple{ Key{}, KeyHashT{} };
         }
 
 
@@ -317,60 +310,48 @@ namespace jb
             assert( path.is_path() );
             assert( subkey.is_leaf() );
 
-            try
+            // TODO: consider locking only for collection mount points
+            shared_lock l( mounts_guard_ );
+
+            if ( auto[ mount_path, mount_hash ] = find_nearest_mounted_path( path ); mount_path )
             {
-                // TODO: consider locking only for collection mount points
-                shared_lock l( mounts_guard_ );
+                // get mounts for the key
+                auto mounts = move( get_mount_points( mount_hash ) );
+                assert( mounts.size( ) );
 
-                if ( auto[ mount_path, mount_hash ] = find_nearest_mounted_path( path ); mount_path )
+                // get relative path as a rest from mount point
+                auto[ is_superkey, relative_path ] = mount_path.is_superkey( path );
+
+                // run insert() for all mounts in parallel
+                auto futures = std::move( run_parallel( mounts, [&] ( const auto & mount, const auto & in, auto & out ) noexcept {
+                    return mount->insert( relative_path, subkey, value, good_before, overwrite, in, out );
+                } ) );
+
+                // through all futures
+                for ( auto & future : futures )
                 {
-                    // get mounts for the key
-                    auto mounts = move( get_mount_points( mount_hash ) );
-                    assert( mounts.size( ) );
+                    // get result
+                    auto ret = future.get( );
 
-                    // get relative path as a rest from mount point
-                    auto[ is_superkey, relative_path ] = mount_path.is_superkey( path );
-
-                    // run insert() for all mounts in parallel
-                    auto futures = std::move( run_parallel( mounts, [&] ( const auto & mount, const auto & in, auto & out ) noexcept {
-                        return mount->insert( relative_path, subkey, value, good_before, overwrite, in, out );
-                    } ) );
-
-                    // through all futures
-                    for ( auto & future : futures )
+                    if ( RetCode::Ok == ret )
                     {
-                        // get result
-                        auto ret = future.get( );
-
-                        if ( RetCode::Ok == ret )
-                        {
-                            // done
-                            return RetCode::Ok;
-                        }
-                        else if ( RetCode::NotFound != ret )
-                        {
-                            // something happened on physical level
-                            return ret;
-                        }
+                        // done
+                        return RetCode::Ok;
                     }
-
-                    // key not found
-                    return RetCode::NotFound;
+                    else if ( RetCode::NotFound != ret )
+                    {
+                        // something happened on physical level
+                        return ret;
+                    }
                 }
-                else
-                {
-                    return RetCode::InvalidLogicalPath;
-                }
-            }
-            catch ( const std::logic_error & )
-            {
-                abort();
-            }
-            catch(...)
-            {
-            }
 
-            return RetCode::UnknownError;
+                // key not found
+                return RetCode::NotFound;
+            }
+            else
+            {
+                return RetCode::InvalidLogicalPath;
+            }
         }
 
 
@@ -381,61 +362,49 @@ namespace jb
 
             assert( key.is_path( ) );
 
-            try
+            // TODO: consider locking only for collection mount points
+            // TODO: add check for a logical path
+            shared_lock l( mounts_guard_ );
+
+            if ( auto[ mount_path, mount_hash ] = find_nearest_mounted_path( key ); mount_path )
             {
-                // TODO: consider locking only for collection mount points
-                // TODO: add check for a logical path
-                shared_lock l( mounts_guard_ );
+                // get mounts for the key
+                auto mounts = move( get_mount_points( mount_hash ) );
+                assert( mounts.size( ) );
 
-                if ( auto[ mount_path, mount_hash ] = find_nearest_mounted_path( key ); mount_path )
+                // get relative path as a rest from mount point
+                auto[ is_superkey, relative_path ] = mount_path.is_superkey( key );
+
+                // run get() for all mounts in parallel
+                auto futures = std::move( run_parallel( mounts, [&] ( const auto & mount, const auto & in, auto & out ) noexcept {
+                    return mount->get( relative_path, in, out );
+                } ) );
+
+                // through all futures
+                for ( auto & future : futures )
                 {
-                    // get mounts for the key
-                    auto mounts = move( get_mount_points( mount_hash ) );
-                    assert( mounts.size( ) );
+                    // get result
+                    auto[ ret, value ] = future.get( );
 
-                    // get relative path as a rest from mount point
-                    auto[ is_superkey, relative_path ] = mount_path.is_superkey( key );
-
-                    // run get() for all mounts in parallel
-                    auto futures = std::move( run_parallel( mounts, [&] ( const auto & mount, const auto & in, auto & out ) noexcept {
-                        return mount->get( relative_path, in, out );
-                    } ) );
-
-                    // through all futures
-                    for ( auto & future : futures )
+                    if ( RetCode::Ok == ret )
                     {
-                        // get result
-                        auto[ ret, value ] = future.get( );
-
-                        if ( RetCode::Ok == ret )
-                        {
-                            // done
-                            return { RetCode::Ok, value };
-                        }
-                        else if ( RetCode::NotFound != ret )
-                        {
-                            // something happened on physical level
-                            return { ret, Value{} };
-                        }
+                        // done
+                        return { RetCode::Ok, value };
                     }
-
-                    // key not found
-                    return { RetCode::NotFound, Value{} };
+                    else if ( RetCode::NotFound != ret )
+                    {
+                        // something happened on physical level
+                        return { ret, Value{} };
+                    }
                 }
-                else
-                {
-                    return { RetCode::InvalidLogicalPath, Value{} };
-                }
-            }
-            catch ( const std::logic_error & )
-            {
-                abort();
-            }
-            catch ( ... )
-            {
-            }
 
-            return { RetCode::UnknownError, Value{} };
+                // key not found
+                return { RetCode::NotFound, Value{} };
+            }
+            else
+            {
+                return { RetCode::InvalidLogicalPath, Value{} };
+            }
         }
 
 
@@ -447,61 +416,49 @@ namespace jb
 
             assert( key.is_path( ) );
 
-            try
+            // TODO: consider locking only for collection mount points
+            // TODO: add check for a logical path
+            shared_lock l( mounts_guard_ );
+
+            if ( auto[ mount_path, mount_hash ] = find_nearest_mounted_path( key ); mount_path )
             {
-                // TODO: consider locking only for collection mount points
-                // TODO: add check for a logical path
-                shared_lock l( mounts_guard_ );
+                // get mounts for the key
+                auto mounts = move( get_mount_points( mount_hash ) );
+                assert( mounts.size() );
 
-                if ( auto[ mount_path, mount_hash ] = find_nearest_mounted_path( key ); mount_path )
+                // get relative path as a rest from mount point
+                auto[ is_superkey, relative_path ] = mount_path.is_superkey( key );
+
+                // run erase() for all mounts in parallel
+                auto futures = move( run_parallel( mounts, [&] ( const auto & mount, const auto & in, auto & out ) noexcept {
+                    return mount->erase( relative_path, in, out );
+                } ) );
+
+                // through all futures
+                for ( auto & future : futures )
                 {
-                    // get mounts for the key
-                    auto mounts = move( get_mount_points( mount_hash ) );
-                    assert( mounts.size() );
+                    // get result
+                    auto[ rc ] = future.get( );
 
-                    // get relative path as a rest from mount point
-                    auto[ is_superkey, relative_path ] = mount_path.is_superkey( key );
-
-                    // run erase() for all mounts in parallel
-                    auto futures = move( run_parallel( mounts, [&] ( const auto & mount, const auto & in, auto & out ) noexcept {
-                        return mount->erase( relative_path, in, out );
-                    } ) );
-
-                    // through all futures
-                    for ( auto & future : futures )
+                    if ( RetCode::Ok == rc )
                     {
-                        // get result
-                        auto[ rc ] = future.get( );
-
-                        if ( RetCode::Ok == rc )
-                        {
-                            // done
-                            return RetCode::Ok;
-                        }
-                        else if ( RetCode::NotFound != rc )
-                        {
-                            // something happened on physical level
-                            return rc;
-                        }
+                        // done
+                        return RetCode::Ok;
                     }
-
-                    // key not found
-                    return RetCode::NotFound;
+                    else if ( RetCode::NotFound != rc )
+                    {
+                        // something happened on physical level
+                        return rc;
+                    }
                 }
-                else
-                {
-                    return RetCode::InvalidLogicalPath;
-                }
-            }
-            catch ( const std::logic_error & )
-            {
-                abort();
-            }
-            catch ( ... )
-            {
-            }
 
-            return RetCode::UnknownError;
+                // key not found
+                return RetCode::NotFound;
+            }
+            else
+            {
+                return RetCode::InvalidLogicalPath;
+            }
         }
 
 
@@ -632,15 +589,6 @@ namespace jb
             {
                 return { RetCode::InsufficientMemory, MountPointImplP{} };
             }
-            catch ( const std::logic_error & )
-            {
-                abort();
-            }
-            catch ( ... )
-            {
-            }
-
-            return { RetCode::UnknownError, MountPointImplP{} };
         }
 
 

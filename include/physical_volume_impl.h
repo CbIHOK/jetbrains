@@ -332,10 +332,6 @@ namespace jb
         {
             status_ = RetCode::InsufficientMemory;
         }
-        catch ( ... )
-        {
-            status_ = RetCode::UnknownError;
-        }
 
 
         /** Provides physical volume status
