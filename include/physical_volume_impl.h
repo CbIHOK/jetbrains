@@ -182,6 +182,9 @@ namespace jb
                 // get uid of child entry b-tree node
                 auto child_uid = node->children( digest_pos );
 
+                // if children present?
+                if ( InvalidNodeUid == child_uid ) return false;
+
                 // load root of children collection and continue search
                 node = cache_->get_node( child_uid );
             }
