@@ -292,7 +292,7 @@ namespace jb
         explicit PhysicalVolumeImpl( const std::filesystem::path & path ) noexcept try
         {
             // initialize file storage
-            file_ = std::make_unique< StorageFile >( path, true );
+            file_ = std::make_unique< StorageFile >( path );
             if ( auto file_status = file_->status(); RetCode::Ok != file_status )
             {
                 status_ = file_status;
