@@ -152,6 +152,11 @@ namespace jb
                 shared_lock lock{ node->guard() };
                 locks.push_back( std::move( lock ) );
 
+                // run an action on the root b-tree node to lock it for removing, there is not a
+                // reason to run it on entry key, cuz it's either / that cannot be removed or it's
+                // already mounted, i.e. is already locked
+                f( node );
+
                 // clear path to digest
                 bpath.clear();
 
@@ -173,9 +178,6 @@ namespace jb
                 // if digest expired - ignore it
                 if ( expiration_time && expiration_time < now ) return false;
 
-                // run an action on node
-                f( node );
-
                 // if node is the target
                 if ( digest_it == end( digests ) ) return true;
 
@@ -185,7 +187,7 @@ namespace jb
                 // if children present?
                 if ( InvalidNodeUid == child_uid ) return false;
 
-                // load root of children collection and continue search
+                // load root b-tree node of children collection and continue search
                 node = cache_->get_node( child_uid );
             }
 
@@ -515,7 +517,8 @@ namespace jb
                 }
 
                 //insertion
-                {
+                return wait_and_do_it( in, out, [&] {
+
                     // generate digest for the subkey
                     Digest digest = Bloom::generate_digest( digests.size() + 1, subkey );
 
@@ -527,24 +530,21 @@ namespace jb
                     assert( bpath.size() );
                     auto target_btree = cache_->get_node( bpath.back().first );
 
-                    return wait_and_do_it( in, out, [&] {
+                    {
+                        // get exclusive lock over target key
+                        assert( locks.size() );
+                        exclusive_lock e{ locks.back() };
 
-                        {
-                            // get exclusive lock over target key
-                            assert( locks.size() );
-                            exclusive_lock e{ locks.back() };
+                        // and insert new subkey
+                        BTree::Pos target_pos = bpath.back().second; bpath.pop_back();
+                        target_btree->insert( target_pos, bpath, digest, value, good_before, overwrite );
+                    }
 
-                            // and insert new subkey
-                            BTree::Pos target_pos = bpath.back().second; bpath.pop_back();
-                            target_btree->insert( target_pos, bpath, digest, value, good_before, overwrite );
-                        }
+                    // force filter to respect new digest
+                    filter_->add_digest( digest );
 
-                        // force filter to respect new digest
-                        filter_->add_digest( digest );
-
-                        return tuple{ RetCode::Ok };
-                    } );
-                }
+                    return tuple{ RetCode::Ok };
+                } );
             }
             catch ( const storage_file_error & e )
             {
@@ -694,21 +694,21 @@ namespace jb
                         return wait_and_do_it( in, out, [&] { return tuple{ RetCode::PathLocked }; } );
                     }
 
-                    // get b-tree node containing the element
-                    auto node_uid = bpath.back().first;
-                    auto pos = bpath.back().second;
-                    bpath.pop_back();
-                    auto node = cache_->get_node( node_uid );
-
                     return wait_and_do_it( in, out, [&] {
+
+                        // get b-tree node containing the element
+                        auto node_uid = bpath.back().first;
+                        auto pos = bpath.back().second;
+                        bpath.pop_back();
+                        auto node = cache_->get_node( node_uid );
 
                         // get exclusive lock over the key
                         exclusive_lock e{ locks.back() };
 
+                        // ... and erase the element
                         node->erase( pos, bpath );
 
                         return tuple{ RetCode::Ok };
-
                     } );
                 }
             }

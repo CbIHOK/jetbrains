@@ -169,7 +169,7 @@ namespace jb
         @retval Key - the rest of path
         @throw std::logic_error if the key does not represent valid path
         */
-        std::tuple< Key, Key > split_at_head( ) const
+        std::tuple< Key, Key > split_at_head( ) const noexcept
         {
             using namespace std;
 
@@ -203,7 +203,7 @@ namespace jb
         @retval Key - the last segment
         @throw std::logic_error if the key does not represent valid path
         */
-        std::tuple< Key, Key > split_at_tile( ) const
+        std::tuple< Key, Key > split_at_tile( ) const noexcept
         {
             using namespace std;
 
@@ -231,7 +231,7 @@ namespace jb
         @retval Key - relative path from the superkey to the subkey
         @throw std::logic_error if the keys do not represent valid path
         */
-        std::tuple< bool, Key > is_subkey( const Key & superkey ) const
+        std::tuple< bool, Key > is_subkey( const Key & superkey ) const noexcept
         {
             using namespace std;
 
@@ -279,7 +279,7 @@ namespace jb
         @retval Key - the version with removed lead separator
         @throw std::logic_error if the key does not represent valid path
         */
-        Key cut_lead_separator() const
+        Key cut_lead_separator() const noexcept
         {
             using namespace std;
 
