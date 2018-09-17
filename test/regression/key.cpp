@@ -98,8 +98,8 @@ TEST_F( TestKey, Compare )
     EXPECT_LE( Key{ "boo1"s }, Key{ "boo2"s } );
     EXPECT_GE( Key{ "boo2"s }, Key{ "boo1"s } );
     EXPECT_GT( Key{ "boo2"s }, Key{ "boo1"s } );
-    //EXPECT_EQ( Hash{}( Key{ "boo"s } ), Hash{}( Key{ "boo"s } ) );
-    //EXPECT_NE( Hash{}( Key{ "boo"s } ), Hash{}( Key{ "foo"s } ) );
+    EXPECT_EQ( Hash{}( Key{ "boo"s } ), Hash{}( Key{ "boo"s } ) );
+    EXPECT_NE( Hash{}( Key{ "boo"s } ), Hash{}( Key{ "foo"s } ) );
 }
 
 
@@ -110,7 +110,7 @@ TEST_F( TestKey, SplitAtHead )
     {
         KeyValue in;
         std::tuple< Key, Key > res;
-        //EXPECT_THROW( res = Key{ in }.split_at_head(), std::logic_error );
+        EXPECT_THROW( res = Key{ in }.split_at_head(), std::logic_error );
     }
 
     {
@@ -146,7 +146,7 @@ TEST_F( TestKey, SplitAtTile )
     {
         KeyValue in{};
         std::tuple< Key, Key > res;
-        //EXPECT_THROW( res = Key{ in }.split_at_tile(), logic_error );
+        EXPECT_THROW( res = Key{ in }.split_at_tile(), logic_error );
     }
 
     {
@@ -181,12 +181,12 @@ TEST_F( TestKey, IsSubkey )
 
     {
         KeyValue in;
-        //EXPECT_THROW( Key{ in }.is_subkey( Key{ "/foo"s } ), logic_error );
+        EXPECT_THROW( Key{ in }.is_subkey( Key{ "/foo"s } ), logic_error );
     }
     
     {
         KeyValue in{ "foo"s };
-        //EXPECT_THROW( Key{ in }.is_subkey( Key{ "/boo"s } ), logic_error );
+        EXPECT_THROW( Key{ in }.is_subkey( Key{ "/boo"s } ), logic_error );
     }
 
     {
@@ -203,8 +203,8 @@ TEST_F( TestKey, IsSubkey )
 
     {
         KeyValue in{ "/foo"s };
-        //EXPECT_THROW( Key{ in }.is_subkey( Key{} ), logic_error );
-        //EXPECT_THROW( Key{ in }.is_subkey( Key{ "boo"s } ), logic_error );
+        EXPECT_THROW( Key{ in }.is_subkey( Key{} ), logic_error );
+        EXPECT_THROW( Key{ in }.is_subkey( Key{ "boo"s } ), logic_error );
 
         std::tuple< bool, Key > res;
 
@@ -245,12 +245,12 @@ TEST_F( TestKey, IsSuperkey )
 
     {
         KeyValue in;
-        //EXPECT_THROW( Key{ in }.is_superkey( Key{ "/foo"s } ), logic_error );
+        EXPECT_THROW( Key{ in }.is_superkey( Key{ "/foo"s } ), logic_error );
     }
 
     {
         KeyValue in{ "foo"s };
-        //EXPECT_THROW( Key{ in }.is_superkey( Key{ "/boo"s } ), logic_error );
+        EXPECT_THROW( Key{ in }.is_superkey( Key{ "/boo"s } ), logic_error );
     }
 
     {
@@ -274,8 +274,8 @@ TEST_F( TestKey, IsSuperkey )
         KeyValue foo_boo = "/foo/boo"s;
         KeyValue boo_foo = "/boo/foo"s;
 
-        //EXPECT_THROW( Key{ foo }.is_superkey( Key{} ), logic_error );
-        //EXPECT_THROW( Key{ foo }.is_superkey( Key{ "boo"s } ), logic_error );
+        EXPECT_THROW( Key{ foo }.is_superkey( Key{} ), logic_error );
+        EXPECT_THROW( Key{ foo }.is_superkey( Key{ "boo"s } ), logic_error );
 
         std::tuple< bool, Key > res;
 

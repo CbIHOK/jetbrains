@@ -5,6 +5,7 @@ set(CMAKE_CXX_FLAGS_DEBUG "${CMAKE_CXX_FLAGS_DEBUG} /MTd")
 set(CMAKE_CXX_FLAGS_DEBUG "${CMAKE_CXX_FLAGS_DEBUG} /MTd")
 set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} /wd4297")
 
+add_definitions( -D_NOEXCEPT_= )
 
 add_executable( regression EXCLUDE_FROM_ALL
     main.cpp
