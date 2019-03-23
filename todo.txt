@@ -1,2 +1,4 @@
-﻿1. consider custom heaps to declain BTreeMaxDepth & MaxTreeDepth limits
-2. consider custom heap for b-tree nodes to decrease heap defragmentation
+﻿1. реализация оптимизированного shared mutex для случая редких обращений на запись и частых на чтение
+2. тотальное упрощение virtual_volume_impl за счет использования boost::multi_index_container
+3. удаление избыточного класса path_locker, std::hash<> с мьютексом вполне достаточен
+4. использование shared_mutex для btree_cache -- крайне плохая идея: любое обращение к нему предполагает запись, а shared_mutex -- тяжелый лок
