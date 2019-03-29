@@ -11,6 +11,8 @@
 #include <functional>
 #include <boost/container/static_vector.hpp>
 
+#include "rare_write_frequent_read_mutex.h"
+
 
 class TestVirtualVolume;
 
@@ -51,6 +53,7 @@ namespace jb
         // just a read/write mount collection guardian
         //
         std::shared_mutex mounts_guard_;
+        rare_write_frequent_read_mutex<> guard_;
 
 
         //
@@ -602,6 +605,9 @@ namespace jb
         RetCode unmount( const MountPoint & mp, bool force ) noexcept
         {
             using namespace std;
+
+            rare_write_frequent_read_mutex<>::shared_lock< 100000 > s_lock( guard_ );
+            rare_write_frequent_read_mutex<>::upgrade_lock< 10000 > x_lock( s_lock );
 
             // lock over all mounts
             unique_lock< shared_mutex > lock( mounts_guard_ );
