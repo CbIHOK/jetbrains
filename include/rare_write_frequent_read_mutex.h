@@ -66,7 +66,7 @@ namespace jb
                 uint32_t unlocked = 0;
 
                 // try get the lock
-                if ( x_lock_.atomic_.compare_exchange_weak( &unlocked, locked, memory_order_acq_rel, memory_order_relaxed ) )
+                if ( x_lock_.atomic_.compare_exchange_weak( unlocked, locked, memory_order_acq_rel, memory_order_relaxed ) )
                 {
                     break;
                 }
