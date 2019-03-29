@@ -15,6 +15,11 @@
 #include <assert.h>
 
 
+#ifndef _NOEXCEPT_
+#define _NOEXCEPT_ noexcept
+#endif
+
+
 class TestStorage;
 class TestKey;
 class TestNodeLocker;
@@ -679,6 +684,9 @@ namespace jb
 #include "virtual_volume.h"
 #include "physical_volume.h"
 #include "mount_point.h"
+
+
+#undef _NOEXCEPT_
 
 
 #endif

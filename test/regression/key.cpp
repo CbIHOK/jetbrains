@@ -98,8 +98,8 @@ TEST_F( TestKey, Compare )
     EXPECT_LE( Key{ "boo1"s }, Key{ "boo2"s } );
     EXPECT_GE( Key{ "boo2"s }, Key{ "boo1"s } );
     EXPECT_GT( Key{ "boo2"s }, Key{ "boo1"s } );
-    //EXPECT_EQ( Hash{}( Key{ "boo"s } ), Hash{}( Key{ "boo"s } ) );
-    //EXPECT_NE( Hash{}( Key{ "boo"s } ), Hash{}( Key{ "foo"s } ) );
+    EXPECT_EQ( Hash{}( Key{ "boo"s } ), Hash{}( Key{ "boo"s } ) );
+    EXPECT_NE( Hash{}( Key{ "boo"s } ), Hash{}( Key{ "foo"s } ) );
 }
 
 

@@ -11,6 +11,15 @@
 #include <functional>
 #include <boost/container/static_vector.hpp>
 
+#include "rare_write_frequent_read_mutex.h"
+
+#include <boost/multi_index_container.hpp>
+#include <boost/multi_index/hashed_index.hpp>
+#include <boost/multi_index/ordered_index.hpp>
+#include <boost/multi_index/member.hpp>
+#include <boost/multi_index/identity.hpp>
+
+
 
 class TestVirtualVolume;
 
@@ -52,6 +61,93 @@ namespace jb
         //
         std::shared_mutex mounts_guard_;
 
+        struct mount_t
+        {
+            KeyValue        logical_path_;
+            MountPointImplP pimp_;
+            MountPointImplP parent_;
+
+            struct by_logical_path {};
+            struct by_parent {};
+            struct by_pimp {};
+            struct by_priority {};
+
+            size_t physical_volume_priority() const noexcept
+            {
+                assert( pimp_ && pimp_->physical_volume() );
+                return pimp_->physical_volume()->priority();
+            }
+
+            size_t mount_point_priority() const noexcept
+            {
+                assert( pimp_ );
+                return pimp_->priority();
+            }
+        };
+
+
+        struct mount_compare
+        {
+            bool operator () ( const mount_t & lhs, const mount_t & rhs ) const noexcept
+            {
+                return ( lhs.logical_path_ < rhs.logical_path_ )
+                    ||
+                    (
+                        lhs.logical_path_ == rhs.logical_path_ &&
+                        lhs.physical_volume_priority() > rhs.physical_volume_priority()
+                        )
+                    ||
+                    (
+                        lhs.logical_path_ == rhs.logical_path_ &&
+                        lhs.physical_volume_priority() == rhs.physical_volume_priority() &&
+                        lhs.mount_point_priority() < rhs.mount_point_priority()
+                    );
+            }
+
+            bool operator () ( const Key & lhs, const mount_t & rhs ) const noexcept
+            {
+                return lhs < rhs.logical_path_;
+            }
+
+            bool operator () ( const mount_t & lhs, const Key & rhs ) const noexcept
+            {
+                return lhs.logical_path_ < rhs;
+            }
+        };
+
+
+        using mount_collection_t = boost::multi_index_container<
+            mount_t,
+            boost::multi_index::indexed_by<
+                // O(0) search by logical path
+                boost::multi_index::hashed_non_unique<
+                    boost::multi_index::tag< typename mount_t::by_logical_path >,
+                    boost::multi_index::member< mount_t, KeyValue, &mount_t::logical_path_ >
+                >,
+                // O(0) search by PIMP
+                boost::multi_index::hashed_unique<
+                    boost::multi_index::tag< typename mount_t::by_pimp >,
+                    boost::multi_index::member< mount_t, MountPointImplP, &mount_t::pimp_ >
+                >,
+                // O(0) underlaying mounts selection
+                boost::multi_index::hashed_non_unique<
+                    boost::multi_index::tag< typename mount_t::by_parent >,
+                    boost::multi_index::member< mount_t, MountPointImplP, &mount_t::parent_ >
+                >,
+            // O( log N ) range selection ordered by mount priority
+                boost::multi_index::ordered_non_unique<
+                    boost::multi_index::tag< typename mount_t::by_priority >,
+                    boost::multi_index::identity< mount_t >,
+                    mount_compare
+                >
+            >
+        >;
+
+        mount_collection_t mounts__;
+
+        rare_write_frequent_read_mutex<> guard_;
+        mount_collection_t mounts_;
+
 
         //
         // keeps mount point backtarces. Different scenario imply different searches through mount
@@ -89,7 +185,7 @@ namespace jb
             MountPointImplP,
             MountPointBacktraceP
         >;
-        MountPointImplCollection mounts_;
+        MountPointImplCollection mounts_old_;
 
 
         //
@@ -136,7 +232,7 @@ namespace jb
             auto check = [] ( auto hash ) {
                 return hash.size() + 1 <= hash.max_load_factor() * hash.bucket_count();
             };
-            return check( uids_ ) && check( mounts_ ) && check( paths_ ) && check( dependencies_ );
+            return check( uids_ ) && check( mounts_old_ ) && check( paths_ ) && check( dependencies_ );
         }
 
 
@@ -285,7 +381,7 @@ namespace jb
         */
         VirtualVolumeImpl( ) : mounts_guard_( )
             , uids_( MountLimit )
-            , mounts_( MountLimit )
+            , mounts_old_( MountLimit )
             , paths_( MountLimit )
             , dependencies_( MountLimit )
         {
@@ -491,7 +587,7 @@ namespace jb
                 unique_lock< shared_mutex > write_lock( mounts_guard_ );
 
                 // if maximum number of mounts reached?
-                if ( mounts_.size() >= MountLimit)
+                if ( mounts_old_.size() >= MountLimit)
                 {
                     return { RetCode::LimitReached, MountPointImplP{} };
                 }
@@ -578,7 +674,7 @@ namespace jb
 
                 // insert all the keys and fill backtrace
                 backtrace_ptr->uid_ = uids_.insert( uid ).first;
-                backtrace_ptr->mount_ = mounts_.insert( { mp, backtrace_ptr } ).first;
+                backtrace_ptr->mount_ = mounts_old_.insert( { mp, backtrace_ptr } ).first;
                 backtrace_ptr->path_ = paths_.insert( { mounted_hash, backtrace_ptr } );
                 backtrace_ptr->dependency_ = parent_path ? dependencies_.insert( { parent_hash, mounted_hash } ) : dependencies_.end();
 
@@ -599,9 +695,32 @@ namespace jb
         @retval RetCode - operation status
         @throw nothing
         */
-        RetCode unmount( const MountPoint & mp, bool force ) noexcept
+        std::tuple< RetCode > unmount( const MountPoint & mp, bool force ) noexcept
         {
             using namespace std;
+
+            rare_write_frequent_read_mutex<>::unique_lock<> x_lock( guard_ );
+
+            if ( auto mp_pimp = mp.impl_.lock() )
+            {
+                auto & pimps = mounts_.get< mount_t::by_pimp >();
+
+                if (  )
+                
+                auto mp_it = pimps.find( mp_pimp );
+                assert( mp_it != pimps.find() );
+
+                std::vector< decltype( mp_it ) > to_remove;
+                to_remove.reserve( )
+
+                
+
+                auto & parents = mounts.get< mount_t::by_parent >();
+            }
+            else
+            {
+                return { RetCode::InvalidHandle };
+            }
 
             // lock over all mounts
             unique_lock< shared_mutex > lock( mounts_guard_ );
@@ -610,7 +729,7 @@ namespace jb
             {
                 std::function< RetCode( const MountPointImplP &, bool ) > rec = [&] ( const auto & mp_impl, auto force )
                 {
-                    if ( auto impl_it = mounts_.find( mp_impl ); impl_it != mounts_.end( ) )
+                    if ( auto impl_it = mounts_old_.find( mp_impl ); impl_it != mounts_old_.end( ) )
                     {
                         // check if used
                         if ( mp_impl.use_count( ) - 1 > 1 && !force )
@@ -654,7 +773,7 @@ namespace jb
 
                         // delete related items from all the collections
                         uids_.erase( backtrace->uid_ );
-                        mounts_.erase( backtrace->mount_ );
+                        mounts_old_.erase( backtrace->mount_ );
                         paths_.erase( backtrace->path_ );
                         if ( backtrace->dependency_ != dependencies_.end( ) )
                         {
