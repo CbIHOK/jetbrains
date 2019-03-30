@@ -695,105 +695,142 @@ namespace jb
         @retval RetCode - operation status
         @throw nothing
         */
-        std::tuple< RetCode > unmount( const MountPoint & mp, bool force ) noexcept
+        RetCode unmount( const MountPoint & mp, bool force ) noexcept
         {
             using namespace std;
 
-            rare_write_frequent_read_mutex<>::unique_lock<> x_lock( guard_ );
-
-            if ( auto mp_pimp = mp.impl_.lock() )
+            try
             {
-                auto & pimps = mounts_.get< mount_t::by_pimp >();
+                rare_write_frequent_read_mutex<>::unique_lock<> x_lock( guard_ );
 
-                if (  )
-                
-                auto mp_it = pimps.find( mp_pimp );
-                assert( mp_it != pimps.find() );
-
-                std::vector< decltype( mp_it ) > to_remove;
-                to_remove.reserve( )
-
-                
-
-                auto & parents = mounts.get< mount_t::by_parent >();
-            }
-            else
-            {
-                return { RetCode::InvalidHandle };
-            }
-
-            // lock over all mounts
-            unique_lock< shared_mutex > lock( mounts_guard_ );
-
-            if ( auto mp_impl = mp.impl_.lock( ) )
-            {
-                std::function< RetCode( const MountPointImplP &, bool ) > rec = [&] ( const auto & mp_impl, auto force )
+                if ( auto mp_pimp = mp.impl_.lock() )
                 {
-                    if ( auto impl_it = mounts_old_.find( mp_impl ); impl_it != mounts_old_.end( ) )
+                    auto & by_pimp = mounts_.get< mount_t::by_pimp >();
+                    auto & by_parent = mounts_.get< mount_t::by_parent >();
+
+                    // look for mount to be removed
+                    auto by_pimp_it = by_pimp.find( mp_pimp );
+                    assert( by_pimp.end() != by_pimp_it );
+
+                    // initialize collection of mounts to be removed
+                    std::vector< decltype( by_pimp_it ) > to_remove;
+                    to_remove.reserve( mounts_.size() );
+                    to_remove.push_back( by_pimp_it );
+                    auto children_gathered = to_remove.begin();
+
+                    // all children gathered
+                    while ( to_remove.end() != children_gathered )
                     {
-                        // check if used
-                        if ( mp_impl.use_count( ) - 1 > 1 && !force )
+                        // get mount PIMP
+                        auto parent = ( *children_gathered++ )->pimp_;
+
+                        // select children mounts
+                        auto[ children_it, children_end ] = by_parent.equal_range( parent );
+
+                        // and mark them to remove
+                        while ( children_it != children_end )
                         {
-                            return RetCode::InUse;
+                            by_pimp_it = mounts_.project< mount_t::by_pimp >( children_it++ );
+                            assert( by_pimp.end() != by_pimp_it );
+
+                            to_remove.push_back( by_pimp_it );
                         }
-
-                        // get backtrace
-                        auto backtrace = impl_it->second;
-                        assert( backtrace );
-
-                        // check for dependent mounts
-                        auto path = backtrace->path_->first;
-                        if ( dependencies_.count( path ) && !force )
-                        {
-                            return RetCode::HasDependentMounts;
-                        }
-
-                        // throught all dependent mounts
-                        auto[ from, to ] = dependencies_.equal_range( path );
-                        for( auto it = from; it != to; )
-                        {
-                            // get dependent mount path and forward iterator cuz later it will be invalidated by erase()
-                            auto & dependent = it->second; 
-                            it++;
-
-                            // get dependent mount backtrace
-                            auto dependent_path_it = paths_.find( dependent );
-                            assert( dependent_path_it != paths_.end( ) );
-                            auto dependent_backtrace = dependent_path_it->second;
-                            assert( dependent_backtrace );
-
-                            // get dependent mount and release it recursively
-                            auto dependent_mount = dependent_backtrace->mount_->first;
-                            assert( dependent_mount );
-                            auto rc = rec( dependent_mount, force );
-                            assert( RetCode::Ok == rc );
-                        }
-
-                        assert( !dependencies_.count( path ) );
-
-                        // delete related items from all the collections
-                        uids_.erase( backtrace->uid_ );
-                        mounts_old_.erase( backtrace->mount_ );
-                        paths_.erase( backtrace->path_ );
-                        if ( backtrace->dependency_ != dependencies_.end( ) )
-                        {
-                            dependencies_.erase( backtrace->dependency_ );
-                        }
-
-                        // done
-                        return RetCode::Ok;
                     }
 
-                    return RetCode::InvalidHandle;
-                };
+                    // if there are more than 1 mount to be removed
+                    if ( to_remove.size() > 1 && !force )
+                    {
+                        // we have children mouns
+                        return RetCode::HasDependentMounts;
+                    }
 
-                // run the recursion
-                return rec( mp_impl, force );
-            }
-            else
-            {
+                    // remove all the mounts
+                    for ( auto & removing_it : to_remove )
+                    {
+                        by_pimp.erase( removing_it );
+                    }
+                }
+
                 return { RetCode::InvalidHandle };
             }
+            catch ( ... )
+            {
+            }
+
+            return { RetCode::UnknownError };
+
+            //// lock over all mounts
+            //unique_lock< shared_mutex > lock( mounts_guard_ );
+
+            //if ( auto mp_impl = mp.impl_.lock( ) )
+            //{
+            //    std::function< RetCode( const MountPointImplP &, bool ) > rec = [&] ( const auto & mp_impl, auto force )
+            //    {
+            //        if ( auto impl_it = mounts_old_.find( mp_impl ); impl_it != mounts_old_.end( ) )
+            //        {
+            //            // check if used
+            //            if ( mp_impl.use_count( ) - 1 > 1 && !force )
+            //            {
+            //                return RetCode::InUse;
+            //            }
+
+            //            // get backtrace
+            //            auto backtrace = impl_it->second;
+            //            assert( backtrace );
+
+            //            // check for dependent mounts
+            //            auto path = backtrace->path_->first;
+            //            if ( dependencies_.count( path ) && !force )
+            //            {
+            //                return RetCode::HasDependentMounts;
+            //            }
+
+            //            // throught all dependent mounts
+            //            auto[ from, to ] = dependencies_.equal_range( path );
+            //            for( auto it = from; it != to; )
+            //            {
+            //                // get dependent mount path and forward iterator cuz later it will be invalidated by erase()
+            //                auto & dependent = it->second; 
+            //                it++;
+
+            //                // get dependent mount backtrace
+            //                auto dependent_path_it = paths_.find( dependent );
+            //                assert( dependent_path_it != paths_.end( ) );
+            //                auto dependent_backtrace = dependent_path_it->second;
+            //                assert( dependent_backtrace );
+
+            //                // get dependent mount and release it recursively
+            //                auto dependent_mount = dependent_backtrace->mount_->first;
+            //                assert( dependent_mount );
+            //                auto rc = rec( dependent_mount, force );
+            //                assert( RetCode::Ok == rc );
+            //            }
+
+            //            assert( !dependencies_.count( path ) );
+
+            //            // delete related items from all the collections
+            //            uids_.erase( backtrace->uid_ );
+            //            mounts_old_.erase( backtrace->mount_ );
+            //            paths_.erase( backtrace->path_ );
+            //            if ( backtrace->dependency_ != dependencies_.end( ) )
+            //            {
+            //                dependencies_.erase( backtrace->dependency_ );
+            //            }
+
+            //            // done
+            //            return RetCode::Ok;
+            //        }
+
+            //        return RetCode::InvalidHandle;
+            //    };
+
+            //    // run the recursion
+            //    return rec( mp_impl, force );
+            //}
+            //else
+            //{
+            //    return { RetCode::InvalidHandle };
+            //}
         }
     };
 }
