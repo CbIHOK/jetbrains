@@ -134,8 +134,8 @@ namespace jb
                     boost::multi_index::tag< typename mount_t::by_parent >,
                     boost::multi_index::member< mount_t, MountPointImplP, &mount_t::parent_ >
                 >,
-            // O( log N ) range selection ordered by mount priority
-                boost::multi_index::ordered_non_unique<
+                // O( log N ) range selection ordered by mount priority
+                boost::multi_index::ordered_unique<
                     boost::multi_index::tag< typename mount_t::by_priority >,
                     boost::multi_index::identity< mount_t >,
                     mount_compare
