@@ -270,10 +270,18 @@ namespace jb
             @throw nothing
             */
             template < size_t SpinCount >
-            shared_lock( shared_lock< SpinCount > && ) noexcept = default;
+            shared_lock( shared_lock< SpinCount > && origin ) noexcept
+            {
+                swap( origin );
+            }
 
             template < size_t SpinCount >
-            shared_lock & operator = ( shared_lock< SpinCount > && ) noexcept = default;
+            shared_lock & operator = ( shared_lock< SpinCount > && rhs ) noexcept
+            {
+                mutex_ = std::nullptr;
+                swap( rhs );
+                return *this;
+            }
 
 
             /** Swaps with another other
@@ -341,10 +349,18 @@ namespace jb
             @throw nothing
             */
             template < size_t SpinCount >
-            unique_lock( unique_lock< SpinCount > && ) noexcept = default;
+            unique_lock( unique_lock< SpinCount > && origin ) noexcept
+            {
+                swap( origin );
+            }
 
             template < size_t SpinCount >
-            unique_lock & operator = ( unique_lock< SpinCount > && ) noexcept = default;
+            unique_lock & operator = ( unique_lock< SpinCount > && rhs ) noexcept
+            {
+                mutex_ = std::nullptr;
+                swap( rhs );
+                return *this;
+            }
 
 
             /** Swaps with another lock
@@ -412,10 +428,18 @@ namespace jb
             @throw nothing
             */
             template < size_t SpinCount >
-            upgrade_lock( upgrade_lock< SpinCount > && ) noexcept = default;
+            upgrade_lock( upgrade_lock< SpinCount > && origin ) noexcept
+            {
+                swap( origin );
+            }
 
             template < size_t SpinCount >
-            upgrade_lock & operator = ( upgrade_lock< SpinCount > && ) noexcept = default;
+            upgrade_lock & operator = ( upgrade_lock< SpinCount > && rhs ) noexcept
+            {
+                mutex_ = std::nullptr;
+                swap( rhs );
+                return *this;
+            }
 
 
             /** Swaps this lock object with another one
