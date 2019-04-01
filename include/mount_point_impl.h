@@ -54,6 +54,11 @@ namespace jb
         size_t entry_node_level_;
         PathLock locks_;
         RetCode status_;
+        
+        // mount point priority in order of creation, does not need a sycnronization cuz the class always instantiated
+        // under a kind of unique lock
+        inline static size_t priority_inc_ = 0;
+        size_t priority_ = priority_inc_++;
 
 
     public:
@@ -93,6 +98,9 @@ namespace jb
         @throw nothing
         */
         auto status() const noexcept { return status_; }
+
+
+        auto priority() const noexcept { return priority_; }
 
 
         /** Provides connected physical volume

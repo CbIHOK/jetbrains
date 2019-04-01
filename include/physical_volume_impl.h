@@ -98,6 +98,7 @@ namespace jb
         std::unique_ptr< PathLocker > path_locker_;
         std::unique_ptr< Bloom > filter_;
         std::unique_ptr< BTreeCache > cache_;
+        size_t priority_;
 
 
         /* Throws std::logic_error if a condition failed and immediately dies on noexcept guard
@@ -289,7 +290,7 @@ namespace jb
         @param path - path to physical storage
         @throw nothing
         */
-        explicit PhysicalVolumeImpl( const std::filesystem::path & path ) noexcept try
+        explicit PhysicalVolumeImpl( const std::filesystem::path & path, size_t priority = 0 ) noexcept try : priority_( priority )
         {
             // initialize file storage
             file_ = std::make_unique< StorageFile >( path );
