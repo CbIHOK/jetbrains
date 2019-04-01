@@ -48,21 +48,6 @@ public:
             }
         }
     }
-
-
-    bool is_lesser_priority( const PhysicalVolume & l, const PhysicalVolume & r ) const
-    {
-        using namespace std;
-        
-        auto l_impl = l.impl_.lock( );
-        auto r_impl = r.impl_.lock( );
-
-        assert( l_impl && r_impl );
-
-        auto lesser = Storage::get_lesser_priority();
-
-        return lesser( l_impl, r_impl );
-    }
 };
 
 
@@ -121,84 +106,6 @@ TEST_F( TestStorage, PhysicalVolume_Base )
     EXPECT_FALSE( copied );
 }
 
-
-TEST_F( TestStorage, PhysicalVolume_Priorities )
-{
-    auto[ ret_1, pv_1 ] = Storage::OpenPhysicalVolume( "foo1.jb" );
-    ASSERT_EQ( RetCode::Ok, ret_1 );
-    ASSERT_TRUE( pv_1 );
-
-    auto[ ret_2, pv_2 ] = Storage::OpenPhysicalVolume( "foo2.jb" );
-    ASSERT_EQ( RetCode::Ok, ret_2 );
-    ASSERT_TRUE( pv_2 );
-    EXPECT_FALSE( is_lesser_priority( pv_2, pv_1 ) );
-
-    auto[ ret_3, pv_3 ] = Storage::OpenPhysicalVolume( "foo3.jb" );
-    ASSERT_EQ( RetCode::Ok, ret_3 );
-    ASSERT_TRUE( pv_3 );
-    EXPECT_FALSE( is_lesser_priority( pv_3, pv_1 ) );
-    EXPECT_FALSE( is_lesser_priority( pv_3, pv_2 ) );
-
-    auto[ ret_4, pv_4 ] = Storage::OpenPhysicalVolume( "foo4.jb" );
-    ASSERT_EQ( RetCode::Ok, ret_4 );
-    ASSERT_TRUE( pv_4 );
-
-    auto[ ret_5, pv_5 ] = Storage::OpenPhysicalVolume( "foo5.jb" );
-    ASSERT_EQ( RetCode::Ok, ret_5 );
-    ASSERT_TRUE( pv_5 );
-
-    auto[ ret, pv ] = Storage::OpenPhysicalVolume( "foo.jb" );
-    ASSERT_EQ( RetCode::Ok, ret );
-    ASSERT_TRUE( pv );
-    EXPECT_FALSE( is_lesser_priority( pv, pv_1 ) );
-    EXPECT_FALSE( is_lesser_priority( pv, pv_2 ) );
-    EXPECT_FALSE( is_lesser_priority( pv, pv_3 ) );
-    EXPECT_FALSE( is_lesser_priority( pv, pv_4 ) );
-    EXPECT_FALSE( is_lesser_priority( pv, pv_5 ) );
-
-    pv.PrioritizeOnTop( );
-    EXPECT_TRUE( is_lesser_priority( pv, pv_1 ) );
-    EXPECT_TRUE( is_lesser_priority( pv, pv_2 ) );
-    EXPECT_TRUE( is_lesser_priority( pv, pv_3 ) );
-    EXPECT_TRUE( is_lesser_priority( pv, pv_4 ) );
-    EXPECT_TRUE( is_lesser_priority( pv, pv_5 ) );
-
-    pv.PrioritizeOnBottom( );
-    EXPECT_FALSE( is_lesser_priority( pv, pv_1 ) );
-    EXPECT_FALSE( is_lesser_priority( pv, pv_2 ) );
-    EXPECT_FALSE( is_lesser_priority( pv, pv_3 ) );
-    EXPECT_FALSE( is_lesser_priority( pv, pv_4 ) );
-    EXPECT_FALSE( is_lesser_priority( pv, pv_5 ) );
-
-    pv.PrioritizeBefore( pv_1 );
-    EXPECT_TRUE( is_lesser_priority( pv, pv_1 ) );
-    EXPECT_TRUE( is_lesser_priority( pv, pv_2 ) );
-    EXPECT_TRUE( is_lesser_priority( pv, pv_3 ) );
-    EXPECT_TRUE( is_lesser_priority( pv, pv_4 ) );
-    EXPECT_TRUE( is_lesser_priority( pv, pv_5 ) );
-
-    pv.PrioritizeAfter( pv_5 );
-    EXPECT_FALSE( is_lesser_priority( pv, pv_1 ) );
-    EXPECT_FALSE( is_lesser_priority( pv, pv_2 ) );
-    EXPECT_FALSE( is_lesser_priority( pv, pv_3 ) );
-    EXPECT_FALSE( is_lesser_priority( pv, pv_4 ) );
-    EXPECT_FALSE( is_lesser_priority( pv, pv_5 ) );
-
-    pv.PrioritizeBefore( pv_3 );
-    EXPECT_FALSE( is_lesser_priority( pv, pv_1 ) );
-    EXPECT_FALSE( is_lesser_priority( pv, pv_2 ) );
-    EXPECT_TRUE( is_lesser_priority( pv, pv_3 ) );
-    EXPECT_TRUE( is_lesser_priority( pv, pv_4 ) );
-    EXPECT_TRUE( is_lesser_priority( pv, pv_5 ) );
-
-    pv.PrioritizeAfter( pv_3 );
-    EXPECT_FALSE( is_lesser_priority( pv, pv_1 ) );
-    EXPECT_FALSE( is_lesser_priority( pv, pv_2 ) );
-    EXPECT_FALSE( is_lesser_priority( pv, pv_3 ) );
-    EXPECT_TRUE( is_lesser_priority( pv, pv_4 ) );
-    EXPECT_TRUE( is_lesser_priority( pv, pv_5 ) );
-}
- 
 
 //
 // Checks insertion to root

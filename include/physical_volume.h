@@ -86,85 +86,8 @@ namespace jb
         */
         RetCode Close() const noexcept
         {
-            return Storage::close( *this );
-        }
-
-
-        /** Sets associated physical volume as the one with the highest priority
-
-        @retval RetCode - operation status
-        @throw nothing
-        */
-        RetCode PrioritizeOnTop() const noexcept
-        {
-            try
-            {
-                Storage::prioritize_on_top( *this );
-                return RetCode::Ok;
-            }
-            catch ( ... )
-            {
-            }
-            return RetCode::UnknownError;
-        }
-
-
-        /** Sets associated physical volume as the one with the lowest priority
-
-        @retval RetCode - operation status
-        @throw nothing
-        */
-        RetCode PrioritizeOnBottom() const noexcept
-        {
-            try
-            {
-                Storage::prioritize_on_bottom( *this );
-                return RetCode::Ok;
-            }
-            catch ( ... )
-            {
-            }
-            return RetCode::UnknownError;
-        }
-
-
-        /** Sets associated physical volume as the one having priority greater than given one
-
-        @param [in] before - the volume to be prioritized below
-        @retval RetCode - operation status
-        @throw nothing
-        */
-        RetCode PrioritizeBefore( const PhysicalVolume & before ) const noexcept
-        {
-            try
-            {
-                Storage::prioritize_before( *this, before );
-                return RetCode::Ok;
-            }
-            catch ( ... )
-            {
-            }
-            return RetCode::UnknownError;
-        }
-
-
-        /** Sets associated physical volume as the one having priority lower than given one
-
-        @param [in] before - the volume to be prioritized above
-        @retval RetCode - operation status
-        @throw nothing
-        */
-        RetCode PrioritizeAfter( const PhysicalVolume & after ) const noexcept
-        {
-            try
-            {
-                Storage::prioritize_after( *this, after );
-                return RetCode::Ok;
-            }
-            catch ( ... )
-            {
-            }
-            return RetCode::UnknownError;
+            auto [ rc ] = Storage::close( * const_cast< PhysicalVolume* >( this ) );
+            return rc;
         }
     };
 }

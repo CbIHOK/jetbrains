@@ -279,31 +279,31 @@ namespace jb
             using namespace std;
             using namespace boost::container;
 
-            // lock physical volume collection and get compare routine
-            auto lesser_pv = Storage::get_lesser_priority();
+            //// lock physical volume collection and get compare routine
+            //auto lesser_pv = Storage::get_lesser_priority();
 
-            // get mount points by logical path
-            auto[ from, to ] = paths_.equal_range( mp_path_hash );
+            //// get mount points by logical path
+            //auto[ from, to ] = paths_.equal_range( mp_path_hash );
 
             // vector on stack
             static_vector< MountPointImplP, MountLimit > mount_points;
             //std::vector< MountPointImplP > mount_points;
 
             // fill the collection with mount points
-            for_each( from, to, [&] ( const auto & mount_point ) {
-                MountPointBacktraceP backtrace = mount_point.second;
-                MountPointImplP mount_point_impl = backtrace->mount_->first;
-                assert( mount_point_impl );
-                mount_points.emplace( mount_points.end(), mount_point_impl );
-            } );
+            //for_each( from, to, [&] ( const auto & mount_point ) {
+            //    MountPointBacktraceP backtrace = mount_point.second;
+            //    MountPointImplP mount_point_impl = backtrace->mount_->first;
+            //    assert( mount_point_impl );
+            //    mount_points.emplace( mount_points.end(), mount_point_impl );
+            //} );
 
             // introduce comparing of mount points by physical volume priority
-            auto lesser_mp = [&] ( const auto & mp1, const auto & mp2 ) {
-                return lesser_pv( mp1->physical_volume(), mp2->physical_volume() );
-            };
+            //auto lesser_mp = [&] ( const auto & mp1, const auto & mp2 ) {
+            //    return lesser_pv( mp1->physical_volume(), mp2->physical_volume() );
+            //};
 
             // sort mount points by physical volume priority
-            sort( begin( mount_points ), end( mount_points ), lesser_mp );
+            //sort( begin( mount_points ), end( mount_points ), lesser_mp );
 
             return mount_points;
         }
@@ -392,6 +392,11 @@ namespace jb
         */
         VirtualVolumeImpl( VirtualVolumeImpl&& ) = delete;
 
+
+        RetCode status() const noexcept
+        {
+            return RetCode::Ok;
+        }
 
         /** Inserts subkey of a given name with given value and expiration timemark at specified logical path
 
