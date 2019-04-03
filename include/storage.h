@@ -15,11 +15,6 @@
 #include <assert.h>
 
 
-#ifndef _NOEXCEPT_
-#define _NOEXCEPT_ noexcept
-#endif
-
-
 class TestStorage;
 class TestKey;
 class TestNodeLocker;
@@ -27,6 +22,7 @@ class TestBloom;
 class TestPackedValue;
 template < typename T > class TestStorageFile;
 template < typename T > class TestBTree;
+
 
 namespace jb
 {
@@ -247,7 +243,7 @@ namespace jb
 
 
         template < typename VolumeT >
-        static std::tuple< RetCode > close( VolumeT & volume )
+        static RetCode close( VolumeT & volume )
         {
             try
             {
@@ -306,7 +302,7 @@ namespace jb
         */
         static std::tuple< RetCode, PhysicalVolume > OpenPhysicalVolume( const std::filesystem::path & path, size_t priority = 0 ) noexcept
         {
-            return open< PhysicalVolume >( std::move( path ), std::move( priority ) );
+            return open< PhysicalVolume >( path, priority );
         }
 
 
@@ -315,18 +311,20 @@ namespace jb
         @retval RetCode - operation status
         @throw nothing
         */
-        static auto CloseAll( ) noexcept
+        static RetCode CloseAll( ) noexcept
         {
             try
             {
-                auto close_all = [] ( auto singleton ) {
-                    auto[ guard, collection ] = singleton;
-                    std::scoped_lock lock( guard );
-                    collection.clear( );
-                };
-
-                close_all( singletons< VirtualVolume >( ) );
-                close_all( singletons< PhysicalVolume >( ) );
+                {
+                    auto[ guard, holder ] = singletons< VirtualVolume >();
+                    std::unique_lock lock( guard );
+                    holder.clear();
+                }
+                {
+                    auto[ guard, holder ] = singletons< PhysicalVolume >();
+                    std::unique_lock lock( guard );
+                    holder.clear();
+                }
 
                 return RetCode::Ok;
             }
@@ -344,9 +342,6 @@ namespace jb
 #include "virtual_volume.h"
 #include "physical_volume.h"
 #include "mount_point.h"
-
-
-#undef _NOEXCEPT_
 
 
 #endif

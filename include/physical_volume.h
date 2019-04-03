@@ -39,7 +39,7 @@ namespace jb
         @param [in] impl - PIMP
         @throw nothing
         */
-        explicit PhysicalVolume( const std::shared_ptr< Impl > & impl ) noexcept :impl_( impl ) {}
+        explicit PhysicalVolume( const std::shared_ptr< Impl > & impl ) noexcept : impl_( impl ) {}
 
 
     public:
@@ -84,10 +84,9 @@ namespace jb
         @retval RetCode - operation status
         @throw nothing
         */
-        RetCode Close() const noexcept
+        RetCode Close() noexcept
         {
-            auto [ rc ] = Storage::close( * const_cast< PhysicalVolume* >( this ) );
-            return rc;
+            return Storage::close( *this );
         }
     };
 }

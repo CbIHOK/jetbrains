@@ -102,7 +102,7 @@ namespace jb
 
         @throw nothing
         */
-        auto Close() const noexcept
+        RetCode Close() noexcept
         {
             return Storage::close( *this );
         }
