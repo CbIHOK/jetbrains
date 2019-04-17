@@ -41,7 +41,7 @@ namespace jb
     public:
 
         using PathLock = typename PhysicalVolumeImpl::PathLocker::PathLock;
-        using execution_connector = typename PhysicalVolumeImpl::execution_connector;
+        using execution_chain = typename PhysicalVolumeImpl::execution_chain;
 
 
     private:
@@ -81,8 +81,8 @@ namespace jb
             , locks_{ std::move( mount_dst_lock ) }
         {
             // request physical volume for lock physical of path and entry point UID
-            execution_connector in{}; in.second = true;
-            execution_connector out{};
+            execution_chain in{}; in.second = true;
+            execution_chain out{};
             auto [ rc, entry_node_uid, entry_node_level, mount_src_lock ] = physical_volume_->lock_path( RootNodeUid, 0, physical_path, in, out );
             
             status_ = rc;
@@ -122,7 +122,7 @@ namespace jb
         @throw nothing
         */
         [[ nodiscard ]]
-        std::tuple < RetCode, NodeUid, size_t, PathLock > lock_path( const Key & relative_path, const execution_connector & in, execution_connector & out ) noexcept
+        std::tuple < RetCode, NodeUid, size_t, PathLock > lock_path( const Key & relative_path, const execution_chain & in, execution_chain & out ) noexcept
         {
             return physical_volume_->lock_path( entry_node_uid_, entry_node_level_, relative_path, in, out );
         }
@@ -141,7 +141,7 @@ namespace jb
         @throw nothing
         */
         [[ nodiscard ]]
-        RetCode insert( const Key & relative_path, const Key & subkey, const Value & value, uint64_t good_before, bool overwrite, const execution_connector & in, execution_connector & out ) noexcept
+        RetCode insert( const Key & relative_path, const Key & subkey, const Value & value, uint64_t good_before, bool overwrite, const execution_chain & in, execution_chain & out ) noexcept
         {
             auto [rc] = physical_volume_->insert( entry_node_uid_, entry_node_level_, relative_path, subkey, value, good_before, overwrite, in, out );
             return rc;
@@ -158,7 +158,7 @@ namespace jb
         @throw nothing
         */
         [[ nodiscard ]]
-        std::tuple< RetCode, Value > get( const Key & relative_path, const execution_connector & in, execution_connector & out ) noexcept
+        std::tuple< RetCode, Value > get( const Key & relative_path, const execution_chain & in, execution_chain & out ) noexcept
         {
             return physical_volume_->get( entry_node_uid_, entry_node_level_, relative_path, in, out );
         }
@@ -173,7 +173,7 @@ namespace jb
         @throw nothing
         */
         [[ nodiscard ]]
-        std::tuple< RetCode > erase( const Key & relative_path, const execution_connector & in, execution_connector & out ) noexcept
+        std::tuple< RetCode > erase( const Key & relative_path, const execution_chain & in, execution_chain & out ) noexcept
         {
             auto [rc] = physical_volume_->erase( entry_node_uid_, entry_node_level_, relative_path, in, out );
             return rc;

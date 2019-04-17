@@ -57,8 +57,6 @@ namespace jb
         {
             static_assert( SpinCount );
 
-            using std::memory_order;
-
             // get unique lock
             for ( size_t try_count = 1;; ++ try_count )
             {
@@ -81,18 +79,23 @@ namespace jb
             // for all shared locks
             for ( auto & s_lock : s_locks_ )
             {
-                for ( size_t try_count = 1; ; ++try_count )
+                // if the shared lock is taken
+                if ( s_lock.atomic_.load( memory_order_acquire ) )
                 {
                     // wait until a shared lock gets released
-                    if ( !s_lock.atomic_.load( memory_order_acquire ) )
+                    for ( size_t try_count = 1; ; ++try_count )
                     {
-                        break;
-                    }
+                        // do not force processing of invalidation queue 
+                        if ( !s_lock.atomic_.load( std::memory_order_relaxed ) )
+                        {
+                            break;
+                        }
 
-                    // if spin count exceeded - yield to other threads
-                    if ( try_count % SpinCount == 0 )
-                    {
-                        std::this_thread::yield();
+                        // if spin count exceeded - yield to other threads
+                        if ( try_count % SpinCount == 0 )
+                        {
+                            std::this_thread::yield();
+                        }
                     }
                 }
             }
@@ -105,8 +108,6 @@ namespace jb
         */
         void unlock() noexcept
         {
-            using std::memory_order;
-
             // simply release unique lock
             x_lock_.atomic_.store( 0, memory_order_release );
         }
@@ -121,8 +122,6 @@ namespace jb
         void lock_shared() noexcept
         {
             static_assert( SpinCount );
-
-            using std::memory_order;
 
             const auto s_lock_ndx = std::hash< std::thread::id >{}( std::this_thread::get_id() ) % SharedLockHasher;
             auto & s_lock = s_locks_[ s_lock_ndx ];
@@ -173,8 +172,6 @@ namespace jb
         void lock_upgrade()
         {
             static_assert( SpinCount );
-
-            using std::memory_order;
 
             const auto s_lock_ndx = std::hash< std::thread::id >{}( std::this_thread::get_id() ) % SharedLockHasher;
 

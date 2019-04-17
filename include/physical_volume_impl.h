@@ -52,9 +52,70 @@ namespace jb
 
         /** Represents execution signals: CANCELLED signal and ALLOWED TO APPLY signal
         */
-        struct execution_connector : public std::pair< std::atomic_bool, std::atomic_bool >
+        struct execution_chain : std::atomic_uint32_t
         {
-            execution_connector() : std::pair< std::atomic_bool, std::atomic_bool >( false, false ){}
+            enum{ st_not_defined = 0, st_cancelled, st_allowed };
+
+            execution_chain() : std::atomic_uint32_t( st_not_defined ) {}
+
+            void cancel() noexcept
+            {
+                store( st_cancelled, std::memory_order::memory_order_relaxed );
+            }
+
+            void allow() noexcept
+            {
+                store( st_allowed, std::memory_order::memory_order_relaxed );
+            }
+            
+            bool cancelled() const noexcept
+            {
+                return ( st_cancelled = load( std::memory_order::memory_order_relaxed ) );
+            }
+
+            void wait_and_let_further_go( execution_chain * further ) const noexcept
+            {
+                for ( size_t try_count = 1;; ++try_count )
+                {
+                    const auto value = load( std::memory_order::memory_order_relaxed );
+
+                    if ( st_cancelled == value && further )
+                    {
+                        further->cancel();
+                        break;
+                    }
+                    else if ( st_allowed == value && further )
+                    {
+                        further->allow();
+                        break;
+                    }
+                    else if ( try_count % 0xFFFF == 0 )
+                    {
+                        std::this_thread::yield;
+                    }
+                }
+            }
+
+            bool wait_and_cancel_further( execution_chain * further ) const noexcept
+            {
+                for ( size_t try_count = 1;; ++try_count )
+                {
+                    const auto value = load( std::memory_order::memory_order_relaxed );
+
+                    if ( st_cancelled == value && st_allowed == value )
+                    {
+                        if ( further )
+                        {
+                            further->cancel();
+                        }
+                        return ( st_allowed == value );
+                    }
+                    else if ( try_count % 0xFFFF == 0 )
+                    {
+                        std::this_thread::yield;
+                    }
+                }
+            }
         };
 
 
@@ -137,7 +198,7 @@ namespace jb
             L & locks, 
             P & bpath, 
             const F & f, 
-            const execution_connector & in ) noexcept
+            const execution_chain & in ) noexcept
         {
             using namespace std;
 
@@ -201,7 +262,7 @@ namespace jb
         @retval true if the operation is being cancelled
         @throw nothing
         */
-        auto static cancelled( const execution_connector & in ) noexcept
+        auto static cancelled( const execution_chain & in ) noexcept
         {
             return in.first.load( memory_order_acquire );
         }
@@ -222,7 +283,7 @@ namespace jb
         @throws may throw everything what F does
         */
         template < typename F >
-        auto static wait_and_do_it( const execution_connector & in, execution_connector & out, const F & f )
+        auto static wait_and_do_it( const execution_chain & in, execution_chain & out, const F & f )
         {
             using namespace std;
 
@@ -365,8 +426,8 @@ namespace jb
             NodeUid entry_key_uid,
             size_t entry_key_level,
             const Key & relative_path,
-            const execution_connector & in,
-            execution_connector & out ) noexcept
+            const execution_chain & in,
+            execution_chain & out ) noexcept
         {
             using namespace std;
 
@@ -455,8 +516,8 @@ namespace jb
             const Value & value,
             uint64_t good_before,
             bool overwrite,
-            const execution_connector & in,
-            execution_connector & out ) noexcept
+            const execution_chain & in,
+            execution_chain & out ) noexcept
         {
             using namespace std;
 
@@ -582,8 +643,8 @@ namespace jb
             NodeUid entry_key_uid,
             size_t entry_key_level,
             const Key & relative_path,
-            const execution_connector & in,
-            execution_connector & out ) noexcept
+            const execution_chain & in,
+            execution_chain & out ) noexcept
         {
             using namespace std;
 
@@ -657,8 +718,8 @@ namespace jb
             NodeUid entry_node_uid,
             size_t entry_node_level,
             const Key & relative_path,
-            const execution_connector & in,
-            execution_connector & out ) noexcept
+            const execution_chain & in,
+            execution_chain & out ) noexcept
         {
             using namespace std;
 

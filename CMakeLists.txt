@@ -9,6 +9,7 @@ add_definitions( -D_SCL_SECURE_NO_WARNINGS )
 
 if ( WIN32 )
     add_definitions( -DUSE_OS_POLICY=WindowsPolicy )
+    add_definitions( -D_ENABLE_EXTENDED_ALIGNED_STORAGE )
 endif ( WIN32 )
 
 
