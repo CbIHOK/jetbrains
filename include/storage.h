@@ -5,8 +5,8 @@
 #include <mutex>
 #include <unordered_set>
 #include <tuple>
-#include <memory>
 #include <filesystem>
+#include <memory>
 
 
 namespace jb
@@ -17,15 +17,6 @@ namespace jb
     template < typename Policies >
     class Storage
     {
-
-        //
-        // export public aliases
-        //
-        using
-        using KeyValue = typename Key::ValueT;
-        using Value = typename Policies::ValueT;
-
-
         //
         // Provides hash combining constant depending on size of size_t type
         //
@@ -81,30 +72,34 @@ namespace jb
             {
                 auto[ guard, holder ] = singletons< VolumeT >();
 
-                auto impl = std::make_shared< VolumeT >( std::move( args )... );
+                auto impl = std::make_shared< VolumeT >( std::forward( args )... );
                 assert( impl );
 
-                if ( RetCode::Ok != impl->status() )
+                if ( Ok == impl->status() )
                 {
-                    return { pimp->status(), std::weak_ptr< VolumeT >{} };
+                    std::unique_lock lock( guard );
+
+                    if ( auto ok = holder.insert( impl ).second )
+                    {
+                        return { Ok, std::weak_ptr< VolumeT >{ impl } };
+                    }
+                    else
+                    {
+                        return { UnknownError, std::weak_ptr< VolumeT >{} };
+                    }
                 }
-
-                std::unique_lock lock( guard );
-
-                if ( auto ok = holder.insert( pimp ).second; !ok )
+                else
                 {
-                    return { RetCode::UnknownError, std::weak_ptr< VolumeT >{} };
+                    return { impl->status(), std::weak_ptr< VolumeT >{} };
                 }
-
-                return { RetCode::Ok, std::weak_ptr< VolumeT::Impl >{ pimp } };
             }
             catch ( const std::bad_alloc & )
             {
-                return { RetCode::InsufficientMemory, VolumeT{} };
+                return { InsufficientMemory, std::weak_ptr< VolumeT >{} };
             }
             catch ( ... )
             {
-                return { RetCode::UnknownError, VolumeT{} };
+                return { UnknownError, std::weak_ptr< VolumeT >{} };
             }
         }
 
@@ -145,6 +140,35 @@ namespace jb
             NotYetImplemented
         };
 
+        static constexpr auto Ok = RetCode::Ok;
+        static constexpr auto InvalidHandle = RetCode::InvalidHandle;
+        static constexpr auto InvalidVirtualVolume = RetCode::InvalidVirtualVolume;
+        static constexpr auto InvalidPhysicalVolume = RetCode::InvalidPhysicalVolume;
+        static constexpr auto InvalidMountPoint = RetCode::InvalidMountPoint;
+        static constexpr auto VolumeAlreadyMounted = RetCode::VolumeAlreadyMounted;
+        static constexpr auto InvalidKey = RetCode::InvalidKey;
+        static constexpr auto InvalidMountAlias = RetCode::InvalidMountAlias;
+        static constexpr auto InvalidLogicalPath = RetCode::InvalidLogicalPath;
+        static constexpr auto InvalidPhysicalPath = RetCode::InvalidPhysicalPath;
+        static constexpr auto PathLocked = RetCode::PathLocked;
+        static constexpr auto NotFound = RetCode::NotFound;
+        static constexpr auto InUse = RetCode::InUse;
+        static constexpr auto HasDependentMounts = RetCode::HasDependentMounts;
+        static constexpr auto MaxTreeDepthExceeded = RetCode::MaxTreeDepthExceeded;
+        static constexpr auto SubkeyLimitReached = RetCode::SubkeyLimitReached;
+        static constexpr auto AlreadyExpired = RetCode::AlreadyExpired;
+        static constexpr auto AlreadyExists = RetCode::AlreadyExists;
+        static constexpr auto NotLeaf = RetCode::NotLeaf;
+        static constexpr auto IncompatibleFile = RetCode::IncompatibleFile;
+        static constexpr auto AlreadyOpened = RetCode::AlreadyOpened;
+        static constexpr auto UnableToOpen = RetCode::UnableToOpen;
+        static constexpr auto TooManyConcurrentOps = RetCode::TooManyConcurrentOps;
+        static constexpr auto IoError = RetCode::IoError;
+        static constexpr auto InvalidData = RetCode::InvalidData;
+        static constexpr auto InsufficientMemory = RetCode::InsufficientMemory;
+        static constexpr auto UnknownError = RetCode::UnknownError;
+        static constexpr auto NotYetImplemented = RetCode::NotYetImplemented;
+
 
         //
         // public classes
@@ -180,21 +204,15 @@ namespace jb
                         holder.erase( it );
                         volume.reset();
                         
-                        return RetCode::Ok;
-                    }
-                    else
-                    {
-                        return RetCode::InvalidHandle;
+                        return Ok;
                     }
                 }
-                else
-                {
-                    return RetCode::InvalidHandle;
-                }
+
+                return InvalidHandle;
             }
             catch ( ... )
             {
-                return RetCode::UnknownError;
+                return UnknownError;
             }
         }
 
@@ -219,11 +237,11 @@ namespace jb
                     holder.clear();
                 }
 
-                return RetCode::Ok;
+                return Ok;
             }
             catch(...)
             {
-                return RetCode::UnknownError;
+                return UnknownError;
             }
         }
     };

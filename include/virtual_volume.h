@@ -3,15 +3,18 @@
 
 
 #include "rare_write_frequent_read_mutex.h"
+#include "execution_chain.h"
+#include <string>
+#include <string_view>
+#include <memory>
+#include <tuple>
+#include <execution>
+#include <future>
 #include <boost/multi_index_container.hpp>
 #include <boost/multi_index/hashed_index.hpp>
 #include <boost/multi_index/ordered_index.hpp>
 #include <boost/multi_index/member.hpp>
 #include <boost/multi_index/identity.hpp>
-#include <tuple>
-#include <execution>
-#include <future>
-#include <functional>
 
 
 namespace jb
@@ -19,72 +22,40 @@ namespace jb
     template < typename Policies >
     class Storage< Policies >::VirtualVolume
     {
+        using KeyView = std::basic_string_view< typename Policies::KeyCharT >;
+        using KeyValue = std::basic_sting< typename Policies::KeyCharT >;
+        using MountPointPtr = std::shared_ptr< MountPoint >;
 
-    public:
-
-        //
-        // Short aliases
-        //
-        using RetCode = typename Storage::RetCode;
-        using KeyView = typename Storage::Key;
-        using KeyValue = typename Storage::KeyValue;
-        using Value = typename Storage::Value;
-        using KeyHashT = size_t;
-        using PhysicalVolumeImpl = typename Storage::PhysicalVolumeImpl;
-        using PhysicalVolumeImplP = std::shared_ptr< PhysicalVolumeImpl >;
-        using PathLock = typename PhysicalVolumeImpl::PathLocker::PathLock;
-        using MountPoint = typename Storage::MountPoint;
-        using MountPointImpl = typename Storage::MountPointImpl;
-        using MountPointImplP = std::shared_ptr< MountPointImpl >;
-        using MountPointImplWeakP = std::weak_ptr< MountPointImpl >;
-        using NodeUid = typename PhysicalVolumeImpl::BTree::NodeUid;
-        using execution_chain = typename MountPointImpl::execution_chain;
-       
-        static constexpr auto MountLimit = Policies::VirtualVolumePolicy::MountPointLimit;
-
-
-    private:
-
-        //
-        // just a read/write mount collection guardian
-        //
-        std::shared_mutex mounts_guard_;
 
         struct mount_t
         {
-            KeyValue        logical_path_;
-            MountPointImplP impl_;
-            MountPointImplP parent_;
+            KeyValue      logical_path_;
+            MountPointPtr impl_;
+            MountPointPtr parent_;
 
-            explicit mount_t( KeyValue && logical_path, MountPointImplP impl, MountPointImplP parent )
+            struct ndx_by_logical_path {};
+            struct ndx_by_impl {};
+            struct ndx_by_parent {};
+            struct ndx_by_priority {};
+
+            explicit mount_t( KeyValue && logical_path, MountPointPtr impl, MountPointPtr parent )
                 : logical_path_( logical_path )
                 , impl_( impl )
                 , parent_( parent_impl )
             {
+                assert( impl_ );
             }
-
-            struct by_logical_path {};
-            struct by_parent {};
-            struct by_pimp {};
-            struct by_priority {};
-            struct uniqueness_check {};
 
             size_t physical_volume_priority() const noexcept
             {
-                assert( pimp_ && pimp_->physical_volume() );
-                return pimp_->physical_volume()->priority();
+                assert( impl_ && impl_->physical_volume() );
+                return impl_->physical_volume()->priority();
             }
 
             size_t mount_point_priority() const noexcept
             {
-                assert( pimp_ );
-                return pimp_->priority();
-            }
-
-            PhysicalVolumeImplP physical_volume() const noexcept
-            {
                 assert( impl_ );
-                return impl_->physical_volume();
+                return impl_->priority();
             }
         };
 
@@ -124,22 +95,22 @@ namespace jb
             boost::multi_index::indexed_by<
                 // O(0) search by logical path
                 boost::multi_index::hashed_non_unique<
-                    boost::multi_index::tag< typename mount_t::by_logical_path >,
+                    boost::multi_index::tag< typename mount_t::ndx_by_logical_path >,
                     boost::multi_index::member< mount_t, KeyValue, &mount_t::logical_path_ >
                 >,
                 // O(0) search by PIMP
                 boost::multi_index::hashed_unique<
-                    boost::multi_index::tag< typename mount_t::by_pimp >,
-                    boost::multi_index::member< mount_t, MountPointImplP, &mount_t::pimp_ >
+                    boost::multi_index::tag< typename mount_t::ndx_by_impl >,
+                    boost::multi_index::member< mount_t, MountPointImplP, &mount_t::impl_ >
                 >,
                 // O(0) underlaying mounts selection
                 boost::multi_index::hashed_non_unique<
-                    boost::multi_index::tag< typename mount_t::by_parent >,
+                    boost::multi_index::tag< typename mount_t::ndx_by_parent >,
                     boost::multi_index::member< mount_t, MountPointImplP, &mount_t::parent_ >
                 >,
                 // O( log N ) range selection ordered by mount priority
                 boost::multi_index::ordered_unique<
-                    boost::multi_index::tag< typename mount_t::by_priority >,
+                    boost::multi_index::tag< typename mount_t::ndx_by_priority >,
                     boost::multi_index::identity< mount_t >,
                     mount_compare
                 >
@@ -157,7 +128,7 @@ namespace jb
         @retval KeyHashT - hash value of nearest mounted path
         @throw nothing
         */
-        std::tuple< KeyView, KeyView > find_nearest_mounted_path( const KeyView & logical_path ) const noexcept
+        std::tuple< KeyView, KeyView > find_nearest_mounted_path( KeyView logical_path ) const noexcept
         {
             const auto & by_logical_path = mounts_.get< mount_t::by_logical_path >();
             auto current = logical_path;
@@ -183,19 +154,21 @@ namespace jb
         template < typename F >
         auto for_each_mount( KeyView mount_path, F f )
         {
+            // count mounts for given mount path
             const auto & by_logical_path = mounts_.get< mount_t::by_logical_path >();
             auto mount_count = by_logical_path.count( mount_path );
             assert( mount_count );
 
+            // acquire mounts for the path
             const auto & by_priority = mounts_.get< mount_t::by_priority >();
             auto[ mount_it, mount_end ] = by_priority.equal_range( mount_path );
 
-            using ContractT = decltype( f( MountPointImplP{}, std::nullptr, std::nullptr ) );
-            using FutureT = std::future< ContractT >;
-
-            std::vector< std::tuple< MountPointImplP, FutureT > > mounts( mount_count );
+            // allocate memory
+            using FutureT = std::future< decltype( f( MountPointPtr{}, std::nullptr, std::nullptr ) ) >;
+            std::vector< std::tuple< MountPointPtr, FutureT > > mounts( mount_count );
             std::vector< execution_chain > execution( mount_count + 1 );
 
+            // for all mounts
             auto f = futures.begin();
             auto e = execution.begin();
             for ( ; mount_it != mount_end; ++mount_it, ++f, ++e )
@@ -204,7 +177,7 @@ namespace jb
                 assert( execution.end() != e );
                 assert( execution.end() != e + 1 );
 
-                f->get< MountPointImplP >() = mount_it->impl_;
+                f->get< MountPointPtr >() = mount_it->impl_;
                 f->get< FutureT >() = std::move( std::async( std::launch::async, [&] () noexcept { return f( *m, e, e + 1 ); } ) );
             }
 
@@ -315,9 +288,7 @@ namespace jb
 
                     for ( auto & future : futures )
                     {
-                        auto[ rc, value ] = future.get< std::tuple< RetCode, Value > >();
-
-                        if ( RetCode::Ok == rc )
+                        if ( auto[ rc, value ] = future.get< std::tuple< RetCode, Value > >();  RetCode::Ok == rc )
                         {
                             return { RetCode::Ok, value }
                         }
@@ -341,56 +312,34 @@ namespace jb
         }
 
 
-        [[ nodiscard ]]
         RetCode erase( const KeyView & key, bool force ) noexcept
         {
-            using namespace std;
-            using namespace boost::container;
-
-            assert( key.is_path( ) );
-
-            // TODO: consider locking only for collection mount points
-            // TODO: add check for a logical path
-            shared_lock l( mounts_guard_ );
-
-            if ( auto[ mount_path, mount_hash ] = find_nearest_mounted_path( key ); mount_path )
+            try
             {
-                // get mounts for the key
-                auto mounts = move( get_mount_points( mount_hash ) );
-                assert( mounts.size() );
+                rare_write_frequent_read_mutex<>::shared_lock<> s_lock( guard_ );
 
-                // get relative path as a rest from mount point
-                auto[ is_superkey, relative_path ] = mount_path.is_superkey( key );
-
-                // run erase() for all mounts in parallel
-                auto futures = move( run_parallel( mounts, [&] ( const auto & mount, const auto & in, auto & out ) noexcept {
-                    return mount->erase( relative_path, in, out );
-                } ) );
-
-                // through all futures
-                for ( auto & future : futures )
+                if ( auto[ mount_path, relative_path ] = find_nearest_mounted_path( key ); mount_path.size() )
                 {
-                    // get result
-                    auto[ rc ] = future.get( );
+                    auto futures = for_each_mount( mount_path, [&] ( auto mount, auto * in, auto * out ) noexcept { return mount->erase( relative_path, in, out ); } );
 
-                    if ( RetCode::Ok == rc )
+                    for ( auto & future : futures )
                     {
-                        // done
-                        return RetCode::Ok;
-                    }
-                    else if ( RetCode::NotFound != rc )
-                    {
-                        // something happened on physical level
-                        return rc;
+                        if ( auto rc = future.get< RetCode >(); NotFound != rc )
+                        {
+                            return rc;
+                        }
                     }
                 }
 
-                // key not found
-                return RetCode::NotFound;
+                return { NotFound, Value{} };
             }
-            else
+            catch ( const std::bad_alloc & )
             {
-                return RetCode::InvalidLogicalPath;
+                return { InsufficientMemory, Value{} };
+            }
+            catch ( ... )
+            {
+                return { UnknownError, Value{} };
             }
         }
 
@@ -559,7 +508,7 @@ namespace jb
             }
             catch ( ... )
             {
-                return RetCode::UnknownError;
+                return UnknownError;
             }
         }
     };

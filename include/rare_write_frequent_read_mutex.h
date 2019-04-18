@@ -52,19 +52,19 @@ namespace jb
         @tparam SpinCount - try count before calling thread let's other threads pass
         @throw nothing
         */
-        template < size_t SpinCount >
+        template < size_t SpinCount, bool UseWeakOrdering = false >
         void lock() noexcept
         {
             static_assert( SpinCount );
 
             // get unique lock
-            for ( size_t try_count = 1;; ++ try_count )
+            for ( size_t try_count = 1;; ++try_count )
             {
-                static const uint32_t locked = 1;
+                static constexpr uint32_t locked = 1;
                 uint32_t unlocked = 0;
 
                 // try get the lock
-                if ( x_lock_.atomic_.compare_exchange_weak( unlocked, locked, memory_order_acq_rel, memory_order_relaxed ) )
+                if ( x_lock_.atomic_.compare_exchange_weak( unlocked, locked, std::memory_order_acq_rel, std::memory_order_relaxed ) )
                 {
                     break;
                 }
@@ -85,8 +85,10 @@ namespace jb
                     // wait until a shared lock gets released
                     for ( size_t try_count = 1; ; ++try_count )
                     {
-                        // do not force processing of invalidation queue 
-                        if ( !s_lock.atomic_.load( std::memory_order_relaxed ) )
+                        //
+                        // we do not need to use ACQUIRE semantic cuz another shared lock cannot be taken. The question still is
+                        // about performance, if repeating processing of the invalidation queue 
+                        if ( !s_lock.atomic_.load( UseWeakOrdering ? std::memory_order_relaxed : std::memory_order_acquire ) )
                         {
                             break;
                         }
