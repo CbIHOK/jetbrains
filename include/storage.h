@@ -12,48 +12,81 @@
 namespace jb
 {
 
+    template < typename Policies > class VirtualVolume;
+    template < typename Policies > class PhysicalVolume;
+
+
+    /** Enumerates all possible return codes
+    */
+    enum class RetCode
+    {
+        Ok,                     ///< Operation succedded
+        InvalidHandle,          ///< Given handle does not address valid object
+        InvalidVirtualVolume,
+        InvalidPhysicalVolume,
+        InvalidMountPoint,
+        VolumeAlreadyMounted,   ///< Attempt to mount the same physical volume at the same logical path
+        InvalidKey,             ///< Invalid key value
+        InvalidMountAlias,      ///< Invalid subkey value
+        InvalidLogicalPath,     ///< Given logical path cannot be mapped onto a physical one
+        InvalidPhysicalPath,
+        PathLocked,             ///< Given path is locked due to mounting 
+        NotFound,               ///< Such path does not have a physical representation
+        InUse,                  ///< The handler is currently used by concurrent operation and cannot be closed
+        HasDependentMounts,     ///< There are underlaying mount
+        MaxTreeDepthExceeded,   ///< Cannot search so deep inside
+        SubkeyLimitReached,     ///< Too many subkeys
+        AlreadyExpired,         ///< Given timestamp already in the past
+        AlreadyExists,          ///< Key already exists
+        NotLeaf,                ///< Erased node not a leaf
+        IncompatibleFile,       ///< File is incompatible
+        AlreadyOpened,          ///< Physical file is already opened
+        UnableToOpen,           ///< Cannot open specified file
+        TooManyConcurrentOps,   ///< The limit of concurent operations over physical volume is reached
+        IoError,                ///< General I/O error
+        InvalidData,            ///< Data read from storage file is invalid
+        InsufficientMemory,     ///< Operation failed due to low memory
+        UnknownError,           ///< Something wrong happened
+        NotYetImplemented
+    };
+
+    static constexpr auto Ok = RetCode::Ok;
+    static constexpr auto InvalidHandle = RetCode::InvalidHandle;
+    static constexpr auto InvalidVirtualVolume = RetCode::InvalidVirtualVolume;
+    static constexpr auto InvalidPhysicalVolume = RetCode::InvalidPhysicalVolume;
+    static constexpr auto InvalidMountPoint = RetCode::InvalidMountPoint;
+    static constexpr auto VolumeAlreadyMounted = RetCode::VolumeAlreadyMounted;
+    static constexpr auto InvalidKey = RetCode::InvalidKey;
+    static constexpr auto InvalidMountAlias = RetCode::InvalidMountAlias;
+    static constexpr auto InvalidLogicalPath = RetCode::InvalidLogicalPath;
+    static constexpr auto InvalidPhysicalPath = RetCode::InvalidPhysicalPath;
+    static constexpr auto PathLocked = RetCode::PathLocked;
+    static constexpr auto NotFound = RetCode::NotFound;
+    static constexpr auto InUse = RetCode::InUse;
+    static constexpr auto HasDependentMounts = RetCode::HasDependentMounts;
+    static constexpr auto MaxTreeDepthExceeded = RetCode::MaxTreeDepthExceeded;
+    static constexpr auto SubkeyLimitReached = RetCode::SubkeyLimitReached;
+    static constexpr auto AlreadyExpired = RetCode::AlreadyExpired;
+    static constexpr auto AlreadyExists = RetCode::AlreadyExists;
+    static constexpr auto NotLeaf = RetCode::NotLeaf;
+    static constexpr auto IncompatibleFile = RetCode::IncompatibleFile;
+    static constexpr auto AlreadyOpened = RetCode::AlreadyOpened;
+    static constexpr auto UnableToOpen = RetCode::UnableToOpen;
+    static constexpr auto TooManyConcurrentOps = RetCode::TooManyConcurrentOps;
+    static constexpr auto IoError = RetCode::IoError;
+    static constexpr auto InvalidData = RetCode::InvalidData;
+    static constexpr auto InsufficientMemory = RetCode::InsufficientMemory;
+    static constexpr auto UnknownError = RetCode::UnknownError;
+    static constexpr auto NotYetImplemented = RetCode::NotYetImplemented;
+
+
     /**
     */
     template < typename Policies >
     class Storage
     {
-        //
-        // Provides hash combining constant depending on size of size_t type
-        //
-        //static constexpr size_t hash_constant() noexcept
-        //{
-        //    static_assert( sizeof( size_t ) == sizeof( uint32_t ) || sizeof( size_t ) == sizeof( uint64_t ), "Cannot detect 32-bit or 64-bit platform" );
-
-        //    if constexpr ( sizeof( size_t ) == 8 )
-        //    {
-        //        return 0x9E3779B97F4A7C15ULL;
-        //    }
-        //    else
-        //    {
-        //        return 0x9e3779b9U;
-        //    }
-        //}
-
-
-        //
-        // Provides comined hash value for a variadic sequence of agruments
-        //
-        //template < typename T, typename... Args >
-        //static auto variadic_hash( const T & v, const Args &... args ) noexcept
-        //{
-        //    auto seed = variadic_hash( args... );
-        //    return Hash< T >{}( v ) + hash_constant() + ( seed << 6 ) + ( seed >> 2 );
-        //}
-
-
-        ////
-        //// Just a terminal specialization of variadic template
-        ////
-        //template < typename T >
-        //static auto variadic_hash( const T & v ) noexcept
-        //{
-        //    return Hash< T >{}( v );
-        //}
+        using VirtualVolumeT = VirtualVolume< Policies >;
+        using PhysicalVolumeT = PhysicalVolume< Policies >;
 
 
         template < typename VolumeT >
@@ -106,86 +139,14 @@ namespace jb
 
     public:
 
-        /** Enumerates all possible return codes
-        */
-        enum class RetCode
+        static std::tuple < RetCode, std::weak_ptr< VirtualVolumeT > > open_virtual_volume() noexcept
         {
-            Ok,                     ///< Operation succedded
-            InvalidHandle,          ///< Given handle does not address valid object
-            InvalidVirtualVolume,
-            InvalidPhysicalVolume,
-            InvalidMountPoint,
-            VolumeAlreadyMounted,   ///< Attempt to mount the same physical volume at the same logical path
-            InvalidKey,             ///< Invalid key value
-            InvalidMountAlias,      ///< Invalid subkey value
-            InvalidLogicalPath,     ///< Given logical path cannot be mapped onto a physical one
-            InvalidPhysicalPath,
-            PathLocked,             ///< Given path is locked due to mounting 
-            NotFound,               ///< Such path does not have a physical representation
-            InUse,                  ///< The handler is currently used by concurrent operation and cannot be closed
-            HasDependentMounts,     ///< There are underlaying mount
-            MaxTreeDepthExceeded,   ///< Cannot search so deep inside
-            SubkeyLimitReached,     ///< Too many subkeys
-            AlreadyExpired,         ///< Given timestamp already in the past
-            AlreadyExists,          ///< Key already exists
-            NotLeaf,                ///< Erased node not a leaf
-            IncompatibleFile,       ///< File is incompatible
-            AlreadyOpened,          ///< Physical file is already opened
-            UnableToOpen,           ///< Cannot open specified file
-            TooManyConcurrentOps,   ///< The limit of concurent operations over physical volume is reached
-            IoError,                ///< General I/O error
-            InvalidData,            ///< Data read from storage file is invalid
-            InsufficientMemory,     ///< Operation failed due to low memory
-            UnknownError,           ///< Something wrong happened
-            NotYetImplemented
-        };
-
-        static constexpr auto Ok = RetCode::Ok;
-        static constexpr auto InvalidHandle = RetCode::InvalidHandle;
-        static constexpr auto InvalidVirtualVolume = RetCode::InvalidVirtualVolume;
-        static constexpr auto InvalidPhysicalVolume = RetCode::InvalidPhysicalVolume;
-        static constexpr auto InvalidMountPoint = RetCode::InvalidMountPoint;
-        static constexpr auto VolumeAlreadyMounted = RetCode::VolumeAlreadyMounted;
-        static constexpr auto InvalidKey = RetCode::InvalidKey;
-        static constexpr auto InvalidMountAlias = RetCode::InvalidMountAlias;
-        static constexpr auto InvalidLogicalPath = RetCode::InvalidLogicalPath;
-        static constexpr auto InvalidPhysicalPath = RetCode::InvalidPhysicalPath;
-        static constexpr auto PathLocked = RetCode::PathLocked;
-        static constexpr auto NotFound = RetCode::NotFound;
-        static constexpr auto InUse = RetCode::InUse;
-        static constexpr auto HasDependentMounts = RetCode::HasDependentMounts;
-        static constexpr auto MaxTreeDepthExceeded = RetCode::MaxTreeDepthExceeded;
-        static constexpr auto SubkeyLimitReached = RetCode::SubkeyLimitReached;
-        static constexpr auto AlreadyExpired = RetCode::AlreadyExpired;
-        static constexpr auto AlreadyExists = RetCode::AlreadyExists;
-        static constexpr auto NotLeaf = RetCode::NotLeaf;
-        static constexpr auto IncompatibleFile = RetCode::IncompatibleFile;
-        static constexpr auto AlreadyOpened = RetCode::AlreadyOpened;
-        static constexpr auto UnableToOpen = RetCode::UnableToOpen;
-        static constexpr auto TooManyConcurrentOps = RetCode::TooManyConcurrentOps;
-        static constexpr auto IoError = RetCode::IoError;
-        static constexpr auto InvalidData = RetCode::InvalidData;
-        static constexpr auto InsufficientMemory = RetCode::InsufficientMemory;
-        static constexpr auto UnknownError = RetCode::UnknownError;
-        static constexpr auto NotYetImplemented = RetCode::NotYetImplemented;
-
-
-        //
-        // public classes
-        //
-        class VirtualVolume;
-        class PhysicalVolume;
-        class MountPoint;
-
-
-        static std::tuple < RetCode, std::weak_ptr< VirtualVolume > > open_virtual_volume() noexcept
-        {
-            return open< VirtualVolume >();
+            return open< VirtualVolumeT >();
         }
 
-        static std::tuple < RetCode, std::weak_ptr< PhysicalVolume > > open_physical_volume( const std::filesystem::path & path, size_t priority = 0 ) noexcept
+        static std::tuple < RetCode, std::weak_ptr< PhysicalVolumeT > > open_physical_volume( const std::filesystem::path & path, size_t priority = 0 ) noexcept
         {
-            return open< PhysicalVolume >( path, priority );
+            return open< PhysicalVolumeT >( path, priority );
         }
 
         template< typename VolumeT >
@@ -227,12 +188,12 @@ namespace jb
             try
             {
                 {
-                    auto[ guard, holder ] = singletons< VirtualVolume >();
+                    auto[ guard, holder ] = singletons< VirtualVolumeT >();
                     std::unique_lock lock( guard );
                     holder.clear();
                 }
                 {
-                    auto[ guard, holder ] = singletons< PhysicalVolume >();
+                    auto[ guard, holder ] = singletons< PhysicalVolumeT >();
                     std::unique_lock lock( guard );
                     holder.clear();
                 }
@@ -246,11 +207,6 @@ namespace jb
         }
     };
 }
-
-
-#include "virtual_volume.h"
-#include "physical_volume.h"
-#include "mount_point.h"
 
 
 #endif

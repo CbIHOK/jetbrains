@@ -1,7 +1,7 @@
 #ifndef __JB__VIRTUAL_VOLUME__H__
 #define __JB__VIRTUAL_VOLUME__H__
 
-
+#include "key.h"
 #include "rare_write_frequent_read_mutex.h"
 #include "execution_chain.h"
 #include <string>
@@ -10,6 +10,7 @@
 #include <tuple>
 #include <execution>
 #include <future>
+#include <regex>
 #include <boost/multi_index_container.hpp>
 #include <boost/multi_index/hashed_index.hpp>
 #include <boost/multi_index/ordered_index.hpp>
@@ -22,8 +23,8 @@ namespace jb
     template < typename Policies >
     class Storage< Policies >::VirtualVolume
     {
-        using KeyView = std::basic_string_view< typename Policies::KeyCharT >;
-        using KeyValue = std::basic_sting< typename Policies::KeyCharT >;
+        using KeyValue = jb::KeyValue< Policies >;
+        using KeyView = jb::KeyView< Policies >;
         using MountPointPtr = std::shared_ptr< MountPoint >;
 
 
@@ -223,8 +224,37 @@ namespace jb
         @throw nothing
         */
         [[ nodiscard ]]
-        RetCode insert( const KeyView & path, const KeyView & subkey, const Value & value, uint64_t good_before, bool overwrite ) noexcept
+        RetCode insert( const KeyView & path, const KeyView & subkey, const Value & value, uint64_t good_before = 0, bool overwrite = 0 ) noexcept
         {
+            try
+            {
+                if ( !is_valid_path( path ) )
+                {
+                    return InvalidKey;
+                }
+
+                if ( !is_valid_path_segment( subkey ) )
+                {
+                    return InvalidSubkey;
+                }
+
+                if ( good_before && good_before < std::chrono::system_clock::now().time_since_epoch() / 1ms )
+                {
+                    return RetCode::AlreadyExpired;
+                }
+
+                rare_write_frequent_read_mutex<>::shared_lock<> s_lock( guard_ );
+
+            }
+            catch ( const std::bad_alloc & )
+            {
+                return { InsufficientMemory, Value{} };
+            }
+            catch ( ... )
+            {
+                return { UnknownError, Value{} };
+            }
+
             using namespace std;
 
             assert( path.is_path() );
@@ -280,34 +310,41 @@ namespace jb
         {
             try
             {
-                rare_write_frequent_read_mutex<>::shared_lock<> s_lock( guard_ );
-
-                if ( auto[ mount_path, relative_path ] = find_nearest_mounted_path( key ); mount_path.size() )
+                if ( is_valid_path( key ) )
                 {
-                    auto futures = for_each_mount( mount_path, [&] ( auto mount, auto * in, auto * out ) noexcept { return mount->get( relative_path, in, out ); } );
+                    rare_write_frequent_read_mutex<>::shared_lock<> s_lock( guard_ );
 
-                    for ( auto & future : futures )
+                    if ( auto[ mount_path, relative_path ] = find_nearest_mounted_path( key ); mount_path.size() )
                     {
-                        if ( auto[ rc, value ] = future.get< std::tuple< RetCode, Value > >();  RetCode::Ok == rc )
+                        auto futures = for_each_mount( mount_path, [&] ( auto mount, auto * in, auto * out ) noexcept { return mount->get( relative_path, in, out ); } );
+
+                        for ( auto & future : futures )
                         {
-                            return { RetCode::Ok, value }
-                        }
-                        else if ( RetCode::NotFound != rc )
-                        {
-                            return { rc, Value{} };
+                            if ( auto[ rc, value ] = future.get< std::tuple< RetCode, Value > >();  Ok == rc )
+                            {
+                                return { Ok, value }
+                            }
+                            else if ( NotFound != rc )
+                            {
+                                return { rc, Value{} };
+                            }
                         }
                     }
-                }
 
-                return { RetCode::NotFound, Value{} };
+                    return { NotFound, Value{} };
+                }
+                else
+                {
+                    return InvalidKey;
+                }
             }
             catch ( const std::bad_alloc & )
             {
-                return { RetCode::InsufficientMemory, Value{} };
+                return { InsufficientMemory, Value{} };
             }
             catch ( ... )
             {
-                return { RetCode::UnknownError, Value{} };
+                return { UnknownError, Value{} };
             }
         }
 
@@ -316,22 +353,29 @@ namespace jb
         {
             try
             {
-                rare_write_frequent_read_mutex<>::shared_lock<> s_lock( guard_ );
-
-                if ( auto[ mount_path, relative_path ] = find_nearest_mounted_path( key ); mount_path.size() )
+                if ( !is_valid_path( key ) )
                 {
-                    auto futures = for_each_mount( mount_path, [&] ( auto mount, auto * in, auto * out ) noexcept { return mount->erase( relative_path, in, out ); } );
+                    rare_write_frequent_read_mutex<>::shared_lock<> s_lock( guard_ );
 
-                    for ( auto & future : futures )
+                    if ( auto[ mount_path, relative_path ] = find_nearest_mounted_path( key ); mount_path.size() )
                     {
-                        if ( auto rc = future.get< RetCode >(); NotFound != rc )
+                        auto futures = for_each_mount( mount_path, [&] ( auto mount, auto * in, auto * out ) noexcept { return mount->erase( relative_path, in, out ); } );
+
+                        for ( auto & future : futures )
                         {
-                            return rc;
+                            if ( auto rc = future.get< RetCode >(); NotFound != rc )
+                            {
+                                return rc;
+                            }
                         }
                     }
-                }
 
-                return { NotFound, Value{} };
+                    return { NotFound, Value{} };
+                }
+                else
+                {
+                    return InvalidKey;
+                }
             }
             catch ( const std::bad_alloc & )
             {

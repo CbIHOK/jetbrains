@@ -2,20 +2,10 @@
 
 set(CMAKE_CXX_FLAGS_RELEASE "${CMAKE_CXX_FLAGS_RELEASE} /MT")
 set(CMAKE_CXX_FLAGS_DEBUG "${CMAKE_CXX_FLAGS_DEBUG} /MTd")
-set(CMAKE_CXX_FLAGS_DEBUG "${CMAKE_CXX_FLAGS_DEBUG} /MTd")
-set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} /wd4297")
-
-add_definitions( -D_NOEXCEPT_= )
 
 add_executable( regression EXCLUDE_FROM_ALL
     main.cpp
-    storage_file.cpp
-    b_tree.cpp
-    packed_value.cpp
-    bloom.cpp
-    key.cpp
-    node_locker.cpp
-    storage.cpp
+    merged_string_view.cpp
 )
 
 target_link_libraries( regression gtest gtest_main )
