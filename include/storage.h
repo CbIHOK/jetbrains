@@ -80,9 +80,14 @@ namespace jb
     static constexpr auto NotYetImplemented = RetCode::NotYetImplemented;
 
 
+    struct Implemenation
+    {
+        using 
+    };
+
     /**
     */
-    template < typename Policies >
+    template < typename Policies, typename TestPad = Implemenation >
     class Storage
     {
         using VirtualVolumeT = VirtualVolume< Policies >;

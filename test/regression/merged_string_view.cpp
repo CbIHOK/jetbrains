@@ -1,12 +1,13 @@
 #include <merged_string_view.h>
+#include <rare_write_frequent_read_mutex.h>
 #include <gtest/gtest.h>
 #include <string>
+#include <exception>
+
 
 template < typename CharT >
-class merged_string_view_test : public ::testing::Test
+struct merged_string_view_test : public ::testing::Test
 {
-public:
-
     using char_t = CharT;
     using string = std::basic_string< CharT >;
     using view = std::basic_string_view< CharT >;
@@ -25,6 +26,7 @@ typedef ::testing::Types<
     char16_t,
     char32_t
 > TestingPolicies;
+
 
 TYPED_TEST_CASE( merged_string_view_test, TestingPolicies );
 
@@ -78,5 +80,354 @@ TYPED_TEST( merged_string_view_test, access_by_index )
 #ifndef _DEBUG
         EXPECT_NO_THROW( v[ str.size() ] );
 #endif
+    }
+}
+
+
+TYPED_TEST( merged_string_view_test, at )
+{
+
+    {
+        constexpr merged_view v{};
+        EXPECT_THROW( v.at( 0 ), std::out_of_range );
+    }
+
+    {
+        string str = make_string( "abcde" );
+        merged_view v{ str, view{} };
+
+        for ( string::size_type i = 0; i < str.size(); ++i )
+        {
+            EXPECT_NO_THROW( EXPECT_EQ( str.at( i ), v.at( i ) ) );
+        }
+        EXPECT_THROW( v.at( str.size() ), std::out_of_range );
+    }
+
+    {
+        string str = make_string( "abcdefgh" );
+        merged_view v{ view{}, str };
+
+        for ( string::size_type i = 0; i < str.size(); ++i )
+        {
+            EXPECT_NO_THROW( EXPECT_EQ( str.at( i ), v.at( i ) ) );
+        }
+        EXPECT_THROW( v.at( str.size() ), std::out_of_range );
+    }
+
+    {
+        string str1 = make_string( "abcd" );
+        string str2 = make_string( "efgh" );
+        auto str = str1 + str2;
+        merged_view v{ str1, str2 };
+
+        for ( string::size_type i = 0; i < str.size(); ++i )
+        {
+            EXPECT_NO_THROW( EXPECT_EQ( str.at( i ), v.at( i ) ) );
+        }
+        EXPECT_THROW( v.at( str.size() ), std::out_of_range );
+    }
+}
+
+TYPED_TEST( merged_string_view_test, front )
+{
+    {
+        string str = make_string( "abcde" );
+        merged_view v{ str, view{} };
+        EXPECT_NO_THROW( EXPECT_EQ( str.front(), v.front() ) );
+    }
+
+    {
+        string str = make_string( "abcdefgh" );
+        merged_view v{ view{}, str };
+        EXPECT_NO_THROW( EXPECT_EQ( str.front(), v.front() ) );
+    }
+
+    {
+        string str1 = make_string( "abcd" );
+        string str2 = make_string( "efgh" );
+        auto str = str1 + str2;
+        merged_view v{ str1, str2 };
+        EXPECT_NO_THROW( EXPECT_EQ( str.front(), v.front() ) );
+    }
+}
+
+
+TYPED_TEST( merged_string_view_test, back )
+{
+    {
+        string str = make_string( "abcde" );
+        merged_view v{ str, view{} };
+        EXPECT_NO_THROW( EXPECT_EQ( str.back(), v.back() ) );
+    }
+
+    {
+        string str = make_string( "abcdefgh" );
+        merged_view v{ view{}, str };
+        EXPECT_NO_THROW( EXPECT_EQ( str.back(), v.back() ) );
+    }
+
+    {
+        string str1 = make_string( "abcd" );
+        string str2 = make_string( "efgh" );
+        auto str = str1 + str2;
+        merged_view v{ str1, str2 };
+        EXPECT_NO_THROW( EXPECT_EQ( str.back(), v.back() ) );
+    }
+}
+
+
+TYPED_TEST( merged_string_view_test, size )
+{
+    {
+        string str = make_string( "abcde" );
+        merged_view v{ str, view{} };
+        EXPECT_NO_THROW( EXPECT_EQ( str.size(), v.size() ) );
+    }
+
+    {
+        string str = make_string( "abcdefgh" );
+        merged_view v{ view{}, str };
+        EXPECT_NO_THROW( EXPECT_EQ( str.size(), v.size() ) );
+    }
+
+    {
+        string str1 = make_string( "abcd" );
+        string str2 = make_string( "efgh" );
+        auto str = str1 + str2;
+        merged_view v{ str1, str2 };
+        EXPECT_NO_THROW( EXPECT_EQ( str.size(), v.size() ) );
+    }
+}
+
+
+TYPED_TEST( merged_string_view_test, length )
+{
+    {
+        string str = make_string( "abcde" );
+        merged_view v{ str, view{} };
+        EXPECT_NO_THROW( EXPECT_EQ( str.length(), v.length() ) );
+    }
+
+    {
+        string str = make_string( "abcdefgh" );
+        merged_view v{ view{}, str };
+        EXPECT_NO_THROW( EXPECT_EQ( str.length(), v.length() ) );
+    }
+
+    {
+        string str1 = make_string( "abcd" );
+        string str2 = make_string( "efgh" );
+        auto str = str1 + str2;
+        merged_view v{ str1, str2 };
+        EXPECT_NO_THROW( EXPECT_EQ( str.length(), v.length() ) );
+    }
+}
+
+
+TYPED_TEST( merged_string_view_test, max_size )
+{
+    {
+        string str = make_string( "abcde" );
+        merged_view v{ str, view{} };
+        EXPECT_NO_THROW( EXPECT_EQ( view{ str }.max_size(), v.max_size() ) );
+    }
+
+    {
+        string str = make_string( "abcdefgh" );
+        merged_view v{ view{}, str };
+        EXPECT_NO_THROW( EXPECT_EQ( view{ str }.max_size(), v.max_size() ) );
+    }
+
+    {
+        string str1 = make_string( "abcd" );
+        string str2 = make_string( "efgh" );
+        auto str = str1 + str2;
+        merged_view v{ str1, str2 };
+        EXPECT_NO_THROW( EXPECT_EQ( view{ str }.max_size(), v.max_size() ) );
+    }
+}
+
+
+TYPED_TEST( merged_string_view_test, empty )
+{
+    {
+        merged_view v{ view{}, view{} };
+        EXPECT_NO_THROW( EXPECT_TRUE( v.empty() ) );
+    }
+
+    {
+        string str = make_string( "abcde" );
+        merged_view v{ str, view{} };
+        EXPECT_NO_THROW( EXPECT_FALSE( v.empty() ) );
+    }
+
+    {
+        string str = make_string( "abcdefgh" );
+        merged_view v{ view{}, str };
+        EXPECT_NO_THROW( EXPECT_FALSE( v.empty() ) );
+    }
+
+    {
+        string str1 = make_string( "abcd" );
+        string str2 = make_string( "efgh" );
+        auto str = str1 + str2;
+        merged_view v{ str1, str2 };
+        EXPECT_NO_THROW( EXPECT_FALSE( v.empty() ) );
+
+    }
+}
+
+TYPED_TEST( merged_string_view_test, remove_prefix )
+{
+    {
+        merged_view v{ view{}, view{} };
+        EXPECT_NO_THROW( v.remove_prefix( 0 ) );
+        EXPECT_TRUE( v.empty() );
+    }
+
+    {
+        merged_view v{ view{}, view{} };
+        EXPECT_NO_THROW( v.remove_prefix( 1 ) );
+        EXPECT_TRUE( v.empty() );
+    }
+
+    {
+        string str = make_string( "abcd" );
+        merged_view v{ str, view{} };
+        EXPECT_NO_THROW( v.remove_prefix( 0 ) );
+        EXPECT_EQ( 'a', v[ 0 ] );
+        EXPECT_NO_THROW( v.remove_prefix( 2 ) ); // "cd"
+        EXPECT_EQ( 'c', v[ 0 ] );
+        EXPECT_NO_THROW( v.remove_prefix( 4 ) ); // <empty>
+        EXPECT_TRUE( v.empty() );
+    }
+
+    {
+        string str = make_string( "abcd" );
+        merged_view v{ view{}, str };
+        EXPECT_NO_THROW( v.remove_prefix( 0 ) );
+        EXPECT_EQ( 'a', v[ 0 ] );
+        EXPECT_NO_THROW( v.remove_prefix( 2 ) ); // "cd"
+        EXPECT_EQ( 'c', v[ 0 ] );
+        EXPECT_NO_THROW( v.remove_prefix( 2 ) ); // <empty>
+        EXPECT_TRUE( v.empty() );
+    }
+
+    {
+        string str1 = make_string( "abcd" );
+        string str2 = make_string( "efgh" );
+        merged_view v{ str1, str2 };
+        EXPECT_NO_THROW( v.remove_prefix( 3 ) ); // "defgh"
+        EXPECT_EQ( 'd', v[ 0 ] );
+    }
+
+    {
+        string str1 = make_string( "abcd" );
+        string str2 = make_string( "efgh" );
+        merged_view v{ str1, str2 };
+        EXPECT_NO_THROW( v.remove_prefix( 4 ) ); // "efgh"
+        EXPECT_EQ( 'e', v[ 0 ] );
+    }
+
+    {
+        string str1 = make_string( "abcd" );
+        string str2 = make_string( "efgh" );
+        merged_view v{ str1, str2 };
+        EXPECT_NO_THROW( v.remove_prefix( 5 ) ); // "fgh"
+        EXPECT_EQ( 'f', v[ 0 ] );
+    }
+
+    {
+        string str1 = make_string( "abcd" );
+        string str2 = make_string( "efgh" );
+        merged_view v{ str1, str2 };
+        EXPECT_NO_THROW( v.remove_prefix( 8 ) ); // <empty>
+        EXPECT_TRUE( v.empty() );
+    }
+
+    {
+        string str1 = make_string( "abcd" );
+        string str2 = make_string( "efgh" );
+        merged_view v{ str1, str2 };
+        EXPECT_NO_THROW( v.remove_prefix( 9 ) ); // <empty>
+        EXPECT_TRUE( v.empty() );
+    }
+}
+
+
+TYPED_TEST( merged_string_view_test, remove_prefix )
+{
+    {
+        merged_view v{ view{}, view{} };
+        EXPECT_NO_THROW( v.remove_prefix( 0 ) );
+        EXPECT_TRUE( v.empty() );
+    }
+
+    {
+        merged_view v{ view{}, view{} };
+        EXPECT_NO_THROW( v.remove_prefix( 1 ) );
+        EXPECT_TRUE( v.empty() );
+    }
+
+    {
+        string str = make_string( "abcd" );
+        merged_view v{ str, view{} };
+        EXPECT_NO_THROW( v.remove_prefix( 0 ) );
+        EXPECT_EQ( 'a', v[ 0 ] );
+        EXPECT_NO_THROW( v.remove_prefix( 2 ) ); // "cd"
+        EXPECT_EQ( 'c', v[ 0 ] );
+        EXPECT_NO_THROW( v.remove_prefix( 4 ) ); // <empty>
+        EXPECT_TRUE( v.empty() );
+    }
+
+    {
+        string str = make_string( "abcd" );
+        merged_view v{ view{}, str };
+        EXPECT_NO_THROW( v.remove_prefix( 0 ) );
+        EXPECT_EQ( 'a', v[ 0 ] );
+        EXPECT_NO_THROW( v.remove_prefix( 2 ) ); // "cd"
+        EXPECT_EQ( 'c', v[ 0 ] );
+        EXPECT_NO_THROW( v.remove_prefix( 2 ) ); // <empty>
+        EXPECT_TRUE( v.empty() );
+    }
+
+    {
+        string str1 = make_string( "abcd" );
+        string str2 = make_string( "efgh" );
+        merged_view v{ str1, str2 };
+        EXPECT_NO_THROW( v.remove_prefix( 3 ) ); // "defgh"
+        EXPECT_EQ( 'd', v[ 0 ] );
+    }
+
+    {
+        string str1 = make_string( "abcd" );
+        string str2 = make_string( "efgh" );
+        merged_view v{ str1, str2 };
+        EXPECT_NO_THROW( v.remove_prefix( 4 ) ); // "efgh"
+        EXPECT_EQ( 'e', v[ 0 ] );
+    }
+
+    {
+        string str1 = make_string( "abcd" );
+        string str2 = make_string( "efgh" );
+        merged_view v{ str1, str2 };
+        EXPECT_NO_THROW( v.remove_prefix( 5 ) ); // "fgh"
+        EXPECT_EQ( 'f', v[ 0 ] );
+    }
+
+    {
+        string str1 = make_string( "abcd" );
+        string str2 = make_string( "efgh" );
+        merged_view v{ str1, str2 };
+        EXPECT_NO_THROW( v.remove_prefix( 8 ) ); // <empty>
+        EXPECT_TRUE( v.empty() );
+    }
+
+    {
+        string str1 = make_string( "abcd" );
+        string str2 = make_string( "efgh" );
+        merged_view v{ str1, str2 };
+        EXPECT_NO_THROW( v.remove_prefix( 9 ) ); // <empty>
+        EXPECT_TRUE( v.empty() );
     }
 }

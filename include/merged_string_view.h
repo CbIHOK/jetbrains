@@ -37,47 +37,47 @@ namespace jb
 
             constexpr merged_string_view & operator = ( const merged_string_view & other ) noexcept = default;
 
-            iterator begin() const noexcept
+            constexpr iterator begin() const noexcept
             {
                 return iterator( this, prefix.begin() );
             }
 
-            const_iterator cbegin() const noexcept
+            constexpr const_iterator cbegin() const noexcept
             {
                 return begin();
             }
 
-            iterator end() const noexcept
+            constexpr iterator end() const noexcept
             {
                 return iterator( this, suffix_ ? suffix_.end() : prefix_.end() );
             }
 
-            const_iterator cend() const noexcept
+            constexpr const_iterator cend() const noexcept
             {
                 return end();
             }
 
-            reverse_iterator rbegin() const noexcept
+            constexpr reverse_iterator rbegin() const noexcept
             {
                 return reverse_iterator( this, suffix_ ? suffix_.rbegin() : prefix_.rbegin() );
             }
 
-            const_reverse_iterator crbegin() const noexcept
+            constexpr const_reverse_iterator crbegin() const noexcept
             {
                 return rbegin();
             }
 
-            reverse_iterator rend() const noexcept
+            constexpr reverse_iterator rend() const noexcept
             {
                 return reverse_iterator( this, prefix_.rend() );
             }
 
-            const_reverse_iterator crend() const noexcept
+            constexpr const_reverse_iterator crend() const noexcept
             {
                 return rend();
             }
 
-            const_reference operator[] ( size_type pos ) const noexcept
+            constexpr const_reference operator[] ( size_type pos ) const noexcept
             {
                 return pos < prefix_.size() ? prefix_[ pos ] : suffix_[ pos - prefix_.size() ];
             }
@@ -87,12 +87,12 @@ namespace jb
                 return pos < prefix_.size() ? prefix_.at( pos ) : suffix_.at( pos - prefix_.size() );
             }
 
-            constexpr const_reference front() const noexcept
+            constexpr const_reference front() const
             {
-                return prefix.empty() ? suffix_.front() : prefix_.front();
+                return prefix_.empty() ? suffix_.front() : prefix_.front();
             }
 
-            constexpr const_reference back() const noexcept
+            constexpr const_reference back() const
             {
                 return suffix_.empty() ? prefix_.back() : suffix_.back();
             }
@@ -117,15 +117,15 @@ namespace jb
                 return prefix_.empty() && suffix_.empty();
             }
 
-            constexpr void remove_prefix( size_type n ) noexcept
+            void remove_prefix( size_type n ) noexcept
             {
-                if constexpr ( n < prefix_.size() )
+                if ( n < prefix_.size() )
                 {
                     prefix_.remove_prefix( n );
                 }
                 else
                 {
-                    if constexpr ( n - prefix_.size() < suffix_.size() )
+                    if ( n - prefix_.size() < suffix_.size() )
                     {
                         suffix_.remove_prefix( n - prefix_.size() );
                     }
@@ -138,15 +138,15 @@ namespace jb
                 }
             }
 
-            constexpr void remove_suffix( size_t n ) noexcept
+            void remove_suffix( size_t n ) noexcept
             {
-                if constexpr ( n < suffix_.size() )
+                if ( n < suffix_.size() )
                 {
                     suffix_.remove_suffix( n );
                 }
                 else
                 {
-                    if constexpr ( n - suffix_.size() < prefix_.size() )
+                    if ( n - suffix_.size() < prefix_.size() )
                     {
                         prefix_.remove_suffix( n - suffix_.size() );
                     }

@@ -33,7 +33,7 @@ namespace jb
         //
         struct alignas( std::hardware_destructive_interference_size ) aligned_atomic_t
         {
-            std::atomic_uint32_t atomic_;
+            alignas( std::hardware_destructive_interference_size ) std::atomic_uint32_t atomic_;
         };
 
         //
@@ -52,7 +52,7 @@ namespace jb
         @tparam SpinCount - try count before calling thread let's other threads pass
         @throw nothing
         */
-        template < size_t SpinCount, bool UseWeakOrdering = false >
+        template < size_t SpinCount >
         void lock() noexcept
         {
             static_assert( SpinCount );
@@ -79,25 +79,21 @@ namespace jb
             // for all shared locks
             for ( auto & s_lock : s_locks_ )
             {
-                // if the shared lock is taken
-                if ( s_lock.atomic_.load( memory_order_acquire ) )
+                // wait until a shared lock gets released
+                for ( size_t try_count = 1; ; ++try_count )
                 {
-                    // wait until a shared lock gets released
-                    for ( size_t try_count = 1; ; ++try_count )
+                    //
+                    // we do not need to use ACQUIRE semantic cuz another shared lock cannot be taken. The question still is
+                    // about performance, if repeating processing of the invalidation queue 
+                    if ( !s_lock.atomic_.load( std::memory_order_acquire ) )
                     {
-                        //
-                        // we do not need to use ACQUIRE semantic cuz another shared lock cannot be taken. The question still is
-                        // about performance, if repeating processing of the invalidation queue 
-                        if ( !s_lock.atomic_.load( UseWeakOrdering ? std::memory_order_relaxed : std::memory_order_acquire ) )
-                        {
-                            break;
-                        }
+                        break;
+                    }
 
-                        // if spin count exceeded - yield to other threads
-                        if ( try_count % SpinCount == 0 )
-                        {
-                            std::this_thread::yield();
-                        }
+                    // if spin count exceeded - yield to other threads
+                    if ( try_count % SpinCount == 0 )
+                    {
+                        std::this_thread::yield();
                     }
                 }
             }
