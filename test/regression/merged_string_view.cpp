@@ -295,9 +295,9 @@ TYPED_TEST( merged_string_view_test, remove_prefix )
         string str = make_string( "abcd" );
         merged_view v{ str, view{} };
         EXPECT_NO_THROW( v.remove_prefix( 0 ) );
-        EXPECT_EQ( 'a', v[ 0 ] );
+        EXPECT_EQ( 'a', v.front() );
         EXPECT_NO_THROW( v.remove_prefix( 2 ) ); // "cd"
-        EXPECT_EQ( 'c', v[ 0 ] );
+        EXPECT_EQ( 'c', v.front() );
         EXPECT_NO_THROW( v.remove_prefix( 4 ) ); // <empty>
         EXPECT_TRUE( v.empty() );
     }
@@ -306,9 +306,9 @@ TYPED_TEST( merged_string_view_test, remove_prefix )
         string str = make_string( "abcd" );
         merged_view v{ view{}, str };
         EXPECT_NO_THROW( v.remove_prefix( 0 ) );
-        EXPECT_EQ( 'a', v[ 0 ] );
+        EXPECT_EQ( 'a', v.front() );
         EXPECT_NO_THROW( v.remove_prefix( 2 ) ); // "cd"
-        EXPECT_EQ( 'c', v[ 0 ] );
+        EXPECT_EQ( 'c', v.front() );
         EXPECT_NO_THROW( v.remove_prefix( 2 ) ); // <empty>
         EXPECT_TRUE( v.empty() );
     }
@@ -318,7 +318,7 @@ TYPED_TEST( merged_string_view_test, remove_prefix )
         string str2 = make_string( "efgh" );
         merged_view v{ str1, str2 };
         EXPECT_NO_THROW( v.remove_prefix( 3 ) ); // "defgh"
-        EXPECT_EQ( 'd', v[ 0 ] );
+        EXPECT_EQ( 'd', v.front() );
     }
 
     {
@@ -326,7 +326,7 @@ TYPED_TEST( merged_string_view_test, remove_prefix )
         string str2 = make_string( "efgh" );
         merged_view v{ str1, str2 };
         EXPECT_NO_THROW( v.remove_prefix( 4 ) ); // "efgh"
-        EXPECT_EQ( 'e', v[ 0 ] );
+        EXPECT_EQ( 'e', v.front() );
     }
 
     {
@@ -334,7 +334,7 @@ TYPED_TEST( merged_string_view_test, remove_prefix )
         string str2 = make_string( "efgh" );
         merged_view v{ str1, str2 };
         EXPECT_NO_THROW( v.remove_prefix( 5 ) ); // "fgh"
-        EXPECT_EQ( 'f', v[ 0 ] );
+        EXPECT_EQ( 'f', v.front() );
     }
 
     {
@@ -355,39 +355,39 @@ TYPED_TEST( merged_string_view_test, remove_prefix )
 }
 
 
-TYPED_TEST( merged_string_view_test, remove_prefix )
+TYPED_TEST( merged_string_view_test, remove_suffix )
 {
     {
         merged_view v{ view{}, view{} };
-        EXPECT_NO_THROW( v.remove_prefix( 0 ) );
+        EXPECT_NO_THROW( v.remove_suffix( 0 ) );
         EXPECT_TRUE( v.empty() );
     }
 
     {
         merged_view v{ view{}, view{} };
-        EXPECT_NO_THROW( v.remove_prefix( 1 ) );
+        EXPECT_NO_THROW( v.remove_suffix( 1 ) );
         EXPECT_TRUE( v.empty() );
     }
 
     {
         string str = make_string( "abcd" );
         merged_view v{ str, view{} };
-        EXPECT_NO_THROW( v.remove_prefix( 0 ) );
-        EXPECT_EQ( 'a', v[ 0 ] );
-        EXPECT_NO_THROW( v.remove_prefix( 2 ) ); // "cd"
-        EXPECT_EQ( 'c', v[ 0 ] );
-        EXPECT_NO_THROW( v.remove_prefix( 4 ) ); // <empty>
+        EXPECT_NO_THROW( v.remove_suffix( 0 ) );
+        EXPECT_EQ( 'd', v.back() );
+        EXPECT_NO_THROW( v.remove_suffix( 2 ) ); // "ab"
+        EXPECT_EQ( 'b', v.back() );
+        EXPECT_NO_THROW( v.remove_suffix( 4 ) ); // <empty>
         EXPECT_TRUE( v.empty() );
     }
 
     {
         string str = make_string( "abcd" );
         merged_view v{ view{}, str };
-        EXPECT_NO_THROW( v.remove_prefix( 0 ) );
-        EXPECT_EQ( 'a', v[ 0 ] );
-        EXPECT_NO_THROW( v.remove_prefix( 2 ) ); // "cd"
-        EXPECT_EQ( 'c', v[ 0 ] );
-        EXPECT_NO_THROW( v.remove_prefix( 2 ) ); // <empty>
+        EXPECT_NO_THROW( v.remove_suffix( 0 ) );
+        EXPECT_EQ( 'd', v.back() );
+        EXPECT_NO_THROW( v.remove_suffix( 2 ) ); // "ab"
+        EXPECT_EQ( 'b', v.back() );
+        EXPECT_NO_THROW( v.remove_suffix( 2 ) ); // <empty>
         EXPECT_TRUE( v.empty() );
     }
 
@@ -395,31 +395,31 @@ TYPED_TEST( merged_string_view_test, remove_prefix )
         string str1 = make_string( "abcd" );
         string str2 = make_string( "efgh" );
         merged_view v{ str1, str2 };
-        EXPECT_NO_THROW( v.remove_prefix( 3 ) ); // "defgh"
-        EXPECT_EQ( 'd', v[ 0 ] );
+        EXPECT_NO_THROW( v.remove_suffix( 3 ) ); // "abcde"
+        EXPECT_EQ( 'e', v.back() );
     }
 
     {
         string str1 = make_string( "abcd" );
         string str2 = make_string( "efgh" );
         merged_view v{ str1, str2 };
-        EXPECT_NO_THROW( v.remove_prefix( 4 ) ); // "efgh"
-        EXPECT_EQ( 'e', v[ 0 ] );
+        EXPECT_NO_THROW( v.remove_suffix( 4 ) ); // "abcd"
+        EXPECT_EQ( 'd', v.back() );
     }
 
     {
         string str1 = make_string( "abcd" );
         string str2 = make_string( "efgh" );
         merged_view v{ str1, str2 };
-        EXPECT_NO_THROW( v.remove_prefix( 5 ) ); // "fgh"
-        EXPECT_EQ( 'f', v[ 0 ] );
+        EXPECT_NO_THROW( v.remove_suffix( 5 ) ); // "abc"
+        EXPECT_EQ( 'c', v.back() );
     }
 
     {
         string str1 = make_string( "abcd" );
         string str2 = make_string( "efgh" );
         merged_view v{ str1, str2 };
-        EXPECT_NO_THROW( v.remove_prefix( 8 ) ); // <empty>
+        EXPECT_NO_THROW( v.remove_suffix( 8 ) ); // <empty>
         EXPECT_TRUE( v.empty() );
     }
 
@@ -427,7 +427,12 @@ TYPED_TEST( merged_string_view_test, remove_prefix )
         string str1 = make_string( "abcd" );
         string str2 = make_string( "efgh" );
         merged_view v{ str1, str2 };
-        EXPECT_NO_THROW( v.remove_prefix( 9 ) ); // <empty>
+        EXPECT_NO_THROW( v.remove_suffix( 9 ) ); // <empty>
         EXPECT_TRUE( v.empty() );
     }
+}
+
+
+TYPED_TEST( merged_string_view_test, swap )
+{
 }
