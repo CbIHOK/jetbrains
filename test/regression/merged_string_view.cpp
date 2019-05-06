@@ -12,6 +12,8 @@ struct merged_string_view_test : public ::testing::Test
     using string = std::basic_string< CharT >;
     using view = std::basic_string_view< CharT >;
     using merged_view = jb::detail::merged_string_view< CharT >;
+    using iterator = typename merged_view::iterator;
+    using reverse_iterator = typename merged_view::reverse_iterator;
 
     static string make_string( char * str )
     {
@@ -433,6 +435,80 @@ TYPED_TEST( merged_string_view_test, remove_suffix )
 }
 
 
-TYPED_TEST( merged_string_view_test, swap )
+TYPED_TEST( merged_string_view_test, iterator )
 {
+    // direct iterator
+    {
+        string str1 = make_string( "abcd" );
+        string str2 = make_string( "efgh" );
+        string str = str1 + str2;
+
+        merged_view v{ str1, str2 };
+        EXPECT_NO_THROW( EXPECT_NE( v.begin(), v.end() ) );
+        EXPECT_EQ( str.size(), std::distance( v.begin(), v.end() ) );
+        EXPECT_EQ( str, string( v.begin(), v.end() ) );
+
+        auto i( v.begin() );
+        EXPECT_NO_THROW( EXPECT_EQ( v.begin(), i ) );
+        i = i++;
+        EXPECT_NO_THROW( EXPECT_EQ( v.begin(), i ) );
+
+        EXPECT_NO_THROW( EXPECT_EQ( str[ 0 ], *i++ ) ); // +1
+        EXPECT_NO_THROW( EXPECT_EQ( str[ 1 ], *i ) );
+        EXPECT_NO_THROW( EXPECT_EQ( str[ 2 ], *++i ) ); // +2
+
+        ++ ++ ++ ++ ++i; // i = +7
+        EXPECT_NO_THROW( EXPECT_EQ( str[ 7 ], *i++ ) ); // +8
+        EXPECT_NO_THROW( EXPECT_EQ( i, v.end() ) );
+
+#ifndef _DEBUG
+        EXPECT_NO_THROW( *i );
+#endif
+        
+        EXPECT_NO_THROW( EXPECT_EQ( str[ 7 ], *--i ) ); // +7
+        EXPECT_NO_THROW( EXPECT_EQ( str[ 7 ], *i-- ) ); // +6
+        EXPECT_NO_THROW( EXPECT_EQ( str[ 6 ], *i ) );
+
+        -- -- -- -- -- --i; // +0
+        EXPECT_NO_THROW( EXPECT_EQ( str[ 0 ], *i ) ); // +8
+        EXPECT_NO_THROW( EXPECT_EQ( i, v.begin() ) );
+    }
+
+    // reverse iterator
+    {
+        string str1 = make_string( "abcd" );
+        string str2 = make_string( "efgh" );
+        string str = str1 + str2;
+        std::reverse( str.begin(), str.end() );
+
+        merged_view v{ str1, str2 };
+        EXPECT_NO_THROW( EXPECT_NE( v.rbegin(), v.rend() ) );
+        EXPECT_EQ( str.size(), std::distance( v.rbegin(), v.rend() ) );
+        EXPECT_EQ( str, string( v.rbegin(), v.rend() ) );
+
+        auto i( v.rbegin() );
+        EXPECT_NO_THROW( EXPECT_EQ( v.rbegin(), i ) );
+        i = i++;
+        EXPECT_NO_THROW( EXPECT_EQ( v.rbegin(), i ) );
+
+        EXPECT_NO_THROW( EXPECT_EQ( str[ 0 ], *i++ ) ); // +1
+        EXPECT_NO_THROW( EXPECT_EQ( str[ 1 ], *i ) );
+        EXPECT_NO_THROW( EXPECT_EQ( str[ 2 ], *++i ) ); // +2
+
+        ++ ++ ++ ++ ++i; // i = +7
+        EXPECT_NO_THROW( EXPECT_EQ( str[ 7 ], *i++ ) ); // +8
+        EXPECT_NO_THROW( EXPECT_EQ( i, v.rend() ) );
+
+#ifndef _DEBUG
+        EXPECT_NO_THROW( *i );
+#endif
+
+        EXPECT_NO_THROW( EXPECT_EQ( str[ 7 ], *--i ) ); // +7
+        EXPECT_NO_THROW( EXPECT_EQ( str[ 7 ], *i-- ) ); // +6
+        EXPECT_NO_THROW( EXPECT_EQ( str[ 6 ], *i ) );
+
+        -- -- -- -- -- --i; // +0
+        EXPECT_NO_THROW( EXPECT_EQ( str[ 0 ], *i ) ); // +8
+        EXPECT_NO_THROW( EXPECT_EQ( i, v.rbegin() ) );
+    }
 }
