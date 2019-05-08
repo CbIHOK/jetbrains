@@ -12,8 +12,8 @@
 namespace jb
 {
 
-    template < typename Policies > class VirtualVolume;
-    template < typename Policies > class PhysicalVolume;
+    template < typename Policies > class virtual_volume;
+    template < typename Policies > class physical_volume;
 
 
     /** Enumerates all possible return codes
@@ -80,20 +80,11 @@ namespace jb
     static constexpr auto NotYetImplemented = RetCode::NotYetImplemented;
 
 
-    struct Implemenation
-    {
-        using 
-    };
-
     /**
     */
-    template < typename Policies, typename TestPad = Implemenation >
+    template < typename Policies >
     class Storage
     {
-        using VirtualVolumeT = VirtualVolume< Policies >;
-        using PhysicalVolumeT = PhysicalVolume< Policies >;
-
-
         template < typename VolumeT >
         static auto singletons()
         {
@@ -144,14 +135,17 @@ namespace jb
 
     public:
 
-        static std::tuple < RetCode, std::weak_ptr< VirtualVolumeT > > open_virtual_volume() noexcept
+        using virtual_volume = ::jb::virtual_volume< Policies >;
+        using physical_volume = ::jb::physical_volume < Policies >;
+
+        static std::tuple < RetCode, std::weak_ptr< virtual_volume > > open_virtual_volume() noexcept
         {
-            return open< VirtualVolumeT >();
+            return open< virtual_volume >();
         }
 
-        static std::tuple < RetCode, std::weak_ptr< PhysicalVolumeT > > open_physical_volume( const std::filesystem::path & path, size_t priority = 0 ) noexcept
+        static std::tuple < RetCode, std::weak_ptr< physical_volume > > open_physical_volume( const std::filesystem::path & path, size_t priority = 0 ) noexcept
         {
-            return open< PhysicalVolumeT >( path, priority );
+            return open< physical_volume >( path, priority );
         }
 
         template< typename VolumeT >
@@ -193,19 +187,19 @@ namespace jb
             try
             {
                 {
-                    auto[ guard, holder ] = singletons< VirtualVolumeT >();
+                    auto[ guard, holder ] = singletons< virtual_volume >();
                     std::unique_lock lock( guard );
                     holder.clear();
                 }
                 {
-                    auto[ guard, holder ] = singletons< PhysicalVolumeT >();
+                    auto[ guard, holder ] = singletons< physical_volume >();
                     std::unique_lock lock( guard );
                     holder.clear();
                 }
 
                 return Ok;
             }
-            catch(...)
+            catch ( ... )
             {
                 return UnknownError;
             }

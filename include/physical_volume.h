@@ -27,7 +27,7 @@ namespace jb
     @tparam Policies - global settings
     */
     template < typename Policies >
-    class Storage< Policies >::PhysicalVolumeImpl
+    class PhysicalVolumeImpl
     {
         friend class TestNodeLocker;
         friend class TestBloom;

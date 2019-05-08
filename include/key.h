@@ -49,11 +49,4 @@ namespace jb
     }
 }
 
-template < typename Policies >
-template <>
-struct std::hash< jb::CombinedKeyView< Policies > >
-{
-    size_t operator()( const CombinedKeyView & view ) const noexcept { return view.hash(); }
-};
-
 #endif

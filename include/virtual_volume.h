@@ -15,31 +15,40 @@
 #include <boost/multi_index/hashed_index.hpp>
 #include <boost/multi_index/ordered_index.hpp>
 #include <boost/multi_index/member.hpp>
+#include <boost/multi_index/mem_fun.hpp>
 #include <boost/multi_index/identity.hpp>
+#include <boost/multi_index/composite_key.hpp>
 
 
 namespace jb
 {
+
+    template < typename Policies > class mount_point;
+
+
     template < typename Policies >
-    class Storage< Policies >::VirtualVolume
+    class virtual_volume
     {
-        using KeyValue = jb::KeyValue< Policies >;
-        using KeyView = jb::KeyView< Policies >;
-        using MountPointPtr = std::shared_ptr< MountPoint >;
+
+        using key = std::basic_string< typename Policies::KeyCharT >;
+        using key_view = std::basic_string_view< typename Policies::KeyCharT >;
+        using mount_point = ::jb::mount_point< Policies >;
+        using mount_point_ptr = std::shared_ptr< mount_point >;
 
 
         struct mount_t
         {
-            KeyValue      logical_path_;
-            MountPointPtr impl_;
-            MountPointPtr parent_;
+            key logical_path_;
+            mount_point_ptr impl_;
+            mount_point_ptr parent_;
 
             struct ndx_by_logical_path {};
+            struct ndx_by_physical_volume {};
             struct ndx_by_impl {};
             struct ndx_by_parent {};
             struct ndx_by_priority {};
 
-            explicit mount_t( KeyValue && logical_path, MountPointPtr impl, MountPointPtr parent )
+            explicit mount_t( key && logical_path, mount_point_ptr impl, mount_point_ptr parent )
                 : logical_path_( logical_path )
                 , impl_( impl )
                 , parent_( parent_impl )
@@ -47,10 +56,16 @@ namespace jb
                 assert( impl_ );
             }
 
+            size_t physical_volume() const noexcept
+            {
+                assert( impl_ );
+                return impl_->physical_volume();
+            }
+
             size_t physical_volume_priority() const noexcept
             {
-                assert( impl_ && impl_->physical_volume() );
-                return impl_->physical_volume()->priority();
+                assert( physical_volume() );
+                return physical_volume()->priority();
             }
 
             size_t mount_point_priority() const noexcept
@@ -61,7 +76,7 @@ namespace jb
         };
 
 
-        struct mount_compare
+        struct priority_compare
         {
             bool operator () ( const mount_t & lhs, const mount_t & rhs ) const noexcept
             {
@@ -70,7 +85,7 @@ namespace jb
                     (
                         lhs.logical_path_ == rhs.logical_path_ &&
                         lhs.physical_volume_priority() > rhs.physical_volume_priority()
-                        )
+                    )
                     ||
                     (
                         lhs.logical_path_ == rhs.logical_path_ &&
@@ -79,12 +94,12 @@ namespace jb
                     );
             }
 
-            bool operator () ( const Key & lhs, const mount_t & rhs ) const noexcept
+            bool operator () ( key_view lhs, const mount_t & rhs ) const noexcept
             {
                 return lhs < rhs.logical_path_;
             }
 
-            bool operator () ( const mount_t & lhs, const Key & rhs ) const noexcept
+            bool operator () ( const mount_t & lhs, key_view rhs ) const noexcept
             {
                 return lhs.logical_path_ < rhs;
             }
@@ -94,26 +109,35 @@ namespace jb
         using mount_collection_t = boost::multi_index_container<
             mount_t,
             boost::multi_index::indexed_by<
-                // O(0) search by logical path
+                // provides O(0) search of mount point by logical path
                 boost::multi_index::hashed_non_unique<
                     boost::multi_index::tag< typename mount_t::ndx_by_logical_path >,
-                    boost::multi_index::member< mount_t, KeyValue, &mount_t::logical_path_ >
+                    boost::multi_index::member< mount_t, key, &mount_t::logical_path_ >
                 >,
-                // O(0) search by PIMP
+                // prevents repeat mounting of the same physical volume to the same logical path to avoid deadlock
+                boost::multi_index::hashed_unique<
+                    boost::multi_index::tag< typename mount_t::ndx_by_physical_volume >,
+                    boost::multi_index::composite_key<
+                        mount_t,
+                        boost::multi_index::member< mount_t, key, &mount_t::logical_path_ >,
+                        boost::multi_index::mem_fun< mount_t, mount_point_ptr, &mount_t::physical_volume >
+                    >
+                >,
+                // provides O(0) search by mount point PIMP
                 boost::multi_index::hashed_unique<
                     boost::multi_index::tag< typename mount_t::ndx_by_impl >,
-                    boost::multi_index::member< mount_t, MountPointImplP, &mount_t::impl_ >
+                    boost::multi_index::member< mount_t, mount_point_ptr, &mount_t::impl_ >
                 >,
-                // O(0) underlaying mounts selection
+                // provides O(0) selection of children mount points
                 boost::multi_index::hashed_non_unique<
                     boost::multi_index::tag< typename mount_t::ndx_by_parent >,
-                    boost::multi_index::member< mount_t, MountPointImplP, &mount_t::parent_ >
+                    boost::multi_index::member< mount_t, mount_point_ptr, &mount_t::parent_ >
                 >,
-                // O( log N ) range selection ordered by mount priority
+                // provides O( log N ) selection of mounts points by logical path
                 boost::multi_index::ordered_unique<
                     boost::multi_index::tag< typename mount_t::ndx_by_priority >,
                     boost::multi_index::identity< mount_t >,
-                    mount_compare
+                    priority_compare
                 >
             >
         >;
@@ -129,7 +153,7 @@ namespace jb
         @retval KeyHashT - hash value of nearest mounted path
         @throw nothing
         */
-        std::tuple< KeyView, KeyView > find_nearest_mounted_path( KeyView logical_path ) const noexcept
+        std::tuple< key_view, key_view > find_nearest_mounted_path( key_view logical_path ) const noexcept
         {
             const auto & by_logical_path = mounts_.get< mount_t::by_logical_path >();
             auto current = logical_path;
@@ -141,7 +165,7 @@ namespace jb
                     break;
                 }
 
-                static constexpr KeyView::value_type separator = '/';
+                static constexpr typename key_view::value_type separator = '/';
                 auto prev_separator_pos = current.find_last_of( separator );
                 assert( prev_separator_pos != KeyView::npos );
 
@@ -491,7 +515,7 @@ namespace jb
         @retval RetCode - operation status
         @throw nothing
         */
-        RetCode unmount( std::weak_ptr< MountPoint > mount_handle, bool force = false ) noexcept
+        RetCode unmount( std::weak_ptr< mount_point > mount_handle, bool force = false ) noexcept
         {
             try
             {

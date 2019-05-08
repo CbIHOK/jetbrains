@@ -37,7 +37,7 @@ namespace jb
 
         bool cancelled() const noexcept
         {
-            return ( st_cancelled = load( std::memory_order::memory_order_relaxed ) );
+            return ( st_cancelled == load( std::memory_order::memory_order_relaxed ) );
         }
 
         void wait_and_let_further_go( execution_chain * further ) const noexcept
@@ -58,7 +58,7 @@ namespace jb
                 }
                 else if ( try_count % 0xFFFF == 0 )
                 {
-                    std::this_thread::yield;
+                    std::this_thread::yield();
                 }
             }
         }
@@ -79,7 +79,7 @@ namespace jb
                 }
                 else if ( try_count % 0xFFFF == 0 )
                 {
-                    std::this_thread::yield;
+                    std::this_thread::yield();
                 }
             }
         }
@@ -94,7 +94,7 @@ namespace jb
                 }
                 else if ( try_count % 0xFFFF == 0 )
                 {
-                    std::this_thread::yield;
+                    std::this_thread::yield();
                 }
             }
         }
