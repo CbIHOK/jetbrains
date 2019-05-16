@@ -3,6 +3,9 @@
 
 #include "rare_write_frequent_read_mutex.h"
 #include "execution_chain.h"
+#include "mount_point.h"
+#include "physical_volume.h"
+#include "path_iterator.h"
 #include <string>
 #include <string_view>
 #include <memory>
@@ -21,17 +24,13 @@
 
 namespace jb
 {
-
-    template < typename Policies > class mount_point;
-
-
     template < typename Policies >
     class VirtualVolume
     {
         using Key = std::basic_string< typename Policies::KeyCharT, typename Policies::KeyCharTraits >;
         using KeyView = std::basic_string_view< typename Policies::KeyCharT, typename Policies::KeyCharTraits >;
         using Value = typename Policies::Value;
-        using MountPoint = ::jb::mount_point< Policies >;
+        using MountPoint = ::jb::MountPoint< Policies >;
         using MountPointPtr = std::shared_ptr< MountPoint >;
         using PhysicalVolume = ::jb::PhysicalVolume< Policies >;
 
@@ -515,7 +514,7 @@ namespace jb
         @retval RetCode - operation status
         @throw nothing
         */
-        RetCode unmount( std::weak_ptr< mount_point > mount_handle, bool force = false ) noexcept
+        RetCode unmount( std::weak_ptr< MountPoint > mount_handle, bool force = false ) noexcept
         {
             try
             {

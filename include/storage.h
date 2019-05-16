@@ -214,8 +214,8 @@ namespace jb
 }
 
 
-#include "virtual_volume.h"
 #include "physical_volume.h"
+#include "virtual_volume.h"
 
 
 #endif
