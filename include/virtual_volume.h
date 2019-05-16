@@ -6,6 +6,7 @@
 #include "mount_point.h"
 #include "physical_volume.h"
 #include "path_iterator.h"
+#include "path_utils.h"
 #include <string>
 #include <string_view>
 #include <memory>
@@ -32,7 +33,9 @@ namespace jb
         using Value = typename Policies::Value;
         using MountPoint = ::jb::MountPoint< Policies >;
         using MountPointPtr = std::shared_ptr< MountPoint >;
+        using MountPointHandle = std::weak_ptr< MountPoint >;
         using PhysicalVolume = ::jb::PhysicalVolume< Policies >;
+        using PhysicalVolumeHandle = std::weak_ptr< PhysicalVolume >;
 
         struct mount_t
         {
@@ -421,79 +424,48 @@ namespace jb
         @throw nothing
         */
         [[ nodiscard ]]
-        std::tuple< RetCode, std::weak_ptr< MountPoint > >
-        mount (  std::weak_ptr< PhysicalVolume > PhysicalVolume_handle, 
-                 std::basic_string_view< typename Policies::KeyCharT > physical_path,
-                 std::basic_string_view< typename Policies::KeyCharT > logical_path,
-                 const KeyView & destination_logical_path,
-                 const KeyView & mount_alias   ) noexcept
+        std::tuple< RetCode, MountPointHandle > mount ( PhysicalVolumeHandle physical_volume,
+                                                        const Key & physical_path,
+                                                        Key && logical_path ) noexcept
         {
             try
             {
-                rare_write_frequent_read_mutex<>::shared_lock s_lock( guard_ );
-
-                // find nearest upper mount point
-                auto[ parent_mount_path, relative_path ] = find_nearest_mounted_path( logical_path );
-
-                PathLock dst_lock;
-                MountPointImplP parent_mount_impl;
-
-                // if we're mounting under another mount we need to lock corresponding path on physical level
-                if ( parent_mount_path )
+                if ( auto pv = physical_volume.lock(); !pv )
                 {
-                    const auto parent_mount_count = count_mount_point( parent_mount_path );
-
-                    std::vector< MountPointImplP > mount_points();
-                    parent_mount_points.reserve( mount_count );
-
-                    //// run lock_path() for all parent mounts in parallel
-                    //auto futures = move( run_parallel( parent_mounts, [&] ( const auto & mount, const auto & in, auto & out ) noexcept {
-                    //    return mount->lock_path( relative_path, in, out );
-                    //} ) );
-
-                    //// init overall status as NotFound
-                    //auto overall_status = RetCode::NotFound;
-
-                    //// through all futures
-                    //for ( auto & future : futures )
-                    //{
-                    //    // get result
-                    //    auto[ ret, node_uid, node_level, lock ] = future.get();
-
-                    //    if ( RetCode::Ok == ret )
-                    //    {
-                    //        // get lock over logical path we're going mount to
-                    //        lock_mount_to = move( lock );
-                    //        overall_status = RetCode::Ok;
-                    //        break;
-                    //    }
-                    //    else if ( RetCode::NotFound != ret )
-                    //    {
-                    //        // something terrible happened on physical level
-                    //        overall_status = ret;
-                    //    }
-                    //}
-
-                    //// unable to lock physical path
-                    //if ( RetCode::Ok != overall_status )
-                    //{
-                    //    return { overall_status, MountPointImplP{} };
-                    //}
+                    return { InvalidPhysicalVolume, MountPointHandle{} };
                 }
-                
-                if ( auto mount_point_impl = std::make_shared< MountPointImpl >( PhysicalVolume, physical_path, PathLock{} ); RetCode::Ok == mp->status() )
+                else if ( !detail::is_valid_path( physical_path ) )
                 {
-                    KeyValue mounted_path;
-                    mounted_path.reserve( destination_logical_path.size() + mount_alias.size() + 1 );
-                    std::for_each( destination_logical_path.begin(), destination_logical_path.end(), std::back_inserter( mounted_path ) );
-                    mounted_path.append( separator );
-                    std::for_each( mount_alias.begin(), mount_alias.end(), std::back_inserter( mounted_path ) );
-
-                    mounts_.emplace( mounted_path, mount_point_impl, parent_mount_impl );
+                    return { InvalidPhysicalPath, MountPointHandle{} };
+                }
+                else if ( !detail::is_valid_path( logical_path ) )
+                {
+                    return { InvalidLogicalPath, MountPointHandle{} };
                 }
                 else
                 {
-                    return { mp->status(), MountPointImpl{} };
+                    rare_write_frequent_read_mutex<>::shared_lock s_lock( guard_ );
+
+                    auto alias_it = ++path_end( logical_path );
+                    auto target_path = alias_it - path_begin( logical_path );
+
+                    auto[ parent_mount_path, relative_path ] = find_nearest_mounted_path( target_path );
+
+                    if ( !parent_mount_path.empty() )
+                    {
+
+                    }
+
+                    if ( auto mount_point = std::make_shared< MountPoint >( physical_volume, physical_path, PathLock{} ); RetCode::Ok == mp->status() )
+                    {
+                        rare_write_frequent_read_mutex<>::upgrade_lock<> x_lock( s_lock );
+                        mounts_.emplace( mounted_path, mount_point_impl, parent_mount_impl );
+                        return { Ok, MountPointHandle{ mount_point } };
+                    }
+                    else
+                    {
+                        return { mp->status(), MountPointHandle{} };
+                    }
                 }
             }
             catch ( const bad_alloc & )
