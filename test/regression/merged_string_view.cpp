@@ -1,5 +1,5 @@
 #include <merged_string_view.h>
-#include <rare_write_frequent_read_mutex.h>
+#include <storage.h>
 #include <gtest/gtest.h>
 #include <string>
 #include <exception>

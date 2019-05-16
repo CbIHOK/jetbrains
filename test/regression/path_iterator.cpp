@@ -41,6 +41,6 @@ TYPED_TEST_CASE( path_iterator_test, TestingPolicies );
 
 TYPED_TEST( path_iterator_test, 1 )
 {
-    string_type = make_string( "foo" );
+    string_type s = make_string( "foo" );
     test_type string( s );
 }

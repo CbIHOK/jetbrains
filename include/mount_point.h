@@ -49,7 +49,7 @@ namespace jb
         //
         // data members
         //
-        std::shared_ptr< PhysicalVolumeImpl > physical_volume_;
+        std::shared_ptr< PhysicalVolumeImpl > PhysicalVolume_;
         NodeUid entry_node_uid_;
         size_t entry_node_level_;
         PathLock locks_;
@@ -71,19 +71,19 @@ namespace jb
 
         /** Explicit constructor
 
-        @param [in] physical_volume - physical volume to be mounted
+        @param [in] PhysicalVolume - physical volume to be mounted
         @param [in] physical_path - physical path to be mounted
         @param [in] mount_dst_lock - lock over a destination of mount point
         @throw nothing
         */
-        explicit MountPointImpl( PhysicalVolumeImplP physical_volume, const Key & physical_path, PathLock && mount_dst_lock ) noexcept
-            : physical_volume_{ physical_volume }
+        explicit MountPointImpl( PhysicalVolumeImplP PhysicalVolume, const Key & physical_path, PathLock && mount_dst_lock ) noexcept
+            : PhysicalVolume_{ PhysicalVolume }
             , locks_{ std::move( mount_dst_lock ) }
         {
             // request physical volume for lock physical of path and entry point UID
             execution_chain in{}; in.second = true;
             execution_chain out{};
-            auto [ rc, entry_node_uid, entry_node_level, mount_src_lock ] = physical_volume_->lock_path( RootNodeUid, 0, physical_path, in, out );
+            auto [ rc, entry_node_uid, entry_node_level, mount_src_lock ] = PhysicalVolume_->lock_path( RootNodeUid, 0, physical_path, in, out );
             
             status_ = rc;
             entry_node_uid_ = entry_node_uid;
@@ -108,7 +108,7 @@ namespace jb
         @retval std::shared_ptr< PhysicalVolumeImpl > - connected physical volume
         @throw nothing
         */
-        auto physical_volume() const noexcept { return physical_volume_; }
+        auto PhysicalVolume() const noexcept { return PhysicalVolume_; }
 
 
         /** Forwards lock_path() request to connected physical volume
@@ -124,7 +124,7 @@ namespace jb
         [[ nodiscard ]]
         std::tuple < RetCode, NodeUid, size_t, PathLock > lock_path( const Key & relative_path, const execution_chain & in, execution_chain & out ) noexcept
         {
-            return physical_volume_->lock_path( entry_node_uid_, entry_node_level_, relative_path, in, out );
+            return PhysicalVolume_->lock_path( entry_node_uid_, entry_node_level_, relative_path, in, out );
         }
 
 
@@ -143,7 +143,7 @@ namespace jb
         [[ nodiscard ]]
         RetCode insert( const Key & relative_path, const Key & subkey, const Value & value, uint64_t good_before, bool overwrite, const execution_chain & in, execution_chain & out ) noexcept
         {
-            auto [rc] = physical_volume_->insert( entry_node_uid_, entry_node_level_, relative_path, subkey, value, good_before, overwrite, in, out );
+            auto [rc] = PhysicalVolume_->insert( entry_node_uid_, entry_node_level_, relative_path, subkey, value, good_before, overwrite, in, out );
             return rc;
         }
 
@@ -160,7 +160,7 @@ namespace jb
         [[ nodiscard ]]
         std::tuple< RetCode, Value > get( const Key & relative_path, const execution_chain & in, execution_chain & out ) noexcept
         {
-            return physical_volume_->get( entry_node_uid_, entry_node_level_, relative_path, in, out );
+            return PhysicalVolume_->get( entry_node_uid_, entry_node_level_, relative_path, in, out );
         }
 
 
@@ -175,7 +175,7 @@ namespace jb
         [[ nodiscard ]]
         std::tuple< RetCode > erase( const Key & relative_path, const execution_chain & in, execution_chain & out ) noexcept
         {
-            auto [rc] = physical_volume_->erase( entry_node_uid_, entry_node_level_, relative_path, in, out );
+            auto [rc] = PhysicalVolume_->erase( entry_node_uid_, entry_node_level_, relative_path, in, out );
             return rc;
         }
     };

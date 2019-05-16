@@ -1,5 +1,5 @@
-#ifndef __JB__PHYSICAL_VOLUME_IMPL__H__
-#define __JB__PHYSICAL_VOLUME_IMPL__H__
+#ifndef __JB__PhysicalVolume_IMPL__H__
+#define __JB__PhysicalVolume_IMPL__H__
 
 
 #include <atomic>

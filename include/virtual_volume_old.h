@@ -1,5 +1,5 @@
-#ifndef __JB__VIRTUAL_VOLUME__H__
-#define __JB__VIRTUAL_VOLUME__H__
+#ifndef __JB__VirtualVolume__H__
+#define __JB__VirtualVolume__H__
 
 
 #include <memory>
@@ -241,7 +241,7 @@ namespace jb
 
         /** Mounts specified path of physical volume at given logical path with given alias
 
-        @param [in] physical_volume - physical volume
+        @param [in] PhysicalVolume - physical volume
         @param [in] physical_path - physical path to be mounted
         @param [in] logical_path - path to new mount point
         @param [in] alias - name of new mount point
@@ -249,11 +249,11 @@ namespace jb
         @retval MountPoint - mount point handle
         @throw nothing
         */
-        std::tuple< RetCode, MountPoint > Mount( const PhysicalVolume & physical_volume, const KeyView & physical_path, const KeyView & logical_path, const KeyView & alias ) noexcept
+        std::tuple< RetCode, MountPoint > Mount( const PhysicalVolume & PhysicalVolume, const KeyView & physical_path, const KeyView & logical_path, const KeyView & alias ) noexcept
         {
-            if ( auto virtual_volume_impl = impl_.lock() )
+            if ( auto VirtualVolume_impl = impl_.lock() )
             {
-                if ( auto physical_volume_impl = physical_volume.impl_.lock() )
+                if ( auto PhysicalVolume_impl = PhysicalVolume.impl_.lock() )
                 {
                     try
                     {
@@ -277,9 +277,9 @@ namespace jb
                         return { RetCode::UnknownError, MountPoint{} };
                     }
 
-                    if ( auto[ ret, mp_impl ] = virtual_volume_impl->mount( physical_volume_impl, physical_path, logical_path, alias ); RetCode::Ok == ret && mp_impl )
+                    if ( auto[ ret, mp_impl ] = VirtualVolume_impl->mount( PhysicalVolume_impl, physical_path, logical_path, alias ); RetCode::Ok == ret && mp_impl )
                     {
-                        return { RetCode::Ok, MountPoint{ mp_impl, virtual_volume_impl } };
+                        return { RetCode::Ok, MountPoint{ mp_impl, VirtualVolume_impl } };
                     }
                     else
                     {
@@ -300,7 +300,7 @@ namespace jb
 }
 
 
-#include "virtual_volume_impl.h"
+#include "VirtualVolume_impl.h"
 
 
 #endif
