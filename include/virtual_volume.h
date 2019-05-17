@@ -1,10 +1,10 @@
 #ifndef __JB__VirtualVolume__H__
 #define __JB__VirtualVolume__H__
 
-#include "rare_write_frequent_read_mutex.h"
-#include "execution_chain.h"
-#include "mount_point.h"
+
 #include "physical_volume.h"
+#include "mount_point.h"
+#include "rare_write_frequent_read_mutex.h"
 #include "path_iterator.h"
 #include "path_utils.h"
 #include <string>
@@ -13,7 +13,6 @@
 #include <tuple>
 #include <execution>
 #include <future>
-#include <regex>
 #include <boost/multi_index_container.hpp>
 #include <boost/multi_index/hashed_index.hpp>
 #include <boost/multi_index/ordered_index.hpp>
@@ -25,6 +24,10 @@
 
 namespace jb
 {
+    template < typename Policies >
+    class MountPoint;
+
+
     template < typename Policies >
     class VirtualVolume
     {
@@ -158,65 +161,63 @@ namespace jb
         std::tuple< KeyView, KeyView > find_nearest_mounted_path( KeyView logical_path ) const noexcept
         {
             const auto & by_logical_path = mounts_.get< mount_t::ndx_by_logical_path >();
-            auto current = logical_path;
+            const auto begin = path_begin( logical_path );
+            const auto end = path_end( logical_path );
 
-            while ( current.size() )
+            for ( auto it = end; it != begin; --it )
             {
-                if ( by_logical_path.end() != by_logical_path.find( current ) )
+                const auto prefix = it - begin;
+                const auto suffix = end - it;
+
+                if ( by_logical_path.end() != by_logical_path.find( prefix ) )
                 {
-                    break;
+                    return { prefix, suffix };
                 }
-
-                static constexpr key_view::value_type separator = '/';
-                auto prev_separator_pos = current.find_last_of( separator );
-                assert( prev_separator_pos != key_view::npos );
-
-                current = current.substr( 0, prev_separator_pos );
             }
 
-            return { current, logical_path.substr( current.size() ) };
+            return { KeyView{}, logical_path };
         }
 
 
-        //template < typename F >
-        //auto for_each_mount( key_view mount_path, F f )
-        //{
-        //    // count mounts for given mount path
-        //    const auto & by_logical_path = mounts_.get< mount_t::by_logical_path >();
-        //    auto mount_count = by_logical_path.count( mount_path );
-        //    assert( mount_count );
+        template < typename F >
+        auto for_each_mount( key_view mount_path, F f )
+        {
+            // count mounts for given mount path
+            const auto & by_logical_path = mounts_.get< mount_t::by_logical_path >();
+            auto mount_count = by_logical_path.count( mount_path );
+            assert( mount_count );
 
-        //    // acquire mounts for the path
-        //    const auto & by_priority = mounts_.get< mount_t::by_priority >();
-        //    auto[ mount_it, mount_end ] = by_priority.equal_range( mount_path );
+            // acquire mounts for the path
+            const auto & by_priority = mounts_.get< mount_t::by_priority >();
+            auto[ mount_it, mount_end ] = by_priority.equal_range( mount_path );
 
-        //    // allocate memory
-        //    using FutureT = std::future< decltype( f( MountPointPtr{}, std::shared_future<, std::nullptr ) ) >;
-        //    std::vector< std::tuple< MountPointPtr, FutureT > > mounts( mount_count );
-        //    std::vector< std::promise< bool > > promises( mount_count + 1 );
+            // allocate memory
+            using FutureT = std::future< decltype( f( MountPointPtr{}, std::shared_future<, std::nullptr ) ) >;
+            std::vector< std::tuple< MountPointPtr, FutureT > > mounts( mount_count );
+            std::vector< std::promise< bool > > promises( mount_count + 1 );
 
-        //    // for all mounts
-        //    auto f = futures.begin();
-        //    auto e = execution.begin();
-        //    for ( ; mount_it != mount_end; ++mount_it, ++f, ++e )
-        //    {
-        //        assert( futures.end() != f );
-        //        assert( execution.end() != e );
-        //        assert( execution.end() != e + 1 );
+            // for all mounts
+            auto f = futures.begin();
+            auto e = execution.begin();
+            for ( ; mount_it != mount_end; ++mount_it, ++f, ++e )
+            {
+                assert( futures.end() != f );
+                assert( execution.end() != e );
+                assert( execution.end() != e + 1 );
 
-        //        f->get< MountPointPtr >() = mount_it->impl_;
-        //        f->get< FutureT >() = std::move( std::async( std::launch::async, [&] () noexcept { return f( *m, e, e + 1 ); } ) );
-        //    }
+                f->get< MountPointPtr >() = mount_it->impl_;
+                f->get< FutureT >() = std::move( std::async( std::launch::async, [&] () noexcept { return f( *m, e, e + 1 ); } ) );
+            }
 
-        //    // let the 1st thread to apply an operation 
-        //    execution.front().allow();
+            // let the 1st thread to apply an operation 
+            execution.front().allow();
 
-        //    // wait until the last thread gets completed
-        //    execution.back().wait_until_previous_completed();
+            // wait until the last thread gets completed
+            execution.back().wait_until_previous_completed();
 
-        //    // return 
-        //    return futures;
-        //}
+            // return 
+            return futures;
+        }
 
 
     public:
@@ -375,11 +376,15 @@ namespace jb
         }
 
 
-        RetCode erase( const KeyView & key, bool force ) noexcept
+        RetCode erase( const Key & key, bool force ) noexcept
         {
             try
             {
-                if ( !is_valid_path( key ) )
+                if ( !detail::is_valid_path( key ) )
+                {
+                    return InvalidKey;
+                }
+                else
                 {
                     rare_write_frequent_read_mutex<>::shared_lock<> s_lock( guard_ );
 
@@ -397,11 +402,6 @@ namespace jb
                     }
 
                     return { NotFound, Value{} };
-                }
-                else
-                {
-                    return InvalidKey;
-                }
             }
             catch ( const std::bad_alloc & )
             {
@@ -444,22 +444,24 @@ namespace jb
                 }
                 else
                 {
-                    rare_write_frequent_read_mutex<>::shared_lock s_lock( guard_ );
-
-                    auto alias_it = ++path_end( logical_path );
+                    auto alias_it = --path_end( logical_path );
                     auto target_path = alias_it - path_begin( logical_path );
 
-                    auto[ parent_mount_path, relative_path ] = find_nearest_mounted_path( target_path );
+                    rare_write_frequent_read_mutex<>::shared_lock s_lock( guard_ );
+
+                    auto parent_mount_path, relative_path ] = find_nearest_mounted_path( target_path );
+
+                    MountPointPtr parent_mount;
+                    PathLock target_path_lock;
 
                     if ( !parent_mount_path.empty() )
                     {
-
                     }
 
-                    if ( auto mount_point = std::make_shared< MountPoint >( physical_volume, physical_path, PathLock{} ); RetCode::Ok == mp->status() )
+                    if ( auto mount_point = std::make_shared< MountPoint >( physical_volume, physical_path, target_path_lock ); RetCode::Ok == mp->status() )
                     {
                         rare_write_frequent_read_mutex<>::upgrade_lock<> x_lock( s_lock );
-                        mounts_.emplace( mounted_path, mount_point_impl, parent_mount_impl );
+                        mounts_.emplace( logical_path, mount_point_impl, parent_mount_impl );
                         return { Ok, MountPointHandle{ mount_point } };
                     }
                     else
