@@ -31,11 +31,14 @@ namespace jb
         Key physical_path_;
         Key logical_path_;
         MountPointPtr parent_mount_;
+        size_t priority_;
+        inline static std::atomic< size_t > priority_holder_;
 
         explicit MountPoint( PhysicalVolumePtr physical_volume, Key && physical_path, Key && logical_path ) noexcept
             : physical_volume_( physical_volume )
             , physical_path_( physical_path )
             , logical_path_( logical_path )
+            , priority_( priority_holder_.fetch_add( 1 ) )
         {
             assert( physical_volume_ );
             assert( detail::is_valid_path( physical_path_ ) );
@@ -51,6 +54,7 @@ namespace jb
         KeyView physical_path() const noexcept { return physical_path_; }
         KeyView logical_view() const noexcept { return logical_path_; }
         MountPointPtr parent_mount() const noexcept { return parent_mount_; }
+        size_t priority() const noexcept { return priority_; }
     };
 }
 

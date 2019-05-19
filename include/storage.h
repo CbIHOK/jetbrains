@@ -9,32 +9,33 @@
 #include <tuple>
 #include <filesystem>
 #include <memory>
+#include <type_traits>
 
 
 namespace jb
 {
     /**
     */
-    template < typename Policies >
+    template < typename Policies, typename TestHooks = void >
     class Storage
     {
         template < typename VolumeT >
         static auto singletons()
         {
             static std::mutex guard;
-            static std::unordered_set< std::shared_ptr< typename VolumeT::Impl > > holder;
+            static std::unordered_set< std::shared_ptr< VolumeT > > holder;
             return std::forward_as_tuple( guard, holder );
         }
 
 
         template < typename VolumeT, typename ...Args >
-        static std::tuple< RetCode, std::weak_ptr< VolumeT > > open( Args&&... args ) noexcept
+        static std::tuple< RetCode, std::weak_ptr< VolumeT > > open( Args&&... args ) _NOEXCEPT
         {
             try
             {
                 auto[ guard, holder ] = singletons< VolumeT >();
 
-                auto impl = std::make_shared< VolumeT >( std::forward( args )... );
+                auto impl = std::make_shared< VolumeT >( std::forward< Args >( args )... );
                 assert( impl );
 
                 if ( Ok == impl->status() )
@@ -68,27 +69,28 @@ namespace jb
 
     public:
 
-        using VirtualVolume = ::jb::VirtualVolume< Policies >;
-        using PhysicalVolume = ::jb::PhysicalVolume < Policies >;
+        using VirtualVolume = typename std::conditional< std::is_void_v< TestHooks >, ::jb::VirtualVolume< Policies >, typename TestHooks::VirtualVolumeT >::type;
+        using PhysicalVolume = typename std::conditional< std::is_void_v< TestHooks >, ::jb::PhysicalVolume< Policies >, typename TestHooks::PhysicalVolumeT >::type;
         using MountPoint = typename VirtualVolume::MountPoint;
         using Key = typename VirtualVolume::Key;
         using Value = typename VirtualVolume::Value;
+        using MountPoint = typename VirtualVolume::MountPoint;
 
 
-        static std::tuple < RetCode, std::weak_ptr< VirtualVolume > > open_VirtualVolume() noexcept
+        static std::tuple < RetCode, std::weak_ptr< VirtualVolume > > open_virtual_volume() _NOEXCEPT
         {
             return open< VirtualVolume >();
         }
 
 
-        static std::tuple < RetCode, std::weak_ptr< PhysicalVolume > > open_PhysicalVolume( const std::filesystem::path & path, size_t priority = 0 ) noexcept
+        static std::tuple < RetCode, std::weak_ptr< PhysicalVolume > > open_physical_volume( const std::filesystem::path & path, size_t priority = 0 ) _NOEXCEPT
         {
             return open< PhysicalVolume >( path, priority );
         }
 
 
         template< typename VolumeT >
-        static RetCode close( std::weak_ptr< VolumeT > volume ) noexcept
+        static RetCode close( std::weak_ptr< VolumeT > volume ) _NOEXCEPT
         {
             try
             {
@@ -98,7 +100,7 @@ namespace jb
                 {
                     std::unique_lock lock( guard );
 
-                    if ( auto it = holder.find( impl ); holder.end != it )
+                    if ( auto it = holder.find( impl ); holder.end() != it )
                     {
                         holder.erase( it );
                         volume.reset();
@@ -121,7 +123,7 @@ namespace jb
         @retval RetCode - operation status
         @throw nothing
         */
-        static RetCode close_all( ) noexcept
+        static RetCode close_all( ) _NOEXCEPT
         {
             try
             {

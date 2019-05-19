@@ -1,8 +1,6 @@
-#ifndef __JB__PhysicalVolume_IMPL__H__
-#define __JB__PhysicalVolume_IMPL__H__
+#ifndef __JB__PHYSICAL_VOLUME__H__
+#define __JB__PHYSICAL_VOLUME__H__
 
-
-#include <atomic>
 #include <thread>
 #include <chrono>
 #include <filesystem>
@@ -29,6 +27,7 @@ namespace jb
         PhysicalVolume() = delete;
         PhysicalVolume( PhysicalVolume && ) = delete;
     };
+}
 
 //    /** Implementation of Physical Volume
 //
@@ -803,7 +802,7 @@ namespace jb
 //            }
 //        }
 //    };
-}
+
 //
 //
 //#include "path_locker.h"

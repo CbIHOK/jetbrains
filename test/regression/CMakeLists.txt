@@ -7,6 +7,7 @@ add_executable( regression
     main.cpp
     #merged_string_view.cpp
     path_iterator.cpp
+    storage
 )
 
 target_link_libraries(

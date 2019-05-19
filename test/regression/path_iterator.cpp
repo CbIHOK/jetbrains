@@ -1,5 +1,6 @@
 #include <gtest/gtest.h>
 #include <path_iterator.h>
+#include <storage.h>
 #include <string>
 #include <string_view>
 

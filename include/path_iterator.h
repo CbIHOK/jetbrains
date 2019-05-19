@@ -1,3 +1,7 @@
+#ifndef __JB__PATH_ITERATOR__H__
+#define __JB__PATH_ITERATOR__H__
+
+
 #include "path_utils.h"
 #include <string_view>
 #include <iterator>
@@ -36,15 +40,15 @@ namespace jb
 
         public:
 
-            path_iterator() noexcept = default;
-            explicit constexpr path_iterator( const string_type * path, size_type position ) noexcept : path_( path ), position_( position ) {}
-            path_iterator( const self_type & ) noexcept = default;
-            path_iterator( self_type && ) noexcept = default;
+            path_iterator() _NOEXCEPT = default;
+            explicit constexpr path_iterator( const string_type * path, size_type position ) _NOEXCEPT : path_( path ), position_( position ) {}
+            path_iterator( const self_type & ) _NOEXCEPT = default;
+            path_iterator( self_type && ) _NOEXCEPT = default;
 
             self_type & operator = ( const self_type & other ) noexcept = default;
             self_type & operator = ( self_type && ) noexcept = default;
 
-            self_type & operator++() noexcept
+            self_type & operator++() _NOEXCEPT
             {
                 if ( path_ && position_ < path_->size() )
                 {
@@ -60,7 +64,7 @@ namespace jb
                 return *this;
             }
 
-            self_type & operator--() noexcept
+            self_type & operator--() _NOEXCEPT
             {
                 if ( path_ && 0 < position_ && position_ <= path_->size() )
                 {
@@ -76,42 +80,42 @@ namespace jb
                 return *this;
             }
 
-            self_type operator++( int ) noexcept
+            self_type operator++( int ) _NOEXCEPT
             {
                 auto tmp = *this;
                 ++( *this );
                 return tmp;
             }
 
-            self_type operator--( int ) noexcept
+            self_type operator--( int ) _NOEXCEPT
             {
                 auto tmp = *this;
                 --( *this );
                 return tmp;
             }
 
-            reference operator * () noexcept
+            reference operator * () _NOEXCEPT
             {
                 assert( path_ && position_ < path_->size() );
                 return *( path_->begin() + position_ );
             }
 
-            bool is_valid() const noexcept
+            bool is_valid() const _NOEXCEPT
             {
                 return path_ && ( position_ == path_->size() || position_ < path_->size() && (*path_)[ position_ ] == separator );
             }
 
-            friend bool operator == ( const self_type & lhs, const self_type & rhs ) noexcept
+            friend bool operator == ( const self_type & lhs, const self_type & rhs ) _NOEXCEPT
             {
                 return lhs.path_ == rhs.path_ && lhs.position_ == rhs.position_;
             }
 
-            friend bool operator != ( const self_type & lhs, const self_type & rhs ) noexcept
+            friend bool operator != ( const self_type & lhs, const self_type & rhs ) _NOEXCEPT
             {
                 return !( lhs == rhs );
             }
 
-            friend view_type operator - ( const self_type & lhs, const self_type & rhs ) noexcept
+            friend view_type operator - ( const self_type & lhs, const self_type & rhs ) _NOEXCEPT
             {
                 //
                 // the expectations are
@@ -145,27 +149,20 @@ namespace jb
             }
         };
 
-#ifdef _DEBUG
-#   define do_path_validation true
-#else
-#   define do_validate_path false
-#endif
-
         template < typename StringT >
-        path_iterator< StringT > path_begin( const StringT & path ) noexcept ( !do_path_validation )
+        path_iterator< StringT > path_begin( const StringT & path ) _NOEXCEPT
         {
             assert( is_valid_path( path ) );
             return path_iterator< StringT >{ &path, 0 };
         }
 
         template < typename StringT >
-        path_iterator< StringT > path_end( const StringT & path ) noexcept ( !do_path_validation )
+        path_iterator< StringT > path_end( const StringT & path ) _NOEXCEPT
         {
             assert( is_valid_path( path ) );
             return path_iterator< StringT >{ &path, path.size() };
         }
-
-#undef do_validate_path
-
     }
 }
+
+#endif
