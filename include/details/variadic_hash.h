@@ -7,7 +7,7 @@
 
 namespace jb
 {
-    namespace detail
+    namespace details
     {
         constexpr size_t hash_constant() noexcept
         {

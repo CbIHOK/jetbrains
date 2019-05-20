@@ -11,7 +11,7 @@
 
 namespace jb
 {
-    namespace detail
+    namespace details
     {
         template < typename StringT >
         class path_iterator

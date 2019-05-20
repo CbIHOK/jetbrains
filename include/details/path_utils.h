@@ -8,7 +8,7 @@
 
 namespace jb
 {
-    namespace detail
+    namespace details
     {
         template < typename StringT >
         bool is_valid_path( const StringT & path )

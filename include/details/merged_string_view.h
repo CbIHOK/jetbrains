@@ -4,7 +4,7 @@
 
 namespace jb
 {
-    namespace detail
+    namespace details
     {
         template < typename View > struct merged_string_view_iterator_base;
         template < typename View > struct merged_string_view_reverse_iterator_base;

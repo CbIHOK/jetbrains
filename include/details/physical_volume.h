@@ -10,14 +10,14 @@ namespace jb
     namespace details
     {
         template < typename Policies >
-        class PhysicalVolume
+        class physical_volume
         {
         public:
 
-            explicit PhysicalVolume( const std::filesystem::path & path, size_t priority ) noexcept : priority_( priority ) {}
+            explicit physical_volume( const std::filesystem::path & path, size_t priority ) noexcept : priority_( priority ) {}
 
-            PhysicalVolume() = delete;
-            PhysicalVolume( PhysicalVolume && ) = delete;
+            physical_volume() = delete;
+            physical_volume( physical_volume && ) = delete;
         };
     }
 }

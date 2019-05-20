@@ -1,4 +1,4 @@
-#include <merged_string_view.h>
+#include <details/merged_string_view.h>
 #include <storage.h>
 #include <gtest/gtest.h>
 #include <string>
@@ -11,7 +11,7 @@ struct merged_string_view_test : public ::testing::Test
     using char_t = CharT;
     using string = std::basic_string< CharT >;
     using view = std::basic_string_view< CharT >;
-    using merged_view = jb::detail::merged_string_view< CharT >;
+    using merged_view = jb::details::merged_string_view< CharT >;
     using iterator = typename merged_view::iterator;
     using reverse_iterator = typename merged_view::reverse_iterator;
 

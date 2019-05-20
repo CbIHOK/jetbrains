@@ -1,9 +1,10 @@
 #ifndef __JB__STORAGE__H__
 #define __JB__STORAGE__H__
 
+
 #include "ret_codes.h"
-#include "physical_volume.h"
-#include "virtual_volume.h"
+#include "details/physical_volume.h"
+#include "details/virtual_volume.h"
 #include <mutex>
 #include <unordered_set>
 #include <tuple>
@@ -69,8 +70,8 @@ namespace jb
 
     public:
 
-        using VirtualVolume = typename std::conditional< std::is_void_v< TestHooks >, ::jb::VirtualVolume< Policies >, typename TestHooks::VirtualVolumeT >::type;
-        using PhysicalVolume = typename std::conditional< std::is_void_v< TestHooks >, ::jb::PhysicalVolume< Policies >, typename TestHooks::PhysicalVolumeT >::type;
+        using VirtualVolume = typename std::conditional_t< std::is_void_v< TestHooks >, details::virtual_volume< Policies >, typename TestHooks::VirtualVolumeT >;
+        using PhysicalVolume = typename std::conditional_t< std::is_void_v< TestHooks >, details::physical_volume< Policies >, typename TestHooks::PhysicalVolumeT >;
         using MountPoint = typename VirtualVolume::MountPoint;
         using Key = typename VirtualVolume::Key;
         using Value = typename VirtualVolume::Value;

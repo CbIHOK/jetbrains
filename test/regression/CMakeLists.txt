@@ -5,9 +5,10 @@ set(CMAKE_CXX_FLAGS_DEBUG "${CMAKE_CXX_FLAGS_DEBUG} /MTd")
 
 add_executable( regression
     main.cpp
-    #merged_string_view.cpp
+    merged_string_view.cpp
     path_iterator.cpp
-    storage
+    rare_write_frequent_read_mutex.cpp
+    storage.cpp
 )
 
 target_link_libraries(

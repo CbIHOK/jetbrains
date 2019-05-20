@@ -1,8 +1,9 @@
-#ifndef __JB__MOUNT_POINT_IMPL__H__
-#define __JB__MOUNT_POINT_IMPL__H__
+#ifndef __JB__MOUNT_POINT__H__
+#define __JB__MOUNT_POINT__H__
 
 
 #include "physical_volume.h"
+#include <atomic>
 #include <memory>
 #include <tuple>
 #include <assert.h>
@@ -32,7 +33,7 @@ namespace jb
         Key logical_path_;
         MountPointPtr parent_mount_;
         size_t priority_;
-        inline static std::atomic< size_t > priority_holder_;
+        inline static std::atomic< size_t > priority_holder_( 1 );
 
         explicit MountPoint( PhysicalVolumePtr physical_volume, Key && physical_path, Key && logical_path ) noexcept
             : physical_volume_( physical_volume )
