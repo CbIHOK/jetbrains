@@ -2,6 +2,7 @@
 #include <details/rare_write_frequent_read_mutex.h>
 #include <thread>
 #include <atomic>
+#include <array>
 
 
 struct rare_write_frequent_read_mutex_test : public ::testing::Test
@@ -12,10 +13,12 @@ struct rare_write_frequent_read_mutex_test : public ::testing::Test
     using upgrade_lock = typename mutex::upgrade_lock<>;
 
     static constexpr size_t shared_locker_number = 100;
+    static constexpr size_t test_array_size = 1024;
 
-    inline static mutex mutex_;
-    inline static size_t semaphore_ = 0;
     inline static std::atomic< bool > go_, stop_;
+    inline static std::atomic< size_t > fill_;
+    inline static mutex mutex_;
+    inline static std::array< size_t, test_array_size > test_array_;
 
     static void shared_locker_fn()
     {
@@ -25,9 +28,8 @@ struct rare_write_frequent_read_mutex_test : public ::testing::Test
         {
             {
                 shared_lock s_lock( mutex_ );
-                semaphore_++;
-                EXPECT_GE( shared_locker_number, semaphore_ );
-                semaphore_--;
+                auto [ min, max ] = std::minmax_element( test_array_.begin(), test_array_.end() );
+                EXPECT_EQ( *min, *max );
             }
 
             std::this_thread::yield();
@@ -42,9 +44,7 @@ struct rare_write_frequent_read_mutex_test : public ::testing::Test
         {
             {
                 unique_lock x_lock( mutex_ );
-                semaphore_ += shared_locker_number;
-                EXPECT_EQ( shared_locker_number, semaphore_ );
-                semaphore_ -= shared_locker_number;
+                test_array_.fill( fill_.fetch_add( 1, std::memory_order_acq_rel ) );
             }
 
             std::this_thread::yield();
@@ -59,15 +59,11 @@ struct rare_write_frequent_read_mutex_test : public ::testing::Test
         {
             {
                 shared_lock s_lock( mutex_ );
-                semaphore_++;
-                EXPECT_GE( shared_locker_number, semaphore_ );
-                semaphore_--;
-
+                auto[ min, max ] = std::minmax_element( test_array_.begin(), test_array_.end() );
+                EXPECT_EQ( *min, *max );
                 {
                     upgrade_lock x_lock( s_lock );
-                    semaphore_ += shared_locker_number;
-                    EXPECT_EQ( shared_locker_number, semaphore_ );
-                    semaphore_ -= shared_locker_number;
+                    test_array_.fill( fill_.fetch_add( 1, std::memory_order_acq_rel ) );
                 }
             }
 
@@ -83,16 +79,18 @@ TEST_F( rare_write_frequent_read_mutex_test, consistency )
     go_.store( false, std::memory_order_release );
     stop_.store( false, std::memory_order_release );
 
+    test_array_.fill( fill_.fetch_add( 1, std::memory_order_acq_rel ) );
+
     std::list< std::thread > threads;
     for ( size_t i = 0; i < shared_locker_number; ++i )
     {
         threads.push_back( std::thread( &rare_write_frequent_read_mutex_test::shared_locker_fn ) );
     }
-    //threads.push_back( std::thread( &rare_write_frequent_read_mutex_test::unique_locker_fn ) );
-    //threads.push_back( std::thread( &rare_write_frequent_read_mutex_test::upgrade_locker_fn ) );
+    threads.push_back( std::thread( &rare_write_frequent_read_mutex_test::unique_locker_fn ) );
+    threads.push_back( std::thread( &rare_write_frequent_read_mutex_test::upgrade_locker_fn ) );
 
     go_.store( true, std::memory_order_release );
-    std::this_thread::sleep_for( 100ms );
+    std::this_thread::sleep_for( 10000ms );
     stop_.store( true, std::memory_order_release );
 
     for ( auto & thread : threads ) thread.join();
