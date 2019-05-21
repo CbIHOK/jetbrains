@@ -25,7 +25,7 @@ namespace jb
 
         @tparam SharedLockHasher - number of atomics representing shared locks
         */
-        template < size_t SharedLockHasher = 41 >
+        template < size_t SharedLockHasher = 15 >
         class rare_write_frequent_read_mutex
         {
             static_assert( SharedLockHasher );
@@ -37,6 +37,11 @@ namespace jb
             {
                 std::atomic_uint32_t atomic_;
             };
+
+
+            static constexpr uint32_t unlocked = 0;
+            static constexpr uint32_t locked = 1;
+
 
             //
             // EXCLUSIVE lock
@@ -59,35 +64,15 @@ namespace jb
             {
                 static_assert( SpinCount );
 
-                // get unique lock
-                for ( size_t try_count = 1;; ++try_count )
+                while ( true )
                 {
-                    static constexpr uint32_t locked = 1;
-                    uint32_t unlocked = 0;
-
-                    // try get the lock
-                    if ( x_lock_.atomic_.compare_exchange_weak( unlocked, locked, std::memory_order_acq_rel, std::memory_order_relaxed ) )
+                    // get unique lock
+                    for ( size_t try_count = 1;; ++try_count )
                     {
-                        break;
-                    }
 
-                    // if spin count exceeded - yield to other threads
-                    if ( try_count % SpinCount == 0 )
-                    {
-                        std::this_thread::yield();
-                    }
-                }
-
-                // for all shared locks
-                for ( auto & s_lock : s_locks_ )
-                {
-                    // wait until a shared lock gets released
-                    for ( size_t try_count = 1; ; ++try_count )
-                    {
-                        //
-                        // we do not need to use ACQUIRE semantic cuz another shared lock cannot be taken. The question still is
-                        // about performance, if repeating processing of the invalidation queue 
-                        if ( !s_lock.atomic_.load( std::memory_order_acquire ) )
+                        // try get the lock
+                        uint32_t expected = unlocked;
+                        if ( x_lock_.atomic_.compare_exchange_weak( expected, locked, std::memory_order_acq_rel, std::memory_order_relaxed ) )
                         {
                             break;
                         }
@@ -97,6 +82,44 @@ namespace jb
                         {
                             std::this_thread::yield();
                         }
+                    }
+
+                    bool ok = true;
+
+                    // for all shared locks
+                    for ( auto & s_lock : s_locks_  )
+                    {
+                        // wait until a shared lock gets released
+                        for ( size_t try_count = 1; ; ++try_count )
+                        {
+                            //
+                            // we do not need to use ACQUIRE semantic cuz another shared lock cannot be taken. The question still is
+                            // about performance, if repeating processing of the invalidation queue 
+                            if ( !s_lock.atomic_.load( std::memory_order_acquire ) )
+                            {
+                                break;
+                            }
+
+                            // if spin count exceeded 
+                            if ( try_count % SpinCount == 0 )
+                            {
+                                // unable to get exclusive lock, possible reason is upgrade_lock 
+                                ok = false;
+                                break;
+                            }
+                        }
+                    }
+
+                    // if all shared locks are released
+                    if ( ok )
+                    {
+                        // done
+                        break;
+                    }
+                    else
+                    {
+                        // release exclusive lock for awhile and try again
+                        x_lock_.atomic_.store( unlocked, std::memory_order_release );
                     }
                 }
             }
@@ -109,7 +132,7 @@ namespace jb
             void unlock() _NOEXCEPT
             {
                 // simply release unique lock
-                x_lock_.atomic_.store( 0, std::memory_order_release );
+                x_lock_.atomic_.store( unlocked, std::memory_order_release );
             }
 
 
@@ -129,7 +152,7 @@ namespace jb
                 for ( size_t try_count = 1; ; ++try_count )
                 {
                     // get temporary shared lock
-                    s_lock.atomic_.fetch_add( 1, std::memory_order_acq_rel );
+                    s_lock.atomic_.fetch_add( locked, std::memory_order_acq_rel );
 
                     // if there is not exclusive lock request
                     if ( !x_lock_.atomic_.load( std::memory_order_acquire ) )
@@ -139,7 +162,7 @@ namespace jb
                     }
 
                     // release temporary lock
-                    s_lock.atomic_.fetch_sub( 1, std::memory_order_acq_rel );
+                    s_lock.atomic_.fetch_sub( locked, std::memory_order_acq_rel );
 
                     // if try count exceeded - yield other threads
                     if ( try_count % SpinCount == 0 )
@@ -159,7 +182,7 @@ namespace jb
                 // release shared lock
                 const auto s_lock_ndx = std::hash< std::thread::id >{}( std::this_thread::get_id() ) % SharedLockHasher;
                 auto & s_lock = s_locks_[ s_lock_ndx ];
-                s_lock.atomic_.fetch_sub( 1, std::memory_order::memory_order_acq_rel );
+                s_lock.atomic_.fetch_sub( locked, std::memory_order::memory_order_acq_rel );
             }
 
 
@@ -175,14 +198,12 @@ namespace jb
 
                 const auto s_lock_ndx = std::hash< std::thread::id >{}( std::this_thread::get_id() ) % SharedLockHasher;
 
-                // get unique lock
+                // get exclusive lock
                 for ( size_t try_count = 1;; ++try_count )
                 {
-                    static const uint32_t locked = 1;
-                    uint32_t unlocked = 0;
-
-                    // try get the lock
-                    if ( x_lock_.atomic_.compare_exchange_weak( unlocked, locked, std::memory_order_acq_rel, std::memory_order_relaxed ) )
+                    // try to get the lock
+                    uint32_t expected = 0;
+                    if ( x_lock_.atomic_.compare_exchange_weak( expected, locked, std::memory_order_acq_rel, std::memory_order_relaxed ) )
                     {
                         break;
                     }
@@ -198,12 +219,12 @@ namespace jb
                 for ( size_t lock_ndx = 0; lock_ndx < SharedLockHasher; ++lock_ndx )
                 {
                     auto & s_lock = s_locks_[ lock_ndx ];
-                    const uint32_t allowed_shared_lock_count = ( s_lock_ndx == lock_ndx ) ? 1 : 0;
 
                     for ( size_t try_count = 1; ; ++try_count )
                     {
                         // wait until a shared lock gets released
-                        if ( allowed_shared_lock_count == s_lock.atomic_.load( std::memory_order_acquire ) )
+                        auto lock_count = s_lock.atomic_.load( std::memory_order_acquire );
+                        if ( !lock_count || locked == lock_count && lock_ndx == s_lock_ndx )
                         {
                             break;
                         }
@@ -223,7 +244,7 @@ namespace jb
 
             @tparam
             */
-            template < size_t SpinCount = 0xFFFF >
+            template < size_t SpinCount = 1024 >
             class shared_lock
             {
                 //
@@ -306,7 +327,7 @@ namespace jb
 
             /** Scoped EXCUSIVE lock
             */
-            template < size_t SpinCount = 0xFFFF >
+            template < size_t SpinCount = 1024 >
             class unique_lock
             {
                 //
@@ -385,7 +406,7 @@ namespace jb
 
             /** Scoped upgrade from SHARED to EXCLUSIVE lock
             */
-            template < size_t SpinCount = 0xFFFF >
+            template < size_t SpinCount = 1024 >
             class upgrade_lock
             {
                 //
