@@ -1,7 +1,9 @@
 #ifndef __JB__PHYSICAL_VOLUME__H__
 #define __JB__PHYSICAL_VOLUME__H__
 
-
+#include "rare_write_frequent_read_mutex.h"
+#include <string>
+#include <string_view>
 #include <filesystem>
 
 
@@ -9,15 +11,27 @@ namespace jb
 {
     namespace details
     {
-        template < typename Policies >
+        template < typename Policies, typename TestHooks = void >
         class physical_volume
         {
-        public:
+            template < typename Policies, typename TestHooks > friend class virtual_volume;
+            template < typename Policies, typename TestHooks > friend class mount_point;
 
-            explicit physical_volume( const std::filesystem::path & path, size_t priority ) noexcept : priority_( priority ) {}
+            using self_type = physical_volume< Policies, TestHooks >;
+            using Key = std::basic_string< typename Policies::KeyCharT, typename Policies::KeyCharTraits >;
+            using KeyView = std::basic_string_view< typename Policies::KeyCharT, typename Policies::KeyCharTraits >;
+            using Value = typename Policies::Value;
+            
+            using NodeUid = size_t;
+
+            explicit physical_volume( const std::filesystem::path & path, size_t priority ) _NOEXCEPT : priority_( priority ) {}
 
             physical_volume() = delete;
-            physical_volume( physical_volume && ) = delete;
+            physical_volume( self_type && ) = delete;
+
+            auto lock_path( NodeUid entry_point, KeyView relative_path ) _NOEXCEPT
+            {
+            }
         };
     }
 }

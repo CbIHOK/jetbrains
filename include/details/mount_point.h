@@ -17,12 +17,12 @@ namespace jb
         class virtual_volume;
 
 
-        template < typename Policies >
+        template < typename Policies, typename TestHooks = void >
         class mount_point
         {
             template < typename Policies > friend class VirtualVolume;
 
-            using self_type = mount_point< Policies >;
+            using self_type = mount_point< Policies, TestHooks >;
             using MountPointPtr = std::shared_ptr< self_type >;
             using Key = std::basic_string< typename Policies::KeyCharT, typename Policies::KeyCharTraits >;
             using KeyView = std::basic_string_view< typename Policies::KeyCharT, typename Policies::KeyCharTraits >;

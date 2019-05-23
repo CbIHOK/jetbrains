@@ -7,7 +7,7 @@
 
 struct rare_write_frequent_read_mutex_test : public ::testing::Test
 {
-    using mutex = jb::details::rare_write_frequent_read_mutex< 31 >;
+    using mutex = jb::details::rare_write_frequent_read_mutex< 1 >;
     using unique_lock = typename mutex::unique_lock< 1024 >;
     using shared_lock = typename mutex::shared_lock< 1024 >;
     using upgrade_lock = typename mutex::upgrade_lock< 1024 >;

@@ -274,7 +274,7 @@ namespace jb
 
 
             [[ nodiscard ]]
-            std::tuple< RetCode, Value > get( const KeyView & key ) _NOEXCEPT
+            std::tuple< RetCode, Value > get( const Key & key ) _NOEXCEPT
             {
                 try
                 {
